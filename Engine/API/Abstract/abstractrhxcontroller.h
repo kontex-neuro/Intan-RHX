@@ -214,6 +214,7 @@ public:
 
     virtual int findConnectedChips(vector<ChipType> &chipType, vector<int> &portIndex, vector<int> &commandStream,
                                    vector<int> &numChannelsOnPort) = 0;
+    virtual void setVStimBus(int BusMode){};
 
 protected:
     ControllerType type;
@@ -236,6 +237,7 @@ protected:
     // Buffers for writing bytes to command RAM (ControllerStimRecordUSB2 only)
     uint8_t commandBufferMsw[65536];
     uint8_t commandBufferLsw[65536];
+    uint8_t commandBuffer[65536];
 
     virtual unsigned int numWordsInFifo() = 0;
     virtual bool isDcmProgDone() const = 0;

@@ -1763,6 +1763,11 @@ void ControllerInterface::uploadStimParameters()
     }
 }
 
+void ControllerInterface::setVStimBus(int bus)
+{
+    rhxController->setVStimBus(bus);
+}
+
 void ControllerInterface::sendTCPError(QString errorMessage)
 {
     emit TCPErrorMessage(errorMessage);

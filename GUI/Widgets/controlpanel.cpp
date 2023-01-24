@@ -31,6 +31,7 @@
 #include "stimparamdialog.h"
 #include "anoutdialog.h"
 #include "digoutdialog.h"
+#include "controlpanelKONTEXtab.h"
 #include "controlpanelbandwidthtab.h"
 #include "controlpanelimpedancetab.h"
 #include "controlpanelaudioanalogtab.h"
@@ -123,6 +124,8 @@ ControlPanel::ControlPanel(ControllerInterface* controllerInterface_, SystemStat
     connect(hideControlPanelButton, SIGNAL(clicked()), controlWindow, SLOT(hideControlPanel()));
     state->writeToLog("Created hideControlPanelButton");
 
+    KonteXTab = new ControlPanelKONTEXTab(controllerInterface, state, this);
+    state->writeToLog("Created KonteXTab");
     bandwidthTab = new ControlPanelBandwidthTab(controllerInterface, state, this);
     state->writeToLog("Created bandwidthTab");
     impedanceTab = new ControlPanelImpedanceTab(controllerInterface, state, parser, this);
@@ -135,6 +138,7 @@ ControlPanel::ControlPanel(ControllerInterface* controllerInterface_, SystemStat
     state->writeToLog("Created triggerTab");
 
     tabWidget = new QTabWidget(this);
+    tabWidget->addTab(KonteXTab, tr("KonteX"));
     tabWidget->addTab(bandwidthTab, tr("BW"));
     tabWidget->addTab(impedanceTab, tr("Impedance"));
     tabWidget->addTab(audioAnalogTab, tr("Audio/Analog"));
@@ -263,9 +267,12 @@ QString ControlPanel::currentTabName() const
         return tr("Config");
     } else if (tabWidget->currentWidget() == triggerTab) {
         return tr("Trigger");
+    } else if (tabWidget->currentWidget() == KonteXTab) {
+        return tr("Kontex");
     } else {
         qDebug() << "Unrecognized tab widget.";
     }
+    return tr("Unknown");
 }
 
 QHBoxLayout* ControlPanel::createSelectionLayout()

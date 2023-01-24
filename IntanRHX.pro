@@ -104,6 +104,7 @@ SOURCES += main.cpp \
     GUI/Dialogs/waveformselectdialog.cpp \
     GUI/Widgets/abstractfigure.cpp \
     GUI/Widgets/anoutfigure.cpp \
+    GUI/Widgets/controlpanelKONTEXtab.cpp \
     GUI/Widgets/controlpanelaudioanalogtab.cpp \
     GUI/Widgets/controlpanelbandwidthtab.cpp \
     GUI/Widgets/controlpanelconfiguretab.cpp \
@@ -222,6 +223,8 @@ HEADERS += \
     GUI/Dialogs/waveformselectdialog.h \
     GUI/Widgets/abstractfigure.h \
     GUI/Widgets/anoutfigure.h \
+    GUI/Widgets/controlpanelKONTEXtab.h \
+    GUI/Widgets/controlpanelKONTEXtab.h \
     GUI/Widgets/controlpanelaudioanalogtab.h \
     GUI/Widgets/controlpanelbandwidthtab.h \
     GUI/Widgets/controlpanelconfiguretab.h \

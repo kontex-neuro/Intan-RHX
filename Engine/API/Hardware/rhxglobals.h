@@ -57,8 +57,10 @@ const QString SoftwareVersion = QString::number(SOFTWARE_MAIN_VERSION_NUMBER) + 
 
 // FPGA configuration bitfiles
 const QString ConfigFileRHDBoard = "ConfigRHDInterfaceBoard.bit";
-const QString ConfigFileRHDController = "ConfigRHDController.bit";
-const QString ConfigFileRHSController = "ConfigRHSController.bit";
+// const QString ConfigFileRHDController = "ConfigRHDController.bit";
+// const QString ConfigFileRHSController = "ConfigRHSController.bit";
+const QString ConfigFileRHDController = "XDAQRHD.bit";
+const QString ConfigFileRHSController = "XDAQRHS.bit";
 const QString ConfigFileXEM6010Tester = "ConfigXEM6010Tester.bit";
 
 // Special Unicode characters, as QString data type
