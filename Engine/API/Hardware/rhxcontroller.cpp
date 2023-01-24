@@ -145,7 +145,7 @@ void RHXController::resetBoard()
 
     resetBoard(dev);
 
-    if (type == ControllerRecordUSB3) {
+    if (type == ControllerRecordUSB3 || type == ControllerStimRecordUSB2) {
         // Set up USB3 block transfer parameters.
         dev->SetWireInValue(WireInMultiUse, USB3BlockSize / 4);  // Divide by 4 to convert from bytes to 32-bit words (used in FPGA FIFO)
         dev->UpdateWireIns();
@@ -173,7 +173,7 @@ bool RHXController::isRunning()
     int value = dev->GetWireOutValue(WireOutSpiRunning);
 
     // update number of words in FIFO while we're at it
-    if (type == ControllerRecordUSB3) {
+    if (type == ControllerRecordUSB3 || type == ControllerStimRecordUSB2) {
         lastNumWordsInFifo = dev->GetWireOutValue(WireOutNumWords_USB3);
     } else {
         lastNumWordsInFifo = (dev->GetWireOutValue(WireOutNumWordsMsb_USB2) << 16) +
@@ -189,7 +189,7 @@ void RHXController::flush()
 {
     lock_guard<mutex> lockOk(okMutex);
 
-    if (type == ControllerRecordUSB3) {
+    if (type == ControllerRecordUSB3 || type == ControllerStimRecordUSB2) {
         dev->SetWireInValue(WireInResetRun, 1 << 16, 1 << 16); // override pipeout block throttle
         dev->UpdateWireIns();
 
@@ -235,7 +235,7 @@ bool RHXController::readDataBlock(RHXDataBlock *dataBlock)
         return false;
     }
 
-    if (type == ControllerRecordUSB3) {
+    if (type == ControllerRecordUSB3 || type == ControllerStimRecordUSB2) {
         long result = dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize,
                                                 USB3BlockSize * max(numBytesToRead / USB3BlockSize, (unsigned int)1),
                                                 usbBuffer);
@@ -271,7 +271,7 @@ bool RHXController::readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueu
         return false;
     }
 
-    if (type == ControllerRecordUSB3) {
+    if (type == ControllerRecordUSB3 || type == ControllerStimRecordUSB2) {
         long result = dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize, numBytesToRead, usbBuffer);
 
         if (result == ok_Failed) {
@@ -303,7 +303,7 @@ long RHXController::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
     if (numWordsInFifo() < numWordsToRead) return 0;
 
     long result;
-    if (type == ControllerRecordUSB3) {
+    if (type == ControllerRecordUSB3 || type == ControllerStimRecordUSB2) {
         result = dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize, BytesPerWord * numWordsToRead, buffer);
     } else {
         result = dev->ReadFromPipeOut(PipeOutData, BytesPerWord * numWordsToRead, buffer);
@@ -337,7 +337,7 @@ void RHXController::setMaxTimeStep(unsigned int maxTimeStep)
 {
     lock_guard<mutex> lockOk(okMutex);
 
-    if (type == ControllerRecordUSB3) {
+    if (type == ControllerRecordUSB3 || type == ControllerStimRecordUSB2) {
         dev->SetWireInValue(WireInMaxTimeStep_USB3, maxTimeStep);
     } else {
         unsigned int maxTimeStepLsb = maxTimeStep & 0x0000ffff;
@@ -1589,6 +1589,9 @@ void RHXController::uploadCommandList(const vector<unsigned int> &commandList, A
             }
         }
     } else {
+
+        //!KonteX!!
+        /*
         for (unsigned int i = 0; i < commandList.size(); ++i) {
             commandBufferMsw[2 * i] = (uint8_t)((commandList[i] & 0x00ff0000) >> 16);
             commandBufferMsw[2 * i + 1] = (uint8_t)((commandList[i] & 0xff000000) >> 24);
@@ -1625,6 +1628,36 @@ void RHXController::uploadCommandList(const vector<unsigned int> &commandList, A
             cerr << "Error in RHXController::uploadCommandList: auxCommandSlot out of range.\n";
             break;
         }
+        */
+
+        for (unsigned int i = 0; i < commandList.size(); i++) {
+
+             commandBuffer[4 * i + 0] = (unsigned char)((commandList[i] & 0x000000ff) >> 0);
+             commandBuffer[4 * i + 1] = (unsigned char)((commandList[i] & 0x0000ff00) >> 8);
+             commandBuffer[4 * i + 2] = (unsigned char)((commandList[i] & 0x00ff0000) >> 16);
+             commandBuffer[4 * i + 3] = (unsigned char)((commandList[i] & 0xff000000) >> 24);
+
+         }
+
+         switch (auxCommandSlot) {
+             case AuxCmd1:
+                 dev->ActivateTriggerIn(TrigInRamAddrReset, 0);
+                 dev->WriteToBlockPipeIn(PipeInAuxCmd1, 16, 4 * commandList.size(), commandBuffer);
+                 break;
+             case AuxCmd2:
+                 dev->ActivateTriggerIn(TrigInRamAddrReset, 0);
+                 dev->WriteToBlockPipeIn(PipeInAuxCmd2, 16, 4 * commandList.size(), commandBuffer);
+                 break;
+             case AuxCmd3:
+                 dev->ActivateTriggerIn(TrigInRamAddrReset, 0);
+                 dev->WriteToBlockPipeIn(PipeInAuxCmd3, 16, 4 * commandList.size(), commandBuffer);
+                 break;
+             case AuxCmd4:
+                 dev->ActivateTriggerIn(TrigInRamAddrReset, 0);
+                 dev->WriteToBlockPipeIn(PipeInAuxCmd4, 16, 4 * commandList.size(), commandBuffer);
+                 break;
+         }
+
     }
 }
 
@@ -2081,3 +2114,11 @@ int RHXController::endPointWireOutSerialDigitalIn(bool isUSB3)
     else return (int)WireOutSerialDigitalIn_S_USB2;
 }
 
+
+void RHXController::setVStimBus(int BusMode)
+{
+    lock_guard<mutex> lockOk(okMutex);
+    dev->SetWireInValue(WireInMultiUse, BusMode << 1, 0x07);
+    dev->UpdateWireIns();
+    dev->ActivateTriggerIn(TrigInConfig_USB3, 11);
+}

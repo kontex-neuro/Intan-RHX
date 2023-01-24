@@ -1,0 +1,123 @@
+cmake_minimum_required(VERSION 3.16)
+
+set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum OS X deployment version")
+
+project(IntanRHX VERSION 1.0 LANGUAGES CXX)
+
+if(APPLE)
+    set(CMAKE_OSX_ARCHITECTURES "x86_64")
+endif()
+
+SET(CMAKE_MODULE_PATH
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake
+    ${CMAKE_MODULE_PATH}
+)
+
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+
+find_package(Qt5 REQUIRED COMPONENTS Core Gui Multimedia Network Widgets Xml)
+find_package(OpenCL REQUIRED)
+
+set(ICON_NAME "xdaq-icon.icns")
+set(ICON_PATH ${PROJECT_SOURCE_DIR}/images/${ICON_NAME})
+
+option(UseMockOkFrontPanel "Use mock okFrontPanel library" OFF)
+add_subdirectory(Engine)
+add_subdirectory(GUI)
+
+add_executable(
+    IntanRHX WIN32 MACOSX_BUNDLE
+    IntanRHX.qrc
+    main.cpp
+    ${EngineSources}
+    ${GUISources}
+    ${ICON_PATH}
+)
+
+target_include_directories(IntanRHX PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Engine/API/Abstract
+    ${CMAKE_CURRENT_SOURCE_DIR}/Engine/API/Hardware
+    ${CMAKE_CURRENT_SOURCE_DIR}/Engine/API/Synthetic
+    ${CMAKE_CURRENT_SOURCE_DIR}/Engine/Processing
+    ${CMAKE_CURRENT_SOURCE_DIR}/Engine/Processing/DataFileReaders
+    ${CMAKE_CURRENT_SOURCE_DIR}/Engine/Processing/SaveManagers
+    ${CMAKE_CURRENT_SOURCE_DIR}/Engine/Processing/XPUInterfaces
+    ${CMAKE_CURRENT_SOURCE_DIR}/Engine/Threads
+    ${CMAKE_CURRENT_SOURCE_DIR}/GUI/Windows
+    ${CMAKE_CURRENT_SOURCE_DIR}/GUI/Widgets
+    ${CMAKE_CURRENT_SOURCE_DIR}/GUI/Dialogs
+    ${CMAKE_CURRENT_SOURCE_DIR}/includes
+)
+
+find_package(okFrontPanel REQUIRED)
+
+message(STATUS "Qt5 : ${Qt5_DIR}")
+
+target_compile_features(IntanRHX PUBLIC cxx_std_14)
+target_compile_options(IntanRHX PRIVATE $<$<CXX_COMPILER_ID:Clang,GNU>:-Wno-deprecated>)
+target_compile_definitions(IntanRHX PUBLIC $<$<CONFIG:Debug>:DEBUG>)
+
+target_link_libraries(
+    IntanRHX
+    PUBLIC
+    Qt5::Core
+    Qt5::Gui
+    Qt5::Multimedia
+    Qt5::Network
+    Qt5::Widgets
+    Qt5::Xml
+    OpenCL::OpenCL
+    okFrontPanel::okFrontPanel
+)
+
+
+if(UseMockOkFrontPanel)
+    find_package(fmt REQUIRED)
+    target_compile_definitions(IntanRHX PRIVATE UseMockOkFrontPanel)
+    target_link_libraries(IntanRHX PUBLIC fmt::fmt-header-only)
+endif()
+
+
+# copy the bit file and kernel.cl
+add_custom_command(TARGET IntanRHX POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${PROJECT_SOURCE_DIR}/FPGA-bitfiles/XDAQRHD.bit"
+        "$<TARGET_FILE_DIR:IntanRHX>/XDAQRHD.bit"
+)
+add_custom_command(TARGET IntanRHX POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${PROJECT_SOURCE_DIR}/kernel.cl"
+        "$<TARGET_FILE_DIR:IntanRHX>/kernel.cl"
+)
+
+include(deployQt)
+if(APPLE)
+    # copy the dylib to the bundle
+    add_custom_command(TARGET IntanRHX POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:okFrontPanel::okFrontPanel>"
+            "$<TARGET_FILE_DIR:IntanRHX>/../Frameworks/libokFrontPanel.dylib"
+    )
+    # change dylib path
+    add_custom_command(TARGET IntanRHX POST_BUILD
+        COMMAND install_name_tool -change
+            "$<TARGET_FILE_NAME:okFrontPanel::okFrontPanel>"
+            "@loader_path/../Frameworks/libokFrontPanel.dylib"
+            "$<TARGET_FILE:IntanRHX>"
+    )
+    set_source_files_properties(${ICON_PATH} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    set_target_properties(IntanRHX PROPERTIES
+        BUNDLE True
+        MACOSX_BUNDLE_ICONFILE ${ICON_NAME}
+    )
+    deployqt(IntanRHX)
+elseif(WIN32)
+    # copy the dll to the executable directory
+    add_custom_command(TARGET IntanRHX POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:okFrontPanel::okFrontPanel>"
+            "$<TARGET_FILE_DIR:IntanRHX>"
+    )
+    deployqt(IntanRHX)
+endif()

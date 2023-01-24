@@ -142,6 +142,7 @@ public:
     void uploadBandwidthSettings();
     void uploadStimParameters(Channel* channel);
     void uploadStimParameters();
+    void setVStimBus(int BusMode);
 
 signals:
     void setTimeLabel(QString text);

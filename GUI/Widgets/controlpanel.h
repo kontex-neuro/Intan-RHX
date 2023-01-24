@@ -41,6 +41,7 @@ class ControlWindow;
 class StimParamDialog;
 class AnOutDialog;
 class DigOutDialog;
+class ControlPanelKONTEXTab;
 class ControlPanelBandwidthTab;
 class ControlPanelImpedanceTab;
 class ControlPanelAudioAnalogTab;
@@ -114,6 +115,7 @@ private:
     QToolButton *hideControlPanelButton;
     QLabel* topLabel;
     QTabWidget *tabWidget;
+    ControlPanelKONTEXTab *KonteXTab;
     ControlPanelBandwidthTab *bandwidthTab;
     ControlPanelImpedanceTab *impedanceTab;
     ControlPanelAudioAnalogTab *audioAnalogTab;

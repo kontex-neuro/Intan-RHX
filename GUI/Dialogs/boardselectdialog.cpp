@@ -29,6 +29,8 @@
 //------------------------------------------------------------------------------
 
 #include <QSettings>
+#include <QApplication>
+#include <QtGlobal>
 #include "datafilereader.h"
 #include "boardselectdialog.h"
 #include "scrollablemessageboxdialog.h"
@@ -163,6 +165,8 @@ void BoardIdentifier::identifyController(ControllerInfo *controller, int index)
     // Determine proper bitfile to load to FPGA (depending on if USB 2 or 3).
     QString bitfilename = (controller->usbVersion == USB2) ? ConfigFileXEM6010Tester : ConfigFileRHDController;
 
+
+    /* !KonteX!!
     // Upload bit file.
     if (!uploadFpgaBitfileQMessageBox(QCoreApplication::applicationDirPath() + "/" + bitfilename)) {
         QMessageBox::critical(nullptr, QObject::tr("Configuration File Error: Software Aborting"),
@@ -174,6 +178,7 @@ void BoardIdentifier::identifyController(ControllerInfo *controller, int index)
 
     // Read mode from board.
     int boardMode = RHXController::getBoardMode(dev);
+
 
     if (controller->usbVersion == USB2) {
         // Populate boardMode field for USB2 boards.
@@ -212,6 +217,30 @@ void BoardIdentifier::identifyController(ControllerInfo *controller, int index)
         controller->numSPIPorts = RHXController::getNumSPIPorts(dev, (controller->usbVersion == USB3),
                                                                 controller->expConnected);
     }
+    */
+
+    //KonteX
+
+    QMessageBox msgBox;
+
+    msgBox.setText(QObject::tr("Select Board Mode?"));
+    QAbstractButton* pButtonRHD = msgBox.addButton(QObject::tr("RHD"), QMessageBox::YesRole);
+    QAbstractButton* pButtonRHS = msgBox.addButton(QObject::tr("RHS"), QMessageBox::NoRole);
+    msgBox.addButton(QObject::tr("Cancel"),QMessageBox::RejectRole);
+
+    msgBox.exec();
+
+    if (msgBox.clickedButton()==pButtonRHD) {
+
+        controller->boardMode = RHDController;
+        controller->numSPIPorts = 8;
+
+    }   else if (msgBox.clickedButton()==pButtonRHS) {
+        controller->boardMode = RHSController;
+        controller->numSPIPorts = 4;
+        controller->usbVersion = USB2;
+    }
+
 }
 
 // Return name of Opal Kelly board based on model code.
