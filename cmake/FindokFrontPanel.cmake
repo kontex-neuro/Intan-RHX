@@ -1,4 +1,9 @@
 add_library(okFrontPanel::okFrontPanel SHARED IMPORTED)
+
+target_include_directories(okFrontPanel::okFrontPanel INTERFACE
+    ${PROJECT_SOURCE_DIR}/includes
+)
+
 if(APPLE)
     set_target_properties(okFrontPanel::okFrontPanel PROPERTIES
         IMPORTED_LOCATION ${PROJECT_SOURCE_DIR}/libraries/Mac/libokFrontPanel.dylib
