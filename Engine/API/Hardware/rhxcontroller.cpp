@@ -204,6 +204,10 @@ void RHXController::flush()
 
         dev->SetWireInValue(WireInResetRun, 0 << 16, 1 << 16);
         dev->UpdateWireIns();
+        dev->SetWireInValue(WireInResetRun, 1 << 17, 1 << 17);
+        dev->UpdateWireIns();
+        dev->SetWireInValue(WireInResetRun, 0 << 17, 1 << 17);
+        dev->UpdateWireIns();
     } else {
         while (numWordsInFifo() >= usbBufferSize / BytesPerWord) {
             dev->ReadFromPipeOut(PipeOutData, usbBufferSize, usbBuffer);
