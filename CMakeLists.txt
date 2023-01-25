@@ -18,11 +18,13 @@ set(CMAKE_AUTORCC ON)
 
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Multimedia Network Widgets Xml)
 find_package(OpenCL REQUIRED)
+find_package(okFrontPanel REQUIRED)
 
 set(ICON_NAME "xdaq-icon.icns")
 set(ICON_PATH ${PROJECT_SOURCE_DIR}/images/${ICON_NAME})
 
 option(UseMockOkFrontPanel "Use mock okFrontPanel library" OFF)
+
 add_subdirectory(Engine)
 add_subdirectory(GUI)
 
@@ -47,10 +49,8 @@ target_include_directories(IntanRHX PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/GUI/Windows
     ${CMAKE_CURRENT_SOURCE_DIR}/GUI/Widgets
     ${CMAKE_CURRENT_SOURCE_DIR}/GUI/Dialogs
-    ${CMAKE_CURRENT_SOURCE_DIR}/includes
 )
 
-find_package(okFrontPanel REQUIRED)
 
 message(STATUS "Qt5 : ${Qt5_DIR}")
 
@@ -85,6 +85,13 @@ add_custom_command(TARGET IntanRHX POST_BUILD
         "${PROJECT_SOURCE_DIR}/FPGA-bitfiles/XDAQRHD.bit"
         "$<TARGET_FILE_DIR:IntanRHX>/XDAQRHD.bit"
 )
+
+add_custom_command(TARGET IntanRHX POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${PROJECT_SOURCE_DIR}/FPGA-bitfiles/XDAQRHS.bit"
+        "$<TARGET_FILE_DIR:IntanRHX>/XDAQRHS.bit"
+)
+
 add_custom_command(TARGET IntanRHX POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${PROJECT_SOURCE_DIR}/kernel.cl"
