@@ -35,6 +35,7 @@
 #include "scrollablemessageboxdialog.h"
 #include "advancedstartupdialog.h"
 #include <sstream>
+#include <iomanip>
 #include <cstdint>
 #include <charconv>
 
@@ -198,9 +199,9 @@ void BoardIdentifier::identifyController(ControllerInfo *controller, int index)
     controller->maxRHDchannels = rhd;
     controller->maxRHSchannels = rhs;
     controller->numSPIPorts = 0;
-    char addressStr[20] = { 0 };
-    std::to_chars(std::begin(addressStr), std::end(addressStr), serial, 16);
-    controller->xdaqSerial = addressStr;
+    std::stringstream ss;
+    ss << std::setbase(16) << serial;
+    controller->xdaqSerial = QString::fromStdString(ss.str());
     controller->xdaqSerial = controller->xdaqSerial.toUpper();
 
 }
