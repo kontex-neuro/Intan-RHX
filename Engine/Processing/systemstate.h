@@ -89,7 +89,7 @@ class SystemState : public QObject
 {
     Q_OBJECT
 public:
-    SystemState(const AbstractRHXController* controller_, StimStepSize stimStepSize_, int numSPIPorts_, bool expanderConnected_);
+    SystemState(const AbstractRHXController* controller_, StimStepSize stimStepSize_, int numSPIPorts_, bool expanderConnected_, bool enableVStim);
     ~SystemState();
 
     AmplifierSampleRate getSampleRateEnum() const;
@@ -371,7 +371,7 @@ public:
 
     SingleItemList globalItems;
     FilenameItemList stateFilenameItems;
-
+    bool enableVStim;
 signals:
     void stateChanged();
     void headstagesChanged();

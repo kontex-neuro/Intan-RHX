@@ -47,12 +47,13 @@ bool RestrictIfStimControllerOrRunning(const SystemState* state)
     { return (ControllerType) state->controllerType->getIndex() == ControllerStimRecordUSB2 || state->running; }
 
 SystemState::SystemState(const AbstractRHXController* controller_, StimStepSize stimStepSize_, int numSPIPorts_,
-                         bool expanderConnected_) :
+                         bool expanderConnected_, bool enableVStim) :
     numSPIPorts(numSPIPorts_),
     logErrors(false),
     reportSpikes(false),
     decayTime(1.0),
-    globalSettingsInterface(nullptr)
+    globalSettingsInterface(nullptr),
+    enableVStim(enableVStim)
 {
     setupLog();
 

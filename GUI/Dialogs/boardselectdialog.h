@@ -54,16 +54,20 @@ const QString UnknownUSB2String = "Unknown USB2 Device";
 const QString UnknownUSB3String = "Unknown USB3 Device";
 const QString UnknownString = "Unknown Device";
 
-enum UsbVersion {
-    USB2,
-    USB3
+enum class XDAQModel{
+    Unknown = 0,
+    Core = 1,
+    One = 3
 };
 
 struct ControllerInfo {
     QString serialNumber;
-    UsbVersion usbVersion;
+    QString xdaqSerial;
+    XDAQModel xdaqModel;
     bool expConnected;
     int numSPIPorts;
+    int maxRHDchannels;
+    int maxRHSchannels;
     BoardMode boardMode;
 };
 
@@ -72,9 +76,6 @@ class BoardIdentifier
 public:
     BoardIdentifier(QWidget* parent_);
     ~BoardIdentifier();
-
-    static QString getBoardTypeString(BoardMode mode, int numSpiPorts);
-    static QIcon getIcon(const QString& boardType, QStyle *style, int size);
 
     QVector<ControllerInfo*> getConnectedControllersInfo();
 
@@ -114,7 +115,7 @@ private:
 
     void showDemoMessageBox();
     void startSoftware(ControllerType controllerType, AmplifierSampleRate sampleRate, StimStepSize stimStepSize,
-                       int numSPIPorts, bool expanderConnected, const QString& boardSerialNumber, AcquisitionMode mode);
+                       int numSPIPorts, bool expanderConnected, const QString& boardSerialNumber, AcquisitionMode mode, const ControllerInfo* info=nullptr);
 
     QTableWidget *boardTable;
     QPushButton *openButton;

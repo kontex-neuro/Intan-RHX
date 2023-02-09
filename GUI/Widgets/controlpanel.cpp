@@ -250,6 +250,8 @@ void ControlPanel::setCurrentTabName(QString tabName)
         tabWidget->setCurrentWidget(configureTab);
     } else if (tabName == tr("Trigger")) {
         tabWidget->setCurrentWidget(triggerTab);
+    } else if (tabWidget->currentWidget() == KonteXTab) {
+        tabWidget->setCurrentWidget(KonteXTab);
     } else {
         qDebug() << "Unrecognized tabName.";
     }

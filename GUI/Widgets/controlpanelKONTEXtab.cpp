@@ -67,7 +67,13 @@ ControlPanelKONTEXTab::ControlPanelKONTEXTab(ControllerInterface *controllerInte
     auto V14Button = new QRadioButton("+14/-4V");
     auto V9Button = new QRadioButton("+/-9V");
     auto V4Button = new QRadioButton("+4/-14V");
-    V9Button->setChecked(true);
+    if(state->enableVStim){
+        V9Button->setChecked(true);
+    }else{
+        V14Button->setEnabled(false);
+        V9Button->setEnabled(false);
+        V4Button->setEnabled(false);
+    }
 
     auto VStimbuttons = new QButtonGroup(this);
     VStimbuttons->addButton(V9Button, 1);
