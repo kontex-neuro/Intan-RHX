@@ -126,5 +126,10 @@ elseif(WIN32)
             "$<TARGET_FILE:okFrontPanel::okFrontPanel>"
             "$<TARGET_FILE_DIR:IntanRHX>"
     )
+    add_custom_command(TARGET IntanRHX POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:OpenCL::OpenCL>"
+            "$<TARGET_FILE_DIR:IntanRHX>"
+    )
     deployqt(IntanRHX)
 endif()
