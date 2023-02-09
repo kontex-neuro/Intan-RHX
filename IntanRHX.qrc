@@ -56,5 +56,7 @@
         <file>images/IntanLogo_32x32_white_frame.png</file>
         <file>images/spike.png</file>
         <file>images/default.png</file>
+        <file>images/xdaq_core.png</file>
+        <file>images/xdaq_one.png</file>
     </qresource>
 </RCC>

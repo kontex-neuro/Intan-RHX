@@ -27,7 +27,6 @@
 //  See <http://www.intantech.com> for documentation and product information.
 //
 //------------------------------------------------------------------------------
-
 #include <QSettings>
 #include <QApplication>
 #include <QtGlobal>
@@ -35,6 +34,9 @@
 #include "boardselectdialog.h"
 #include "scrollablemessageboxdialog.h"
 #include "advancedstartupdialog.h"
+#include <sstream>
+#include <cstdint>
+#include <charconv>
 
 // Check if FrontPanel DLL is loaded, and create an instance of okCFrontPanel.
 BoardIdentifier::BoardIdentifier(QWidget *parent_) :
@@ -72,43 +74,32 @@ BoardIdentifier::~BoardIdentifier()
 }
 
 // Return a QString description of the specified board.
-QString BoardIdentifier::getBoardTypeString(BoardMode mode, int numSpiPorts)
+QString getBoardTypeString(const ControllerInfo& info)
 {
-    switch (mode) {
-    case RHDUSBInterfaceBoard:
-        return RHDBoardString;
-    case RHSController:
-        return RHS128chString;
-    case RHDController:
-        if (numSpiPorts == 4) return RHD512chString;
-        else return RHD1024chString;
-    case CLAMPController:
-        if (numSpiPorts == 2) return CLAMP2chString;
-        else return CLAMP8chString;
-    case UnknownUSB2Device:
-        return UnknownUSB2String;
-    case UnknownUSB3Device:
-        return UnknownUSB3String;
-    default:
-        return UnknownString;
+    std::stringstream ss;
+    switch(info.xdaqModel){
+        case XDAQModel::Core:
+            ss << "XDAQ Core";
+            break;
+        case XDAQModel::One:
+            ss << "XDAQ One";
+            break;
+        default:
+            ss << "Unknown";
+            break;
     }
+    ss << "\nRHD " << info.maxRHDchannels << "ch";
+    ss << "\nRHS " << info.maxRHSchannels << "ch";
+    return QString::fromStdString(ss.str());
 }
 
 // Return a QIcon with a picture of the specified board.
-QIcon BoardIdentifier::getIcon(const QString& boardType, QStyle *style, int size)
+QIcon getIcon(XDAQModel model, QStyle *style, int size)
 {
-    if (boardType == RHDBoardString)
-        return QIcon(":/images/usb_interface_board.png");
-    else if (boardType == RHS128chString)
-        return QIcon(":/images/stim_controller_board.png");
-    else if (boardType == RHD512chString)
-        return QIcon(":/images/rhd512_controller_board.png");
-    else if (boardType == RHD1024chString)
-        return QIcon(":/images/rhd1024_controller_board.png");
-    else if (boardType == CLAMP2chString)
-        return QIcon(":/images/clamp2_controller_board.png");
-    else if (boardType == CLAMP8chString)
-        return QIcon(":/images/clamp8_controller_board.png");
+    if (model == XDAQModel::Core)
+        return QIcon(":/images/xdaq_core.png");
+    else if (model == XDAQModel::One)
+        return QIcon(":/images/xdaq_one.png");
     else
         return QIcon(style->standardIcon(QStyle::SP_MessageBoxQuestion).pixmap(size));
 }
@@ -134,9 +125,31 @@ QVector<ControllerInfo*> BoardIdentifier::getConnectedControllersInfo()
         controllers.append(controller);
     }
     delete dev;
+    dev = nullptr;
 
     return controllers;
 }
+
+
+enum class XDAQHeadstageType{
+    NA = 0,
+    Recording = 1,
+    StimRecord = 2
+};
+
+XDAQHeadstageType askHeadstageType(){
+    QMessageBox msgBox;
+    const auto msg = std::string("Select X-Headstage");
+    msgBox.setText(QObject::tr(msg.c_str()));
+    auto* pButtonRHD = msgBox.addButton(QObject::tr("Record (X3R/X6R)"), QMessageBox::YesRole);
+
+    auto* pButtonRHS = msgBox.addButton(QObject::tr("Stim-Record (X3SR)"), QMessageBox::NoRole);
+    auto cancel = msgBox.addButton(QObject::tr("Cancel"),QMessageBox::RejectRole);
+    msgBox.exec();
+    if(msgBox.clickedButton() == cancel) exit(0);
+    return (msgBox.clickedButton() == pButtonRHD) ? XDAQHeadstageType::Recording : XDAQHeadstageType::StimRecord;
+}
+
 
 // Populate variables in 'controller'. Upload a bit file, writes some WireIns, and reads some WireOuts.
 void BoardIdentifier::identifyController(ControllerInfo *controller, int index)
@@ -144,14 +157,12 @@ void BoardIdentifier::identifyController(ControllerInfo *controller, int index)
     // Populate serialNumber field.
     controller->serialNumber = dev->GetDeviceListSerial(index).c_str();
 
-    // Populate usbVersion field.
-    controller->usbVersion = (opalKellyModelName(dev->GetDeviceListModel(index)) == "XEM6010LX45") ? USB2 : USB3;
-
     // Upload bitfile to determine boardMode, expConnected, and numSPIPorts.
     // Initialize expConnected, numSPIPorts, and boardMode to correspond to an unsuccessful mat.
     controller->expConnected = false;
     controller->numSPIPorts = 0;
     controller->boardMode = UnknownUSB2Device;
+    controller->xdaqModel = XDAQModel::Unknown;
 
     // Open device.
     if (dev->OpenBySerial(dev->GetDeviceListSerial(index).c_str()) != okCFrontPanel::NoError) {
@@ -163,11 +174,8 @@ void BoardIdentifier::identifyController(ControllerInfo *controller, int index)
     dev->LoadDefaultPLLConfiguration();
 
     // Determine proper bitfile to load to FPGA (depending on if USB 2 or 3).
-    QString bitfilename = (controller->usbVersion == USB2) ? ConfigFileXEM6010Tester : ConfigFileRHDController;
+    QString bitfilename = ConfigFileRHDController;
 
-
-    /* !KonteX!!
-    // Upload bit file.
     if (!uploadFpgaBitfileQMessageBox(QCoreApplication::applicationDirPath() + "/" + bitfilename)) {
         QMessageBox::critical(nullptr, QObject::tr("Configuration File Error: Software Aborting"),
                               QObject::tr("Cannot upload configuration file: ") + bitfilename +
@@ -177,69 +185,23 @@ void BoardIdentifier::identifyController(ControllerInfo *controller, int index)
     RHXController::resetBoard(dev);
 
     // Read mode from board.
-    int boardMode = RHXController::getBoardMode(dev);
+    controller->numSPIPorts = RHXController::getNumSPIPorts(dev, true, controller->expConnected);
 
+    dev->UpdateWireOuts();
+    const uint32_t val = dev->GetWireOutValue(0x31);
+    const auto model = static_cast<XDAQModel>((val>>8) & 0xFF);
+    const auto rhd = 32 * (val >> 24) / (model == XDAQModel::Core ? 2 : 1);
+    const auto rhs = 16 * ((val >> 16) & 0xFF);
+    const uint32_t serial = dev->GetWireOutValue(0x32);
 
-    if (controller->usbVersion == USB2) {
-        // Populate boardMode field for USB2 boards.
-        switch (boardMode) {
-        case RHDUSBInterfaceBoardMode:
-            controller->boardMode = RHDUSBInterfaceBoard;
-            controller->numSPIPorts = 4;
-            controller->expConnected = false;
-            break;
-        case RHSControllerBoardMode:
-            controller->boardMode = RHSController;
-            break;
-        case CLAMPControllerBoardMode:
-            controller->boardMode = CLAMPController;
-            break;
-        default:
-            controller->boardMode = UnknownUSB2Device;
-            return;
-        }
-    } else {
-        // Populate boardMode field for USB3 boards.
-        switch (boardMode) {
-        case RHDControllerBoardMode:
-            controller->boardMode = RHDController;
-            break;
-        default:
-            controller->boardMode = UnknownUSB3Device;
-            return;
-        }
-    }
-
-    // For all boards other than the RHD USB Interface Board, determine the number of SPI ports and whether an expander board
-    // is connected.
-    if (controller->boardMode != RHDUSBInterfaceBoard) {
-        dev->UpdateWireOuts();
-        controller->numSPIPorts = RHXController::getNumSPIPorts(dev, (controller->usbVersion == USB3),
-                                                                controller->expConnected);
-    }
-    */
-
-    //KonteX
-
-    QMessageBox msgBox;
-
-    msgBox.setText(QObject::tr("Select Board Mode?"));
-    QAbstractButton* pButtonRHD = msgBox.addButton(QObject::tr("RHD"), QMessageBox::YesRole);
-    QAbstractButton* pButtonRHS = msgBox.addButton(QObject::tr("RHS"), QMessageBox::NoRole);
-    msgBox.addButton(QObject::tr("Cancel"),QMessageBox::RejectRole);
-
-    msgBox.exec();
-
-    if (msgBox.clickedButton()==pButtonRHD) {
-
-        controller->boardMode = RHDController;
-        controller->numSPIPorts = 8;
-
-    }   else if (msgBox.clickedButton()==pButtonRHS) {
-        controller->boardMode = RHSController;
-        controller->numSPIPorts = 4;
-        controller->usbVersion = USB2;
-    }
+    controller->xdaqModel = model;
+    controller->maxRHDchannels = rhd;
+    controller->maxRHSchannels = rhs;
+    controller->numSPIPorts = 0;
+    char addressStr[20] = { 0 };
+    std::to_chars(std::begin(addressStr), std::end(addressStr), serial, 16);
+    controller->xdaqSerial = addressStr;
+    controller->xdaqSerial = controller->xdaqSerial.toUpper();
 
 }
 
@@ -306,8 +268,7 @@ QString BoardIdentifier::opalKellyModelName(int model) const
     }
 }
 
-// Upload bitfile specified by 'filename' to the FPGA, reporting any errors that occur as a QMessageBox.
-bool BoardIdentifier::uploadFpgaBitfileQMessageBox(const QString& filename)
+bool uploadFpgaBitfileQMessageBox(const QString& filename, QWidget *parent, okCFrontPanel *dev)
 {
     okCFrontPanel::ErrorCode errorCode = dev->ConfigureFPGA(filename.toStdString());
 
@@ -348,6 +309,11 @@ bool BoardIdentifier::uploadFpgaBitfileQMessageBox(const QString& filename)
     }
 
     return true;
+}
+
+// Upload bitfile specified by 'filename' to the FPGA, reporting any errors that occur as a QMessageBox.
+bool BoardIdentifier::uploadFpgaBitfileQMessageBox(const QString& filename){
+    return ::uploadFpgaBitfileQMessageBox(filename, parent, dev);
 }
 
 // Create a dialog window for user to select which board's software to initialize.
@@ -422,7 +388,7 @@ BoardSelectDialog::BoardSelectDialog(QWidget *parent) :
     mainLayout->addLayout(secondRowLayout);
     mainLayout->addWidget(advancedButton);
 
-    setWindowTitle("Select Intan Controller");
+    setWindowTitle("Select XDAQ");
 
     setLayout(mainLayout);
 
@@ -430,7 +396,7 @@ BoardSelectDialog::BoardSelectDialog(QWidget *parent) :
 
     splash = new QSplashScreen(QPixmap(":images/RHX_splash.png"));
     splashMessage = "Copyright " + CopyrightSymbol + " " + ApplicationCopyrightYear + " Intan Technologies.  RHX version " +
-            SoftwareVersion + ".  Opening Intan Controller...";
+            SoftwareVersion + ".  Opening XDAQ ...";
     splashMessageAlign = Qt::AlignCenter | Qt::AlignBottom;
     splashMessageColor = Qt::white;
 
@@ -445,8 +411,7 @@ BoardSelectDialog::BoardSelectDialog(QWidget *parent) :
         // Get this row's text.
         QString thisText = boardTable->itemAt(row, 0)->text();
         // If this type of board is recognized and enabled, give it focus. Otherwise, move to the next row.
-        if (thisText == RHDBoardString || thisText == RHS128chString ||
-                thisText == RHD512chString || thisText == RHD1024chString) {
+        if (thisText != "N/A") {
             boardTable->setRangeSelected(QTableWidgetSelectionRange(row, 0, row, 2), true);
             boardTable->setFocus();
             break;
@@ -468,10 +433,10 @@ BoardSelectDialog::~BoardSelectDialog()
 // by this software (RHD USB interface board, RHD Recording Controller, or RHS Stim/Record Controller).
 bool BoardSelectDialog::validControllersPresent(QVector<ControllerInfo*> cInfo)
 {
-    for (int i = 0; i < cInfo.size(); i++) {
-        if (cInfo[i]->boardMode == RHDUSBInterfaceBoard || cInfo[i]->boardMode == RHDController ||
-                cInfo[i]->boardMode == RHSController)
-            return true;
+    for (int i = 0; i < cInfo.size(); i++){
+        std::cout<<static_cast<int>(cInfo[i]->xdaqModel)<<'\n';
+        if(cInfo[i]->xdaqModel != XDAQModel::Unknown)
+        return true;
     }
     return false;
 }
@@ -516,7 +481,7 @@ void BoardSelectDialog::showDemoMessageBox()
 void BoardSelectDialog::populateTable()
 {
     // Set up header.
-    boardTable->setHorizontalHeaderLabels(QStringList() << "Intan Controller" << "I/O Expander" << "Serial Number");
+    boardTable->setHorizontalHeaderLabels(QStringList() << "XDAQ" << "I/O Expander" << "Serial Number");
     boardTable->horizontalHeader()->setSectionsClickable(false);
     boardTable->verticalHeader()->setSectionsClickable(false);
     boardTable->setFocusPolicy(Qt::ClickFocus);
@@ -524,12 +489,12 @@ void BoardSelectDialog::populateTable()
     // Populate each row with information corresponding to a single controller.
     Qt::ItemFlags itemFlags = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     for (int row = 0; row < controllersInfo.size(); row++) {
-
+        const auto& info = *controllersInfo[row];
         // Report the type of board.
-        QString boardType = BoardIdentifier::getBoardTypeString(controllersInfo[row]->boardMode, controllersInfo[row]->numSPIPorts);
-        QTableWidgetItem *intanBoardType = new QTableWidgetItem(BoardIdentifier::getIcon(boardType, style(), 100), boardType);
+        QString boardType = getBoardTypeString(info);
+        auto* intanBoardType = new QTableWidgetItem(getIcon(info.xdaqModel, style(), 100), boardType);
         // If this type is clamp, add a description to the boardType string.
-        if (controllersInfo[row]->boardMode == CLAMPController) {
+        if (info.boardMode == CLAMPController) {
             intanBoardType->setText(intanBoardType->text().append(tr(" (run Clamp software to use)")));
         }
         intanBoardType->setFlags(itemFlags);
@@ -537,8 +502,7 @@ void BoardSelectDialog::populateTable()
 
         // Report if an io expander is connected.
         QTableWidgetItem *ioExpanderStatus = nullptr;
-        if (boardType == RHDBoardString || boardType == UnknownUSB2String ||
-                boardType == UnknownUSB3String || boardType == UnknownString) {
+        if (info.xdaqModel == XDAQModel::Unknown) {
             ioExpanderStatus = new QTableWidgetItem(tr("N/A"));
         } else {
             QIcon icon((controllersInfo[row]->expConnected) ?
@@ -552,13 +516,12 @@ void BoardSelectDialog::populateTable()
         boardTable->setItem(row, 1, ioExpanderStatus);
 
         // Report the serial number of this board.
-        QTableWidgetItem *serialNumber = new QTableWidgetItem(controllersInfo[row]->serialNumber);
+        QTableWidgetItem *serialNumber = new QTableWidgetItem(controllersInfo[row]->xdaqSerial);
         serialNumber->setFlags(itemFlags);
         boardTable->setItem(row, 2, serialNumber);
 
         // If the type of board is unrecognized, disable the row (greyed-out and unclickable).
-        if (!(boardType == RHDBoardString || boardType == RHS128chString ||
-              boardType == RHD512chString || boardType == RHD1024chString)) {
+        if (info.xdaqModel == XDAQModel::Unknown) {
             intanBoardType->setFlags(Qt::NoItemFlags);
             ioExpanderStatus->setFlags(Qt::NoItemFlags);
             serialNumber->setFlags(Qt::NoItemFlags);
@@ -603,7 +566,8 @@ QSize BoardSelectDialog::calculateTableSize()
 }
 
 void BoardSelectDialog::startSoftware(ControllerType controllerType, AmplifierSampleRate sampleRate, StimStepSize stimStepSize,
-                                      int numSPIPorts, bool expanderConnected, const QString& boardSerialNumber, AcquisitionMode mode)
+                                      int numSPIPorts, bool expanderConnected, const QString& boardSerialNumber,
+                                      AcquisitionMode mode, const ControllerInfo* info)
 {
     if (mode == LiveMode) {
         rhxController = new RHXController(controllerType, sampleRate);
@@ -615,7 +579,7 @@ void BoardSelectDialog::startSoftware(ControllerType controllerType, AmplifierSa
         return;
     }
 
-    state = new SystemState(rhxController, stimStepSize, numSPIPorts, expanderConnected);
+    state = new SystemState(rhxController, stimStepSize, numSPIPorts, expanderConnected, info == nullptr ? false : info->xdaqModel == XDAQModel::One);
     state->highDPIScaleFactor = this->devicePixelRatio();  // Use this to adjust graphics for high-DPI monitors.
     state->availableScreenResolution = QGuiApplication::primaryScreen()->geometry();
     controllerInterface = new ControllerInterface(state, rhxController, boardSerialNumber, useOpenCL, dataFileReader, this);
@@ -690,34 +654,22 @@ void BoardSelectDialog::newRowSelected(int row)
 {
     openButton->setEnabled(true);
 
-    ControllerType controllerType = ControllerRecordUSB3;
-    if (boardTable->item(row, 0)->text() == RHDBoardString) controllerType = ControllerRecordUSB2;
-    if (boardTable->item(row, 0)->text() == RHS128chString) controllerType = ControllerStimRecordUSB2;
-
     QSettings settings;
-    settings.beginGroup(ControllerTypeSettingsGroup[(int)controllerType]);
-    bool useDefaultSettings = settings.value("useDefaultSettings", false).toBool();
-    bool loadDefaultSettingsFile = settings.value("loadDefaultSettingsFile", false).toBool();
+    settings.beginGroup("XDAQ");
 
-    if (useDefaultSettings) {
+    if (settings.value("useDefaultSettings", false).toBool()) {
         defaultSampleRateCheckBox->setChecked(true);
         defaultSampleRateCheckBox->setVisible(true);
         int defaultSampleRateIndex = settings.value("defaultSampleRate", 14).toInt();
         int defaultStimStepSizeIndex = settings.value("defaultStimStepSize", 6).toInt();
-        if (controllerType == ControllerStimRecordUSB2) {
-            defaultSampleRateCheckBox->setText(tr("Start software with ") + SampleRateString[defaultSampleRateIndex] +
-                                               tr(" sample rate and ") +
-                                               StimStepSizeString[defaultStimStepSizeIndex]);
-        } else {
-            defaultSampleRateCheckBox->setText(tr("Start software with ") + SampleRateString[defaultSampleRateIndex] +
-                                               tr(" sample rate"));
-        }
+        defaultSampleRateCheckBox->setText(tr("Start software with ") + SampleRateString[defaultSampleRateIndex] +
+                                           tr(" sample rate and ") + StimStepSizeString[defaultStimStepSizeIndex]);
     } else {
         defaultSampleRateCheckBox->setChecked(false);
         defaultSampleRateCheckBox->setVisible(false);
     }
 
-    if (loadDefaultSettingsFile) {
+    if (settings.value("loadDefaultSettingsFile", false).toBool()) {
         defaultSettingsFileCheckBox->setChecked(true);
         defaultSettingsFileCheckBox->setVisible(true);
         QString defaultSettingsFile = QString(settings.value("defaultSettingsFile", "").toString());
@@ -742,11 +694,22 @@ void BoardSelectDialog::startBoard(int row)
     bool rememberSettings = false;
 
     ControllerType controllerType = ControllerRecordUSB3;
-    if (boardTable->item(row, 0)->text() == RHDBoardString) controllerType = ControllerRecordUSB2;
-    if (boardTable->item(row, 0)->text() == RHS128chString) controllerType = ControllerStimRecordUSB2;
+    auto headstagetype = askHeadstageType();
+    switch(headstagetype){
+        case XDAQHeadstageType::Recording:
+            controllerType = ControllerRecordUSB3;
+            break;
+        case XDAQHeadstageType::StimRecord:
+            controllerType = ControllerStimRecordUSB2;
+            break;
+        default:
+            break;
+    }
+    auto info = controllersInfo[row];
+    info->numSPIPorts = headstagetype == XDAQHeadstageType::StimRecord ? 4 : 8;
 
     QSettings settings;
-    settings.beginGroup(ControllerTypeSettingsGroup[(int)controllerType]);
+    settings.beginGroup("XDAQ");
     if (defaultSampleRateCheckBox->isChecked()) {
         sampleRate = (AmplifierSampleRate) settings.value("defaultSampleRate", 14).toInt();
         stimStepSize = (StimStepSize) settings.value("defaultStimStepSize", 6).toInt();
@@ -768,7 +731,7 @@ void BoardSelectDialog::startBoard(int row)
     splash->showMessage(splashMessage, splashMessageAlign, splashMessageColor);
 
     startSoftware(controllerType, sampleRate, stimStepSize, controllersInfo.at(row)->numSPIPorts,
-                  controllersInfo.at(row)->expConnected, boardTable->item(row, 2)->text(), LiveMode);
+                  controllersInfo.at(row)->expConnected, controllersInfo.at(row)->serialNumber, LiveMode, info);
 
     splash->finish(controlWindow);
     this->accept();

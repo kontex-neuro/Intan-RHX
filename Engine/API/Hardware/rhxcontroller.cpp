@@ -1982,8 +1982,13 @@ int RHXController::getNumSPIPorts(okCFrontPanel* dev_, bool isUSB3, bool& expand
     int WireOutSerialDigitalIn = endPointWireOutSerialDigitalIn(isUSB3);
     int WireInSerialDigitalInCntl = endPointWireInSerialDigitalInCntl(isUSB3);
 
+    while(true){
+        dev_->UpdateWireOuts();
+        if( (dev_->GetWireOutValue(0x22) & 0x4) != 0x04) break;
+    }
+
     dev_->UpdateWireOuts();
-    expanderBoardDetected = (dev_->GetWireOutValue(WireOutSerialDigitalIn) & 0x04) != 0;
+    expanderBoardDetected = (dev_->GetWireOutValue(0x35) & 0x04) != 0;
     // int expanderBoardIdNumber = ((dev->GetWireOutValue(WireOutSerialDigitalIn) & 0x08) ? 1 : 0);
 
     pulseWireIn(dev_, WireInSerialDigitalInCntl, 2);  // Load digital in shift registers on falling edge of serial_LOAD

@@ -99,8 +99,8 @@ enum DemoSelections {
 
 const QString ControllerTypeString[3] = {
     "RHD USB Interface Board",
-    "RHD Recording Controller",
-    "RHS Stimulation/Recording Controller"
+    "RHD XDAQ",
+    "RHS XDAQ"
 };
 
 const QString ControllerTypeSettingsGroup[3] = {
