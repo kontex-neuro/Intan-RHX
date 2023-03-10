@@ -32,6 +32,7 @@
 
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QPushButton>
 #include <QRadioButton>
 #include <QVBoxLayout>
 #include <iostream>
@@ -67,9 +68,9 @@ ControlPanelKONTEXTab::ControlPanelKONTEXTab(ControllerInterface *controllerInte
     auto V14Button = new QRadioButton("+14/-4V");
     auto V9Button = new QRadioButton("+/-9V");
     auto V4Button = new QRadioButton("+4/-14V");
-    if(state->enableVStim){
+    if (state->enableVStim) {
         V9Button->setChecked(true);
-    }else{
+    } else {
         V14Button->setEnabled(false);
         V9Button->setEnabled(false);
         V4Button->setEnabled(false);
@@ -79,7 +80,8 @@ ControlPanelKONTEXTab::ControlPanelKONTEXTab(ControllerInterface *controllerInte
     VStimbuttons->addButton(V9Button, 1);
     VStimbuttons->addButton(V14Button, 2);
     VStimbuttons->addButton(V4Button, 3);
-    connect(VStimbuttons, &QButtonGroup::idClicked, this, [this](int id) { this->controllerInterface->setVStimBus(id); });
+    connect(VStimbuttons, &QButtonGroup::idClicked, this,
+            [this](int id) { this->controllerInterface->setVStimBus(id); });
 
     QHBoxLayout *StimLayout1 = new QHBoxLayout();
     StimLayout1->addWidget(V9Button);
@@ -278,3 +280,116 @@ void ControlPanelKONTEXTab::getWireOut()
 
 
 void ControlPanelKONTEXTab::updateFromState() {}
+
+ControlPanelCloseLoop::ControlPanelCloseLoop(ControllerInterface *controllerInterface_,
+                                             SystemState *state_, QWidget *parent)
+    : QWidget(parent), state(state_), controllerInterface(controllerInterface_)
+{
+    auto circuit_layout = new QGridLayout();
+    circuit_layout->addWidget(new QLabel(tr("C")), 0, 0);
+
+    circuit_layout->addWidget(new QLabel(tr("En")), 0, 1);
+    circuit_layout->addWidget(new QLabel(tr("Set")), 0, 2);
+    circuit_layout->addWidget(new QLabel(tr("Reset")), 0, 3);
+    circuit_layout->addWidget(new QLabel(tr("Source")), 0, 4);
+
+    circuit_layout->addWidget(new QLabel(tr("Filter")), 0, 5);
+    circuit_layout->addWidget(new QLabel(tr("Output")), 0, 6);
+    circuit_layout->addWidget(new QLabel(tr("Trigger")), 0, 7);
+    circuit_layout->addWidget(new QLabel(tr("Value")), 0, 8);
+    circuit_layout->addWidget(new QLabel(tr("Event")), 0, 9);
+
+    for (int c = 0; c < 8; ++c) {
+        bool enabled = state->expanderConnected->getValue() ? true : (c < 2);
+        enabled = c == 1 ? (state->on_board_adda  == 2) : enabled;
+        circuit_layout->addWidget(new QLabel(QString::number(c + 1)), c + 1, 0);
+        auto enable = new QCheckBox();
+        connect(enable, &QCheckBox::stateChanged, this, [this, c](int state) {
+            std::cout << "state: " << state << std::endl;
+            (*this->state->analogOutThresholdEnabled[c])->setValue(state);
+            controllerInterface->setTtlOutMode(this->state->analogOut1ThresholdEnabled->getValue(),
+                                               this->state->analogOut2ThresholdEnabled->getValue(),
+                                               this->state->analogOut3ThresholdEnabled->getValue(),
+                                               this->state->analogOut4ThresholdEnabled->getValue(),
+                                               this->state->analogOut5ThresholdEnabled->getValue(),
+                                               this->state->analogOut6ThresholdEnabled->getValue(),
+                                               this->state->analogOut7ThresholdEnabled->getValue(),
+                                               this->state->analogOut8ThresholdEnabled->getValue());
+        });
+        circuit_layout->addWidget(enable, c + 1, 1);
+        enable->setDisabled(!enabled);
+
+        auto set = new QPushButton("Set");
+        set->setMaximumWidth(30);
+        set->setDisabled(!enabled);
+        auto source = new QLabel("N/A");
+        connect(set, &QPushButton::clicked, this, [this, c, source]() {
+            const auto channelName = state->signalSources->singleSelectedAmplifierChannelName();
+            if (!channelName.isEmpty()) {
+                source->setText(channelName);
+                (*this->state->analogOutChannel[c])->setValue(channelName);
+                controllerInterface->setDacChannel(7, channelName);
+            }
+        });
+        circuit_layout->addWidget(set, c + 1, 2);
+
+        auto reset = new QPushButton("Reset");
+        reset->setMaximumWidth(40);
+        reset->setDisabled(!enabled);
+        connect(reset, &QPushButton::clicked, this, [this, c, source]() {
+            source->setText("N/A");
+            (*this->state->analogOutChannel[c])->setValue("Off");
+            controllerInterface->setDacChannel(7, "Off");
+        });
+        circuit_layout->addWidget(reset, c + 1, 3);
+
+
+        circuit_layout->addWidget(source, c + 1, 4);
+
+        auto filter = new QComboBox();
+        filter->addItem("PT");
+        filter->setCurrentIndex(0);
+        filter->setDisabled(!enabled);
+        circuit_layout->addWidget(filter, c + 1, 5);
+
+        auto output = new QComboBox();
+        output->setMaximumWidth(60);
+        output->addItem("AO-" + QString::number(c + 1));
+        output->setCurrentIndex(0);
+        output->setDisabled(true);
+        circuit_layout->addWidget(output, c + 1, 6);
+
+        auto trigger = new QComboBox();
+        trigger->addItem("Thresh");
+        trigger->setCurrentIndex(0);
+        trigger->setDisabled(!enabled);
+        circuit_layout->addWidget(trigger, c + 1, 7);
+
+        auto value = new QSpinBox(this);
+        value->setRange(-6000, 6000);
+        value->setSingleStep(5);
+        value->setValue(0);
+        value->setSuffix(" uV");
+        value->setDisabled(!enabled);
+        connect(value, &QSpinBox::editingFinished, this, [this, c, value]() {
+            (*this->state->analogOutThreshold[c])->setValue(value->value());
+            controllerInterface->setDacThreshold(7, value->value());
+        });
+        circuit_layout->addWidget(value, c + 1, 8);
+
+        auto event = new QComboBox();
+        event->setMaximumWidth(60);
+        event->addItem("DO-" + QString::number(c + 1));
+        event->setCurrentIndex(0);
+        event->setDisabled(true);
+        circuit_layout->addWidget(event, c + 1, 9);
+    }
+
+    QVBoxLayout *layout = new QVBoxLayout;
+    auto CloseLoopGroupBox = new QGroupBox(tr("Close Loop"));
+    CloseLoopGroupBox->setLayout(circuit_layout);
+    layout->addWidget(CloseLoopGroupBox);
+    layout->addStretch(1);
+
+    setLayout(layout);
+}

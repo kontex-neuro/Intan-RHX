@@ -126,6 +126,8 @@ ControlPanel::ControlPanel(ControllerInterface* controllerInterface_, SystemStat
 
     KonteXTab = new ControlPanelKONTEXTab(controllerInterface, state, this);
     state->writeToLog("Created KonteXTab");
+    close_loop_tab = new ControlPanelCloseLoop(controllerInterface, state, this);
+    state->writeToLog("Created CloseLoopTab");
     bandwidthTab = new ControlPanelBandwidthTab(controllerInterface, state, this);
     state->writeToLog("Created bandwidthTab");
     impedanceTab = new ControlPanelImpedanceTab(controllerInterface, state, parser, this);
@@ -138,6 +140,7 @@ ControlPanel::ControlPanel(ControllerInterface* controllerInterface_, SystemStat
     state->writeToLog("Created triggerTab");
 
     tabWidget = new QTabWidget(this);
+    tabWidget->addTab(close_loop_tab, tr("Close Loop"));
     tabWidget->addTab(KonteXTab, tr("KonteX"));
     tabWidget->addTab(bandwidthTab, tr("BW"));
     tabWidget->addTab(impedanceTab, tr("Impedance"));
@@ -252,6 +255,8 @@ void ControlPanel::setCurrentTabName(QString tabName)
         tabWidget->setCurrentWidget(triggerTab);
     } else if (tabWidget->currentWidget() == KonteXTab) {
         tabWidget->setCurrentWidget(KonteXTab);
+    } else if (tabWidget->currentWidget() == close_loop_tab) {
+        tabWidget->setCurrentWidget(close_loop_tab);
     } else {
         qDebug() << "Unrecognized tabName.";
     }
@@ -271,6 +276,8 @@ QString ControlPanel::currentTabName() const
         return tr("Trigger");
     } else if (tabWidget->currentWidget() == KonteXTab) {
         return tr("Kontex");
+    } else if (tabWidget->currentWidget() == close_loop_tab) {
+        return tr("Close Loop");
     } else {
         qDebug() << "Unrecognized tab widget.";
     }
