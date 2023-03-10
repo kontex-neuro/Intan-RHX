@@ -42,6 +42,7 @@ class StimParamDialog;
 class AnOutDialog;
 class DigOutDialog;
 class ControlPanelKONTEXTab;
+class ControlPanelCloseLoop;
 class ControlPanelBandwidthTab;
 class ControlPanelImpedanceTab;
 class ControlPanelAudioAnalogTab;
@@ -116,6 +117,7 @@ private:
     QLabel* topLabel;
     QTabWidget *tabWidget;
     ControlPanelKONTEXTab *KonteXTab;
+    ControlPanelCloseLoop *close_loop_tab;
     ControlPanelBandwidthTab *bandwidthTab;
     ControlPanelImpedanceTab *impedanceTab;
     ControlPanelAudioAnalogTab *audioAnalogTab;

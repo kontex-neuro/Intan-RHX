@@ -170,7 +170,6 @@ void BoardIdentifier::identifyController(ControllerInfo *controller, int index)
         qDebug() << "Device could not be opened. Is one connected?";
         return;
     }
-
     // Set up default PLL.
     dev->LoadDefaultPLLConfiguration();
 
@@ -580,7 +579,11 @@ void BoardSelectDialog::startSoftware(ControllerType controllerType, AmplifierSa
         return;
     }
 
-    state = new SystemState(rhxController, stimStepSize, numSPIPorts, expanderConnected, info == nullptr ? false : info->xdaqModel == XDAQModel::One);
+    state = new SystemState(rhxController, stimStepSize,
+        numSPIPorts, expanderConnected,
+        info == nullptr ? false : info->xdaqModel == XDAQModel::One,
+        info->xdaqModel == XDAQModel::One ? 2 : 1
+    );
     state->highDPIScaleFactor = this->devicePixelRatio();  // Use this to adjust graphics for high-DPI monitors.
     state->availableScreenResolution = QGuiApplication::primaryScreen()->geometry();
     controllerInterface = new ControllerInterface(state, rhxController, boardSerialNumber, useOpenCL, dataFileReader, this);

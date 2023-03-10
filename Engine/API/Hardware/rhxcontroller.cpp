@@ -134,6 +134,11 @@ bool RHXController::uploadFPGABitfile(const string& filename)
     cout << "Rhythm configuration file successfully loaded.  Rhythm version number: " <<
             boardVersion << "\n\n";
 
+    while(true){
+        dev->UpdateWireOuts();
+        if( (dev->GetWireOutValue(0x22) & 0x4) != 0x04) break;
+    }
+
     return true;
 }
 
@@ -1984,7 +1989,7 @@ int RHXController::getNumSPIPorts(okCFrontPanel* dev_, bool isUSB3, bool& expand
 
     while(true){
         dev_->UpdateWireOuts();
-        if( (dev_->GetWireOutValue(0x22) & 0x4) != 0x04) break;
+        if( (dev_->GetWireOutValue(0x22) & 0x4) != 0x4) break;
     }
 
     dev_->UpdateWireOuts();

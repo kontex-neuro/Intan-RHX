@@ -70,3 +70,15 @@ private:
     QLineEdit *InCMDLineEdit;
     QLineEdit *OutDataCMDLineEdit;
 };
+
+class ControlPanelCloseLoop : public QWidget
+{
+    Q_OBJECT
+public:
+    explicit ControlPanelCloseLoop(ControllerInterface *controllerInterface_, SystemState *state_,
+                                   QWidget *parent = nullptr);
+
+private:
+    SystemState *state;
+    ControllerInterface *controllerInterface;
+};

@@ -542,6 +542,8 @@ void ControllerInterface::openController(const QString& boardSerialNumber)
     }
 
     rhxController->resetBoard();
+    bool exp;
+    rhxController->getNumSPIPorts(exp);
 }
 
 // Initialize a controller connected to a USB port.
