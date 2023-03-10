@@ -37,7 +37,7 @@
 
 const QString OrganizationName = "Intan Technologies";
 const QString OrganizationDomain = "intantech.com";
-const QString ApplicationName = "IntanRHX";
+const QString ApplicationName = "XDAQRHX";
 const QString ApplicationCopyrightYear = "2020-2022";
 
 const int GRADIENTWIDTH = 300;
