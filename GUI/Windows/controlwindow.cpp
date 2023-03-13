@@ -274,7 +274,7 @@ ControlWindow::ControlWindow(SystemState* state_, CommandParser* parser_, Contro
                                                                             // this connection.
     setWindowIcon(QIcon(":/images/IntanLogo_32x32_white_frame.png"));
 
-    QString title = tr("XDAQ RHX ");
+    QString title = tr("XDAQ RHX V 1.1.1 ");
     if (state->getControllerTypeEnum() == ControllerRecordUSB3) {
         title += tr("Recording");
     } else if (state->getControllerTypeEnum() == ControllerStimRecordUSB2) {

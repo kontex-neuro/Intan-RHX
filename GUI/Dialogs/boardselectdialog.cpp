@@ -578,11 +578,11 @@ void BoardSelectDialog::startSoftware(ControllerType controllerType, AmplifierSa
     } else {
         return;
     }
-
+    
     state = new SystemState(rhxController, stimStepSize,
         numSPIPorts, expanderConnected,
         info == nullptr ? false : info->xdaqModel == XDAQModel::One,
-        info->xdaqModel == XDAQModel::One ? 2 : 1
+        info == nullptr ? 2 : (info->xdaqModel == XDAQModel::One ? 2 : 1)
     );
     state->highDPIScaleFactor = this->devicePixelRatio();  // Use this to adjust graphics for high-DPI monitors.
     state->availableScreenResolution = QGuiApplication::primaryScreen()->geometry();

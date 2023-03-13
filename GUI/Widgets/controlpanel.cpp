@@ -140,8 +140,8 @@ ControlPanel::ControlPanel(ControllerInterface* controllerInterface_, SystemStat
     state->writeToLog("Created triggerTab");
 
     tabWidget = new QTabWidget(this);
-    tabWidget->addTab(close_loop_tab, tr("Close Loop"));
     tabWidget->addTab(KonteXTab, tr("KonteX"));
+    tabWidget->addTab(close_loop_tab, tr("Close Loop"));
     tabWidget->addTab(bandwidthTab, tr("BW"));
     tabWidget->addTab(impedanceTab, tr("Impedance"));
     tabWidget->addTab(audioAnalogTab, tr("Audio/Analog"));
