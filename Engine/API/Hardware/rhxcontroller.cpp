@@ -1638,8 +1638,8 @@ void RHXController::uploadCommandList(const vector<unsigned int> &commandList, A
             break;
         }
         */
-
-        for (unsigned int i = 0; i < commandList.size(); i++) {
+        int i;
+        for (i = 0; i < commandList.size(); i++) {
 
              commandBuffer[4 * i + 0] = (unsigned char)((commandList[i] & 0x000000ff) >> 0);
              commandBuffer[4 * i + 1] = (unsigned char)((commandList[i] & 0x0000ff00) >> 8);
@@ -1647,23 +1647,34 @@ void RHXController::uploadCommandList(const vector<unsigned int> &commandList, A
              commandBuffer[4 * i + 3] = (unsigned char)((commandList[i] & 0xff000000) >> 24);
 
          }
+        int cmdSize = commandList.size();
+        if (commandList.size() % 16 != 0){
+            cmdSize = (int)qCeil( (double) commandList.size() / 16) * 16;
+            unsigned int numOfDummy = cmdSize - commandList.size();
+            for (int j = 0; j < numOfDummy; j++) {
+                commandBuffer[4 * (i  + j) + 0 ] = (unsigned char)(0x00000000);
+                commandBuffer[4 * (i  + j) + 1 ] = (unsigned char)(0x00000000);
+                commandBuffer[4 * (i  + j) + 2 ] = (unsigned char)(0x00000000);
+                commandBuffer[4 * (i  + j) + 3 ] = (unsigned char)(0x00000000);
+            }
+        }
 
          switch (auxCommandSlot) {
              case AuxCmd1:
                  dev->ActivateTriggerIn(TrigInRamAddrReset, 0);
-                 dev->WriteToBlockPipeIn(PipeInAuxCmd1, 16, 4 * commandList.size(), commandBuffer);
+                 dev->WriteToBlockPipeIn(PipeInAuxCmd1, 16, 4 * cmdSize, commandBuffer);
                  break;
              case AuxCmd2:
                  dev->ActivateTriggerIn(TrigInRamAddrReset, 0);
-                 dev->WriteToBlockPipeIn(PipeInAuxCmd2, 16, 4 * commandList.size(), commandBuffer);
+                 dev->WriteToBlockPipeIn(PipeInAuxCmd2, 16, 4 * cmdSize, commandBuffer);
                  break;
              case AuxCmd3:
                  dev->ActivateTriggerIn(TrigInRamAddrReset, 0);
-                 dev->WriteToBlockPipeIn(PipeInAuxCmd3, 16, 4 * commandList.size(), commandBuffer);
+                 dev->WriteToBlockPipeIn(PipeInAuxCmd3, 16, 4 * cmdSize, commandBuffer);
                  break;
              case AuxCmd4:
                  dev->ActivateTriggerIn(TrigInRamAddrReset, 0);
-                 dev->WriteToBlockPipeIn(PipeInAuxCmd4, 16, 4 * commandList.size(), commandBuffer);
+                 dev->WriteToBlockPipeIn(PipeInAuxCmd4, 16, 4 * cmdSize, commandBuffer);
                  break;
          }
 
