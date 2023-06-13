@@ -419,7 +419,7 @@ int AbstractRHXController::numAnalogIO(ControllerType type_, bool expanderConnec
 int AbstractRHXController::numDigitalIO(ControllerType type_, bool expanderConnected_)
 {
     int numDigitalInputs = 16;
-    if ((type_ != ControllerRecordUSB2) && !expanderConnected_) numDigitalInputs = 2;
+    if ((type_ != ControllerRecordUSB2) && !expanderConnected_) numDigitalInputs = 8;
     return numDigitalInputs;
 }
 
