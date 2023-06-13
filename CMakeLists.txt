@@ -99,6 +99,8 @@ add_custom_command(TARGET IntanRHX POST_BUILD
 )
 
 include(deployQt)
+
+
 if(APPLE)
     # copy the dylib to the bundle
     add_custom_command(TARGET IntanRHX POST_BUILD
@@ -120,6 +122,7 @@ if(APPLE)
     )
     deployqt(IntanRHX)
 elseif(WIN32)
+    install(TARGETS IntanRHX DESTINATION ${CMAKE_BINARY_DIR}/install/XDAQ-RHX)
     # copy the dll to the executable directory
     add_custom_command(TARGET IntanRHX POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -130,6 +133,11 @@ elseif(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:OpenCL::OpenCL>"
             "$<TARGET_FILE_DIR:IntanRHX>"
+    )
+    install(FILES
+        "$<TARGET_FILE:okFrontPanel::okFrontPanel>"
+        "$<TARGET_FILE:OpenCL::OpenCL>"
+        DESTINATION ${CMAKE_BINARY_DIR}/install/XDAQ-RHX
     )
     deployqt(IntanRHX)
 endif()
