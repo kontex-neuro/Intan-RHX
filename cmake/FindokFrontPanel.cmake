@@ -15,7 +15,7 @@ elseif(WIN32)
     )
 else()
     set_target_properties(okFrontPanel::okFrontPanel PROPERTIES
-        IMPORTED_LOCATION ${PROJECT_SOURCE_DIR}/Linux/libokFrontPanel.so
+        IMPORTED_LOCATION ${PROJECT_SOURCE_DIR}/libraries/Linux/libokFrontPanel.so
     )
 endif()
 
