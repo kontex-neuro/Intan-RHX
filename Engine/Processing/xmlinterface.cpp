@@ -371,7 +371,7 @@ bool XMLInterface::parseDocumentStart(const QByteArray &byteArray, QString &erro
     if (token == QXmlStreamReader::StartDocument) {
         token = stream.readNext();
         if (token == QXmlStreamReader::StartElement) {
-            if (stream.name() == ApplicationName) {
+            if (stream.name().endsWith("RHX")) {
 
                 // Iterate through all XML attributes.
                 QXmlStreamAttributes attributes = stream.attributes();

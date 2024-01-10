@@ -44,30 +44,33 @@
 #include "systemstate.h"
 #include "commandparser.h"
 
-const QString RHDBoardString = "RHD USB Interface Board";
-const QString RHD512chString = "RHD 512ch Recording Controller";
-const QString RHD1024chString = "RHD 1024ch Recording Controller";
-const QString RHS128chString = "RHS 128ch Stim/Recording Controller";
-const QString CLAMP2chString = "2ch CLAMP Controller";
-const QString CLAMP8chString = "8ch CLAMP Controller";
-const QString UnknownUSB2String = "Unknown USB2 Device";
-const QString UnknownUSB3String = "Unknown USB3 Device";
-const QString UnknownString = "Unknown Device";
-const QString RHS128ch_7310String = "RHS 128ch Stim/Recording Controller (7310)";
-const QString RHD512ch_7310String = "RHD 512ch Recording Controller (7310)";
-const QString RHD1024ch_7310String = "RHD 1024ch Recording Controller (7310)";
+// const QString RHDBoardString = "RHD USB Interface Board";
+// const QString RHD512chString = "RHD 512ch Recording Controller";
+// const QString RHD1024chString = "RHD 1024ch Recording Controller";
+// const QString RHS128chString = "RHS 128ch Stim/Recording Controller";
+// const QString CLAMP2chString = "2ch CLAMP Controller";
+// const QString CLAMP8chString = "8ch CLAMP Controller";
+// const QString UnknownUSB2String = "Unknown USB2 Device";
+// const QString UnknownUSB3String = "Unknown USB3 Device";
+// const QString UnknownString = "Unknown Device";
+// const QString RHS128ch_7310String = "RHS 128ch Stim/Recording Controller (7310)";
+// const QString RHD512ch_7310String = "RHD 512ch Recording Controller (7310)";
+// const QString RHD1024ch_7310String = "RHD 1024ch Recording Controller (7310)";
 
-enum UsbVersion {
-    USB2,
-    USB3,
-    USB3_7310
+enum class XDAQModel{
+    Unknown = 0,
+    Core = 1,
+    One = 3
 };
 
 struct ControllerInfo {
     QString serialNumber;
-    UsbVersion usbVersion;
+    QString xdaqSerial;
+    XDAQModel xdaqModel;
     bool expConnected;
     int numSPIPorts;
+    int maxRHDchannels;
+    int maxRHSchannels;
     BoardMode boardMode;
 };
 
@@ -76,9 +79,6 @@ class BoardIdentifier
 public:
     BoardIdentifier(QWidget* parent_);
     ~BoardIdentifier();
-
-    static QString getBoardTypeString(BoardMode mode, int numSpiPorts);
-    static QIcon getIcon(const QString& boardType, QStyle *style, int size);
 
     QVector<ControllerInfo*> getConnectedControllersInfo();
 
@@ -118,7 +118,8 @@ private:
 
     void showDemoMessageBox();
     void startSoftware(ControllerType controllerType, AmplifierSampleRate sampleRate, StimStepSize stimStepSize,
-                       int numSPIPorts, bool expanderConnected, const QString& boardSerialNumber, AcquisitionMode mode, bool is7310, DataFileReader* dataFileReader=nullptr);
+                       int numSPIPorts, bool expanderConnected, const QString& boardSerialNumber, AcquisitionMode mode,
+                       bool is7310, DataFileReader* dataFileReader, const ControllerInfo* info);
 
     QTableWidget *boardTable;
     QPushButton *openButton;

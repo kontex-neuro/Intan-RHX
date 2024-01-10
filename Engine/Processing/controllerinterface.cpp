@@ -552,14 +552,12 @@ void ControllerInterface::openController(const QString& boardSerialNumber)
 
     // Upload FPGA bit file.
     QString bitfilename;
-    if (state->getControllerTypeEnum() == ControllerRecordUSB2) {
-        bitfilename = ConfigFileRHDBoard;
-    } else if (state->getControllerTypeEnum() == ControllerRecordUSB3) {
-        bitfilename = is7310 ? ConfigFileRHDController_7310 : ConfigFileRHDController;
+    if (state->getControllerTypeEnum() == ControllerRecordUSB3) {
+        bitfilename = ConfigFileRHDController;
     } else if (state->getControllerTypeEnum() == ControllerStimRecord){
-        bitfilename = is7310 ? ConfigFileRHSController_7310 : ConfigFileRHSController;
+        bitfilename = ConfigFileRHSController;
     } else {
-        bitfilename = ConfigFileRHDController_7310;
+        bitfilename = ConfigFileRHDController;
     }
     if (!rhxController->uploadFPGABitfile(QString(QCoreApplication::applicationDirPath() + "/" + bitfilename).toStdString())) {
         QMessageBox::critical(nullptr, tr("Configuration File Error: Software Aborting"),
@@ -569,6 +567,8 @@ void ControllerInterface::openController(const QString& boardSerialNumber)
     }
 
     rhxController->resetBoard();
+    bool exp;
+    rhxController->getNumSPIPorts(exp);
 }
 
 // Initialize a controller connected to a USB port.
@@ -1970,6 +1970,11 @@ void ControllerInterface::uploadStimParameters()
         Channel* channel = state->signalSources->channelByName(QString::fromStdString(allChannels[i]));
         uploadStimParameters(channel);
     }
+}
+
+void ControllerInterface::setVStimBus(int bus)
+{
+    rhxController->setVStimBus(bus);
 }
 
 void ControllerInterface::sendTCPError(QString errorMessage)

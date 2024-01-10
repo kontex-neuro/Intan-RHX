@@ -42,12 +42,12 @@ DemoDialog::DemoDialog(DemoSelections *demoSelection_, bool &useOpenCL_, uint8_t
     stimControllerButton(nullptr),
     playbackButton(nullptr)
 {
-    message = new QLabel(tr("No Intan controllers have been detected. Ensure devices are powered on and connected to this machine.\n"
+    message = new QLabel(tr("No XDAQ have been detected. Ensure devices are powered on and connected to this machine.\n"
                             "You may also run this software in demonstration mode or play back a saved data file."));
 
-    usbInterfaceButton = new QPushButton(tr("RHD USB Interface Board Demo"), this);
-    recordControllerButton = new QPushButton(tr("RHD Recording Controller Demo"), this);
-    stimControllerButton = new QPushButton(tr("RHS Stim/Record Controller Demo"), this);
+    // usbInterfaceButton = new QPushButton(tr("RHD USB Interface Board Demo"), this);
+    recordControllerButton = new QPushButton(tr("XDAQ Recording Demo"), this);
+    stimControllerButton = new QPushButton(tr("XDAQ Stim/Record Demo"), this);
     playbackButton = new QPushButton(tr("Data File Playback"));
 
     advancedButton = new QPushButton(tr("Advanced"), this);
@@ -58,11 +58,11 @@ DemoDialog::DemoDialog(DemoSelections *demoSelection_, bool &useOpenCL_, uint8_t
     stimControllerButton->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Maximum);
     int buttonWidth = stimControllerButton->sizeHint().width() + 10;
     stimControllerButton->setFixedWidth(buttonWidth);
-    usbInterfaceButton->setFixedWidth(buttonWidth);
+    // usbInterfaceButton->setFixedWidth(buttonWidth);
     recordControllerButton->setFixedWidth(buttonWidth);
     playbackButton->setFixedWidth(buttonWidth);
 
-    connect(usbInterfaceButton, SIGNAL(clicked(bool)), this, SLOT(usbInterface()));
+    // connect(usbInterfaceButton, SIGNAL(clicked(bool)), this, SLOT(usbInterface()));
     connect(recordControllerButton, SIGNAL(clicked(bool)), this, SLOT(recordController()));
     connect(stimControllerButton, SIGNAL(clicked(bool)), this, SLOT(stimController()));
     connect(playbackButton, SIGNAL(clicked(bool)), this, SLOT(playback()));
@@ -70,7 +70,7 @@ DemoDialog::DemoDialog(DemoSelections *demoSelection_, bool &useOpenCL_, uint8_t
 
     QVBoxLayout *mainLayout = new QVBoxLayout;
     mainLayout->addWidget(message);
-    mainLayout->addWidget(usbInterfaceButton);
+    // mainLayout->addWidget(usbInterfaceButton);
     mainLayout->addWidget(recordControllerButton);
     mainLayout->addWidget(stimControllerButton);
     mainLayout->addSpacing(8);
@@ -78,12 +78,12 @@ DemoDialog::DemoDialog(DemoSelections *demoSelection_, bool &useOpenCL_, uint8_t
     mainLayout->addSpacing(8);
     mainLayout->addWidget(advancedButton);
 
-    mainLayout->setAlignment(usbInterfaceButton, Qt::AlignHCenter);
+    // mainLayout->setAlignment(usbInterfaceButton, Qt::AlignHCenter);
     mainLayout->setAlignment(recordControllerButton, Qt::AlignHCenter);
     mainLayout->setAlignment(stimControllerButton, Qt::AlignHCenter);
     mainLayout->setAlignment(playbackButton, Qt::AlignHCenter);
 
-    setWindowTitle(tr("No Intan Controllers Detected"));
+    setWindowTitle(tr("No XDAQ Detected"));
     setLayout(mainLayout);
 }
 

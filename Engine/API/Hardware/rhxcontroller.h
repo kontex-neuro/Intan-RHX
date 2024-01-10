@@ -128,6 +128,7 @@ public:
     static void resetBoard(okCFrontPanel* dev_);
     static int getBoardMode(okCFrontPanel* dev_);
     static int getNumSPIPorts(okCFrontPanel *dev_, bool isUSB3, bool& expanderBoardDetected, bool isRHS7310 = false);
+    void setVStimBus(int BusMode) override;
 
 private:
     // Objects of this class should not be copied.  Disable copy and assignment operators.
@@ -257,6 +258,16 @@ private:
         PipeInAuxCmd3Lsw_S_USB2 = 0x85,
         PipeInAuxCmd4Msw_S_USB2 = 0x86,
         PipeInAuxCmd4Lsw_S_USB2 = 0x87
+    };
+
+
+    enum EndPointStimRecordUSB3 {
+        TrigInRamAddrReset = 0x42,
+        TrigInAuxCmdLength = 0x45,
+        PipeInAuxCmd1 = 0x81,
+        PipeInAuxCmd2 = 0x83,
+        PipeInAuxCmd3 = 0x85,
+        PipeInAuxCmd4 = 0x87
     };
 
     unsigned int numWordsInFifo() override;

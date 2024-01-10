@@ -144,6 +144,7 @@ public:
     void clearStimParameters(int stream);
     void uploadStimParameters(Channel* channel);
     void uploadStimParameters();
+    void setVStimBus(int BusMode);
 
 signals:
     void setTimeLabel(QString text);

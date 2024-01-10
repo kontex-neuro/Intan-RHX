@@ -31,6 +31,7 @@
 #include "stimparamdialog.h"
 #include "anoutdialog.h"
 #include "digoutdialog.h"
+#include "controlpanelKONTEXtab.h"
 #include "controlpanelbandwidthtab.h"
 #include "controlpanelimpedancetab.h"
 #include "controlpanelaudioanalogtab.h"
@@ -61,11 +62,18 @@ ControlPanel::ControlPanel(ControllerInterface *controllerInterface_, SystemStat
     hideControlPanelButton->setToolTip(tr("Hide Control Panel"));
     connect(hideControlPanelButton, SIGNAL(clicked()), controlWindow, SLOT(hideControlPanel()));
 
+    KonteXTab = new ControlPanelKONTEXTab(controllerInterface, state, this);
+    state->writeToLog("Created KonteXTab");
+    close_loop_tab = new ControlPanelCloseLoop(controllerInterface, state, this);
+    state->writeToLog("Created CloseLoopTab");
     bandwidthTab = new ControlPanelBandwidthTab(controllerInterface, state, this);
     impedanceTab = new ControlPanelImpedanceTab(controllerInterface, state, parser, this);
     audioAnalogTab = new ControlPanelAudioAnalogTab(controllerInterface, state, this);
     triggerTab = new ControlPanelTriggerTab(controllerInterface, state, this);
 
+    tabWidget = new QTabWidget(this);
+    tabWidget->addTab(KonteXTab, tr("KonteX"));
+    tabWidget->addTab(close_loop_tab, tr("Close Loop"));
     tabWidget->addTab(bandwidthTab, tr("BW"));
     tabWidget->addTab(impedanceTab, tr("Impedance"));
     tabWidget->addTab(audioAnalogTab, tr("Audio/Analog"));
@@ -162,6 +170,10 @@ void ControlPanel::setCurrentTabName(QString tabName)
         tabWidget->setCurrentWidget(configureTab);
     } else if (tabName == tr("Trigger")) {
         tabWidget->setCurrentWidget(triggerTab);
+    } else if (tabWidget->currentWidget() == KonteXTab) {
+        tabWidget->setCurrentWidget(KonteXTab);
+    } else if (tabWidget->currentWidget() == close_loop_tab) {
+        tabWidget->setCurrentWidget(close_loop_tab);
     } else {
         qDebug() << "Unrecognized tabName.";
     }
@@ -179,9 +191,14 @@ QString ControlPanel::currentTabName() const
         return tr("Config");
     } else if (tabWidget->currentWidget() == triggerTab) {
         return tr("Trigger");
+    } else if (tabWidget->currentWidget() == KonteXTab) {
+        return tr("Kontex");
+    } else if (tabWidget->currentWidget() == close_loop_tab) {
+        return tr("Close Loop");
     } else {
         qDebug() << "Unrecognized tab widget.";
     }
+    return tr("Unknown");
 }
 
 QHBoxLayout* ControlPanel::createSelectionLayout()

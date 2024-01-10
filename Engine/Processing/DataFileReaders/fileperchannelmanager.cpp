@@ -30,6 +30,8 @@
 
 #include <QFileInfo>
 #include <iostream>
+#include <chrono>
+#include <thread>
 #include "rhxglobals.h"
 #include "datafilereader.h"
 #include "fileperchannelmanager.h"

@@ -1,74 +1,46 @@
-name: Build
+name: Build binaries
 
-on: [push, pull_request]
+on: [push, workflow_dispatch]
 
 jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-2022, macos-13, ubuntu-22.04]
 
-  validate-data:
-    name: Validate Metadata
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Create Build Environment
-      run: cd contrib/ci/ && podman build -t intanrhx_validate -f ./Dockerfile-debian-testing .
-
-    - name: Validate metainfo
-      run: podman run -t -v `pwd`:/build intanrhx_validate
-           appstreamcli validate --pedantic --explain contrib/com.intantech.intan_rhx.metainfo.xml
-
-    - name: Validate desktop-entry file
-      run: podman run -t -v `pwd`:/build intanrhx_validate
-           desktop-file-validate contrib/com.intantech.intan_rhx.desktop
-
-
-  build-debian:
-    name: Debian Stable
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }}-build
+    runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v2
-      with:
-        fetch-depth: 0
+      - uses: lukka/get-cmake@latest
 
-    - name: Create Build Environment
-      run: cd contrib/ci/ && podman build -t intanrhx -f Dockerfile-debian .
+      - uses: ilammy/msvc-dev-cmd@v1
 
-    - name: Build
-      run: |
-        podman run -t -e CI=true -e DEBEMAIL=no-reply@intantech.com -v `pwd`:/build intanrhx \
-            ./contrib/ci/auto-build-deb.sh
+      - name: Install OpenCL (Ubuntu)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get install -y ocl-icd-opencl-dev
 
-    - name: Upload Debian package artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: Debian Package
-        path: |
-          result/*.deb
-          result/*.build*
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '5.15.2'
+          cache: true
 
+      - uses: actions/checkout@v3
 
-  build-ubuntu-latest:
-    name: Ubuntu LTS
-    runs-on: ubuntu-latest
+      - name: Build and Install
+        run: |
+          cmake -S . -B build -G "Ninja Multi-Config"
+          cmake --build build --config Release
 
-    steps:
-    - uses: actions/checkout@v2
-      with:
-        fetch-depth: 0
+      - name: tar binaries to keep file permissions
+        working-directory: build
+        run: |
+          tar -cvf Release.tar Release
 
-    - name: Create Build Environment
-      run: cd contrib/ci/ && podman build -t intanrhx -f Dockerfile-ubuntu .
-
-    - name: Build
-      run: |
-        podman run -t -e CI=true -e DEBEMAIL=no-reply@intantech.com -v `pwd`:/build intanrhx \
-            ./contrib/ci/auto-build-deb.sh
-
-    - name: Upload Ubuntu package artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: Ubuntu LTS Package
-        path: |
-          result/*.deb
-          result/*.build*
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: XDAQ-RHX ${{ matrix.os }}
+          path: build/Release.tar

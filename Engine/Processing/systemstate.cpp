@@ -48,14 +48,16 @@ bool RestrictIfStimControllerOrRunning(const SystemState* state)
     { return (ControllerType) state->controllerType->getIndex() == ControllerStimRecord || state->running; }
 
 SystemState::SystemState(const AbstractRHXController* controller_, StimStepSize stimStepSize_, int numSPIPorts_,
-                         bool expanderConnected_, bool testMode_, DataFileReader* dataFileReader_) :
+                         bool expanderConnected_, bool testMode_, DataFileReader* dataFileReader_, bool enableVStim, int on_board_adda) :
     numSPIPorts(numSPIPorts_),
+    on_board_adda(on_board_adda),
     logErrors(false),
     reportSpikes(false),
     decayTime(1.0),
     lastTimestamp(0),
     globalSettingsInterface(nullptr),
-    dataFileReader(dataFileReader_)
+    dataFileReader(dataFileReader_),
+    enableVStim(enableVStim)
 {
     setupLog();
 

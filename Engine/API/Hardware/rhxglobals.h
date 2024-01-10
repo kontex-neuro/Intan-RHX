@@ -226,7 +226,7 @@ const uint32_t TCPSpikeMagicNumber = 0x3ae2710f;
 
 const QString OrganizationName = "Intan Technologies";
 const QString OrganizationDomain = "intantech.com";
-const QString ApplicationName = "IntanRHX";
+const QString ApplicationName = "XDAQRHX";
 const QString ApplicationCopyrightYear = "2020-2023";
 
 const QString SoftwareVersion = QString::number(SOFTWARE_MAIN_VERSION_NUMBER) + "." +
@@ -234,12 +234,12 @@ const QString SoftwareVersion = QString::number(SOFTWARE_MAIN_VERSION_NUMBER) + 
                                 QString::number(SOFTWARE_TERTIARY_VERSION_NUMBER);
 
 // FPGA configuration bitfiles
-const QString ConfigFileRHDBoard = "ConfigRHDInterfaceBoard.bit";
-const QString ConfigFileRHDController = "ConfigRHDController.bit";
-const QString ConfigFileRHSController = "ConfigRHSController.bit";
-const QString ConfigFileXEM6010Tester = "ConfigXEM6010Tester.bit";
-const QString ConfigFileRHDController_7310 = "ConfigRHDController_7310.bit";
-const QString ConfigFileRHSController_7310 = "ConfigRHSController_7310.bit";
+// const QString ConfigFileRHDBoard = "ConfigRHDInterfaceBoard.bit";
+const QString ConfigFileRHDController = "XDAQRHD.bit";
+const QString ConfigFileRHSController = "XDAQRHS.bit";
+// const QString ConfigFileXEM6010Tester = "ConfigXEM6010Tester.bit";
+// const QString ConfigFileRHDController_7310 = "ConfigRHDController_7310.bit";
+// const QString ConfigFileRHSController_7310 = "ConfigRHSController_7310.bit";
 
 // Special Unicode characters, as QString data type
 const QString DeltaSymbol = QString((QChar)0x0394);
@@ -264,8 +264,8 @@ const QString EndOfLine = QString("\n");
 
 const QString ControllerTypeString[3] = {
     "RHD USB Interface Board",
-    "RHD Recording Controller",
-    "RHS Stimulation/Recording Controller"
+    "RHD XDAQ",
+    "RHS XDAQ"
 };
 
 const QString ControllerTypeSettingsGroup[3] = {

@@ -294,13 +294,11 @@ ControlWindow::ControlWindow(SystemState* state_, CommandParser* parser_, Contro
                                                                             // this connection.
     setWindowIcon(QIcon(":/images/IntanLogo_32x32_white_frame.png"));
 
-    QString title = tr("Intan Technologies ");
-    if (state->getControllerTypeEnum() == ControllerRecordUSB2) {
-        title += tr("USB Interface Board");
-    } else if (state->getControllerTypeEnum() == ControllerRecordUSB3) {
-        title += tr("Recording Controller");
+    QString title = tr("XDAQ RHX V 1.1.3 ");
+    if (state->getControllerTypeEnum() == ControllerRecordUSB3) {
+        title += tr("Recording");
     } else if (state->getControllerTypeEnum() == ControllerStimRecord) {
-        title += tr("Stimulation/Recording Controller");
+        title += tr("Stimulation/Recording");
     }
 
     if (state->synthetic->getValue()) {

@@ -35,6 +35,7 @@
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <map>
+#include <array>
 
 #include "rhxglobals.h"
 #include "abstractrhxcontroller.h"
@@ -90,7 +91,8 @@ class SystemState : public QObject
 {
     Q_OBJECT
 public:
-    SystemState(const AbstractRHXController* controller_, StimStepSize stimStepSize_, int numSPIPorts_, bool expanderConnected_, bool testMode_=false, DataFileReader* dataFileReader_=nullptr);
+    SystemState(const AbstractRHXController* controller_, StimStepSize stimStepSize_,
+        int numSPIPorts_, bool expanderConnected_, bool testMode_, DataFileReader* dataFileReader_, bool enableVStim, int on_board_adda);
     ~SystemState();
 
     AmplifierSampleRate getSampleRateEnum() const;
@@ -144,6 +146,7 @@ public:
     DiscreteItemList* sampleRate;
     DiscreteItemList* stimStepSize;
     int numSPIPorts;  // no direct relation to commands - should leave as is
+    int on_board_adda;
     BooleanItem* expanderConnected;
     BooleanItem *testMode;
     int highDPIScaleFactor;  // scale factor for high-DPI monitors (e.g., Retina displays)
@@ -224,6 +227,15 @@ public:
     StringItem *analogOut7Channel;
     StringItem *analogOut8Channel;
     StringItem *analogOutRefChannel;
+    std::array<StringItem**, 8> analogOutChannel = {
+        &analogOut1Channel,
+        &analogOut2Channel,
+        &analogOut3Channel,
+        &analogOut4Channel,
+        &analogOut5Channel,
+        &analogOut6Channel,
+        &analogOut7Channel,
+        &analogOut8Channel};
     IntRangeItem *analogOut1Threshold;
     IntRangeItem *analogOut2Threshold;
     IntRangeItem *analogOut3Threshold;
@@ -232,6 +244,15 @@ public:
     IntRangeItem *analogOut6Threshold;
     IntRangeItem *analogOut7Threshold;
     IntRangeItem *analogOut8Threshold;
+    std::array<IntRangeItem**, 8> analogOutThreshold = {
+        &analogOut1Threshold,
+        &analogOut2Threshold,
+        &analogOut3Threshold,
+        &analogOut4Threshold,
+        &analogOut5Threshold,
+        &analogOut6Threshold,
+        &analogOut7Threshold,
+        &analogOut8Threshold};
     BooleanItem *analogOut1ThresholdEnabled;
     BooleanItem *analogOut2ThresholdEnabled;
     BooleanItem *analogOut3ThresholdEnabled;
@@ -240,6 +261,15 @@ public:
     BooleanItem *analogOut6ThresholdEnabled;
     BooleanItem *analogOut7ThresholdEnabled;
     BooleanItem *analogOut8ThresholdEnabled;
+    std::array<BooleanItem**, 8> analogOutThresholdEnabled = {
+        &analogOut1ThresholdEnabled,
+        &analogOut2ThresholdEnabled,
+        &analogOut3ThresholdEnabled,
+        &analogOut4ThresholdEnabled,
+        &analogOut5ThresholdEnabled,
+        &analogOut6ThresholdEnabled,
+        &analogOut7ThresholdEnabled,
+        &analogOut8ThresholdEnabled};
 
     // Impedance testing
     BooleanItem *impedancesHaveBeenMeasured;
@@ -376,7 +406,7 @@ public:
 
     SingleItemList globalItems;
     FilenameItemList stateFilenameItems;
-
+    bool enableVStim;
     BooleanItem *usePreviousDelay;
     IntRangeItem *previousDelaySelectedPort;
     IntRangeItem *lastDetectedChip;

@@ -217,6 +217,7 @@ public:
                                    bool usePreviousDelay = false, int selectedPort = 0, int lastDetectedChip = -1) = 0;
 
     int pipeReadError() const { return pipeReadErrorCode; }
+    virtual void setVStimBus(int BusMode){};
 
 protected:
     ControllerType type;
@@ -237,11 +238,9 @@ protected:
     uint8_t* usbBuffer;
 
     // Buffers for writing bytes to command RAM (ControllerStimRecord only)
-    // Size has been doubled to allow for same amount of data to be transmitted
-    // across 32-bit PipeIns for RHS 7310 (zero-padded to remain as compatible
-    // as possible with 16-bit PipeIns of RHS 6010).
-    uint8_t commandBufferMsw[65536 * 2];
-    uint8_t commandBufferLsw[65536 * 2];
+    uint8_t commandBufferMsw[65536];
+    uint8_t commandBufferLsw[65536];
+    uint8_t commandBuffer[65536];
 
     virtual unsigned int numWordsInFifo() = 0;
     virtual bool isDcmProgDone() const = 0;
