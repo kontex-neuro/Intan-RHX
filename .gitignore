@@ -8,3 +8,5 @@
 # Build
 /build
 /.venv
+/.cache
+/CMakeUserPresets.json

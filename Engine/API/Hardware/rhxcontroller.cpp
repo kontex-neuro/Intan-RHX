@@ -28,16 +28,20 @@
 //
 //------------------------------------------------------------------------------
 
-#include <okFrontPanel.h>
-#include <iostream>
-#include <iomanip>
+#include <fmt/format.h>
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
-#include <thread>
 #include <chrono>
 #include <cmath>
+#include <iomanip>
+#include <iostream>
+#include <memory>
+#include <thread>
 #include "rhxcontroller.h"
 #include "rhxregisters.h"
 
+using json = nlohmann::json;
 // This class provides access to and control of one of the following:
 //   (1) an Opal Kelly XEM6010 USB2/FPGA interface board running the Intan Rhythm interface Verilog code
 //       (e.g., a 256-channel Intan RHD2000 USB Interface Board with 256-channel capacity)
@@ -46,165 +50,23 @@
 //   (3) an Opal Kelly XEM6010 USB2/FPGA interface board running the Intan RhythmStim interface Verilog code
 //       (e.g., an Intan Stim/Recording Controller with 128-channel capacity)
 
-RHXController::RHXController(ControllerType type_, AmplifierSampleRate sampleRate_, bool is7310_) :
-    AbstractRHXController(type_, sampleRate_),
-    dev(nullptr),
-    is7310(is7310_),
-    previousDelay(-1)
+RHXController::RHXController(ControllerType type_, AmplifierSampleRate sampleRate_, xdaq::Device *dev,bool is7310_)
+    : AbstractRHXController(type_, sampleRate_), is7310(is7310_), previousDelay(-1),dev(
+        reinterpret_cast<XDAQDeviceProxy*>(dev)
+    )
 {
 }
 
-RHXController::~RHXController()
-{
-    if (dev) delete dev;
-}
 
-// List all available Opal Kelly devices currently connected to this computer.
-// Return a vector of strings containing each device's serial number.
-vector<string> RHXController::listAvailableDeviceSerials()
-{
-    int i, nDevices;
-    okCFrontPanel *tempDev = new okCFrontPanel;
-    nDevices = tempDev->GetDeviceCount();
-
-    vector<string> availableDevs;
-    for (i = 0; i < nDevices; ++i) {
-        availableDevs.push_back(tempDev->GetDeviceListSerial(i).c_str());
-    }
-    delete tempDev;
-    return availableDevs;
-}
-
-// Find an Opal Kelly board attached to a USB port with the given serial number and open it.
-// Returns 1 if successful, -1 if FrontPanel cannot be loaded, and -2 if board can't be found.
-int RHXController::open(const string& boardSerialNumber)
-{
-    dev = new okCFrontPanel;
-    cout << "Attempting to connect to device '" << boardSerialNumber.c_str() << "'\n";
-
-    okCFrontPanel::ErrorCode result = dev->OpenBySerial(boardSerialNumber);
-    // Attempt to open device.
-    if (result != okCFrontPanel::NoError) {
-        delete dev;
-        cerr << "Device could not be opened.  Is one connected?\n";
-        cerr << "Error = " << result << "\n";
-        return -2;
-    }
-
-    // Configure the on-board PLL appropriately.
-    dev->LoadDefaultPLLConfiguration();
-
-    // Get some general information about the XEM.
-    cout << "Opal Kelly device firmware version: " << dev->GetDeviceMajorVersion() << "." <<
-            dev->GetDeviceMinorVersion() << '\n';
-    cout << "Opal Kelly device serial number: " << dev->GetSerialNumber().c_str() << '\n';
-    cout << "Opal Kelly device ID string: " << dev->GetDeviceID().c_str() << "\n\n";
-
-    return 1;
-}
-
-// Find the first Opal Kelly board attached to a USB port and open it.
-// Returns 1 if successful, -1 if FrontPanel cannot be loaded, and -2 if board can't be found.
-int RHXController::open()
-{
-    dev = new okCFrontPanel;
-    string serialNumber = dev->GetDeviceListSerial(0).c_str();
-    delete dev;
-
-    return open(serialNumber);
-}
-
-bool wait_xdaq(okCFrontPanel*dev, int retry){
-    using Clock = std::chrono::high_resolution_clock;
-    for(; retry>=0; --retry){
-        const auto start = Clock::now();
-        while(true){
-            dev->UpdateWireOuts();
-            if( (dev->GetWireOutValue(0x22) & 0x4) == 0) return true;
-            if( (Clock::now() - start) > std::chrono::seconds(3) ) break;
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        if(retry==0) return false;
-        dev->ActivateTriggerIn(0x48, 3);
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-}
-
-// Upload the configuration file (bitfile) to the FPGA.  Return true if successful.
-bool RHXController::uploadFPGABitfile(const string& filename)
-{
-    okCFrontPanel::ErrorCode errorCode = dev->ConfigureFPGA(filename);
-
-    switch (errorCode) {
-    case okCFrontPanel::NoError:
-        break;
-    case okCFrontPanel::DeviceNotOpen:
-        cerr << "FPGA configuration failed: Device not open.\n";
-        return false;
-    case okCFrontPanel::FileError:
-        cerr << "FPGA configuration failed: Cannot find configuration file.\n";
-        return false;
-    case okCFrontPanel::InvalidBitstream:
-        cerr << "FPGA configuration failed: Bitstream is not properly formatted.\n";
-        return false;
-    case okCFrontPanel::DoneNotHigh:
-        cerr << "FPGA configuration failed: FPGA DONE signal did not assert after configuration.\n";
-        cerr << "Note: Switch may be in PROM position instead of USB position.\n";
-        return false;
-    case okCFrontPanel::TransferError:
-        cerr << "FPGA configuration failed: USB error occurred during download.\n";
-        return false;
-    case okCFrontPanel::CommunicationError:
-        cerr << "FPGA configuration failed: Communication error with firmware.\n";
-        return false;
-    case okCFrontPanel::UnsupportedFeature:
-        cerr << "FPGA configuration failed: Unsupported feature.\n";
-        return false;
-    default:
-        cerr << "FPGA configuration failed: Unknown error.\n";
-        return false;
-    }
-
-    // Check for Opal Kelly FrontPanel support in the FPGA configuration.
-    if (dev->IsFrontPanelEnabled() == false) {
-        cerr << "Opal Kelly FrontPanel support is not enabled in this FPGA configuration.\n";
-        delete dev;
-        return false;
-    }
-
-    int boardId, boardVersion;
-    dev->UpdateWireOuts();
-    boardId = dev->GetWireOutValue(WireOutBoardId);
-    boardVersion = dev->GetWireOutValue(WireOutBoardVersion);
-
-    cout << "Rhythm configuration file successfully loaded.  Rhythm version number: " <<
-            boardVersion << "\n\n";
-
-    auto res = wait_xdaq(dev, 2);
-    if(!res){
-        cerr << "FPGA configuration failed: XDAQ timeout, please try again.\n";
-        return false;
-    }
-    return true;
-}
-
-// Reset FPGA.  This clears all auxiliary command RAM banks, clears the USB FIFO, and resets the per-channel sampling
-// rate to 30.0 kS/s/ch.
+// Reset FPGA.  This clears all auxiliary command RAM banks, clears the USB FIFO, and resets the
+// per-channel sampling rate to 30.0 kS/s/ch.
 void RHXController::resetBoard()
 {
     lock_guard<mutex> lockOk(okMutex);
-
-    resetBoard(dev);
-
-    if (type == ControllerRecordUSB3 || type == ControllerStimRecord) {
-        // Set up USB3 block transfer parameters.
-        dev->SetWireInValue(WireInMultiUse, USB3BlockSize / 4);  // Divide by 4 to convert from bytes to 32-bit words (used in FPGA FIFO)
-        dev->UpdateWireIns();
-        dev->ActivateTriggerIn(TrigInConfig_USB3, 9);
-        dev->SetWireInValue(WireInMultiUse, RAMBurstSize);
-        dev->UpdateWireIns();
-        dev->ActivateTriggerIn(TrigInConfig_USB3, 10);
-    }
+    dev->SetWireInValue(endPointWireInResetRun(), 0x01, 0x01);
+    dev->UpdateWireIns();
+    dev->SetWireInValue(endPointWireInResetRun(), 0x00, 0x01);
+    dev->UpdateWireIns();
 }
 
 // Initiate SPI data acquisition.
@@ -239,34 +101,10 @@ bool RHXController::isRunning()
 void RHXController::flush()
 {
     lock_guard<mutex> lockOk(okMutex);
-
-    if (type == ControllerRecordUSB3 || type == ControllerStimRecord) {
-        dev->SetWireInValue(WireInResetRun, 1 << 16, 1 << 16); // override pipeout block throttle
-        dev->UpdateWireIns();
-
-        while (numWordsInFifo() >= usbBufferSize / BytesPerWord) {
-            dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize, usbBufferSize, usbBuffer);
-        }
-        while (numWordsInFifo() > 0) {
-            dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize,
-                                      USB3BlockSize * max(BytesPerWord * numWordsInFifo() / USB3BlockSize, (unsigned int)1),
-                                      usbBuffer);
-        }
-
-        dev->SetWireInValue(WireInResetRun, 0 << 16, 1 << 16);
-        dev->UpdateWireIns();
-        dev->SetWireInValue(WireInResetRun, 1 << 17, 1 << 17);
-        dev->UpdateWireIns();
-        dev->SetWireInValue(WireInResetRun, 0 << 17, 1 << 17);
-        dev->UpdateWireIns();
-    } else {
-        while (numWordsInFifo() >= usbBufferSize / BytesPerWord) {
-            dev->ReadFromPipeOut(PipeOutData, usbBufferSize, usbBuffer);
-        }
-        while (numWordsInFifo() > 0) {
-            dev->ReadFromPipeOut(PipeOutData, BytesPerWord * numWordsInFifo(), usbBuffer);
-        }
-    }
+    dev->SetWireInValue(WireInResetRun, 1 << 17, 1 << 17);
+    dev->UpdateWireIns();
+    dev->SetWireInValue(WireInResetRun, 0 << 17, 1 << 17);
+    dev->UpdateWireIns();
 }
 
 // Low-level FPGA reset.  Call when closing application to make sure everything has stopped.
@@ -274,7 +112,7 @@ void RHXController::resetFpga()
 {
     lock_guard<mutex> lockOk(okMutex);
 
-    dev->ResetFPGA();
+    // dev->ResetFPGA();
 }
 
 // Read data block from the USB interface, if one is available.  Return true if data block was available.
@@ -331,9 +169,7 @@ bool RHXController::readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueu
     if (type == ControllerRecordUSB3 || type == ControllerStimRecord) {
         result = dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize, numBytesToRead, usbBuffer);
 
-        if (result == ok_Failed) {
-            cerr << "CRITICAL (readDataBlocks): Failure on pipe read.  Check block and buffer sizes.\n";
-        } else if (result == ok_Timeout) {
+        if (result <= 0) {
             cerr << "CRITICAL (readDataBlocks): Timeout on pipe read.  Check block and buffer sizes.\n";
         }
     } else {
@@ -2032,7 +1868,7 @@ int RHXController::findConnectedChips(vector<ChipType> &chipType, vector<int> &p
 }
 
 // Simple board reset
-void RHXController::resetBoard(okCFrontPanel* dev_)
+void RHXController::resetBoard(XDAQDeviceProxy* dev_)
 {
     dev_->SetWireInValue(endPointWireInResetRun(), 0x01, 0x01);
     dev_->UpdateWireIns();
@@ -2041,14 +1877,14 @@ void RHXController::resetBoard(okCFrontPanel* dev_)
 }
 
 // Return 4-bit "board mode" input.
-int RHXController::getBoardMode(okCFrontPanel* dev_)
+int RHXController::getBoardMode(XDAQDeviceProxy* dev_)
 {
     dev_->UpdateWireOuts();
     return dev_->GetWireOutValue(endPointWireOutBoardMode());
 }
 
 // Return number of SPI ports and if I/O expander board is present.
-int RHXController::getNumSPIPorts(okCFrontPanel* dev_, bool isUSB3, bool& expanderBoardDetected, bool isRHS7310)
+int RHXController::getNumSPIPorts(XDAQDeviceProxy* dev_, bool isUSB3, bool& expanderBoardDetected, bool isRHS7310)
 {
     bool spiPortPresent[8];
     bool userId[3];
@@ -2066,8 +1902,6 @@ int RHXController::getNumSPIPorts(okCFrontPanel* dev_, bool isUSB3, bool& expand
     int WireInSerialDigitalInCntl = endPointWireInSerialDigitalInCntl(isUSB3);
     //int WireOutSerialDigitalIn = endPointWireOutSerialDigitalIn(isRHS7310 ? false : isUSB3);
     //int WireInSerialDigitalInCntl = endPointWireInSerialDigitalInCntl(isRHS7310 ? false : isUSB3);
-    if(!wait_xdaq(dev_, 3))
-    throw std::runtime_error("Timeout waiting for board to be ready");
 
     dev_->UpdateWireOuts();
     expanderBoardDetected = (dev_->GetWireOutValue(0x35) & 0x04) != 0;
@@ -2182,7 +2016,7 @@ void RHXController::forceAllDataStreamsOff()
 }
 
 // Manually pulse WireIns.
-void RHXController::pulseWireIn(okCFrontPanel* dev_, int wireIn, unsigned int value)
+void RHXController::pulseWireIn(XDAQDeviceProxy* dev_, int wireIn, unsigned int value)
 {
     dev_->SetWireInValue(wireIn, value);
     dev_->UpdateWireIns();

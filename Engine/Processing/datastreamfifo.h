@@ -30,7 +30,7 @@
 #ifndef DATASTREAMFIFO_H
 #define DATASTREAMFIFO_H
 
-#include "semaphore.h"
+#include "Semaphore.h"
 
 class DataStreamFifo
 {

@@ -19,6 +19,7 @@ set(CMAKE_AUTORCC ON)
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Multimedia Network Widgets Xml)
 find_package(OpenCL REQUIRED)
 find_package(okFrontPanel REQUIRED)
+find_package(xdaq REQUIRED)
 
 set(ICON_NAME "xdaq-icon.icns")
 set(ICON_PATH ${PROJECT_SOURCE_DIR}/images/${ICON_NAME})
@@ -54,9 +55,16 @@ target_include_directories(IntanRHX PRIVATE
 
 message(STATUS "Qt5 : ${Qt5_DIR}")
 
-target_compile_features(IntanRHX PUBLIC cxx_std_14)
+target_compile_features(IntanRHX PUBLIC cxx_std_17)
 target_compile_options(IntanRHX PRIVATE $<$<CXX_COMPILER_ID:Clang,GNU>:-Wno-deprecated>)
 target_compile_definitions(IntanRHX PUBLIC $<$<CONFIG:Debug>:DEBUG>)
+find_package(nlohmann_json REQUIRED)
+find_package(fmt REQUIRED)
+option(Sanitize "Enable sanitizers" OFF)
+# if(Sanitize)
+#     target_compile_options(IntanRHX PRIVATE $<$<CXX_COMPILER_ID:Clang,GNU>:-fsanitize=address,undefined>)
+#     target_link_options(IntanRHX PRIVATE $<$<CXX_COMPILER_ID:Clang,GNU>:-fsanitize=address,undefined>)
+# endif()
 
 target_link_libraries(
     IntanRHX
@@ -68,15 +76,11 @@ target_link_libraries(
     Qt5::Widgets
     Qt5::Xml
     OpenCL::OpenCL
-    okFrontPanel::okFrontPanel
+    # okFrontPanel::okFrontPanel
+    nlohmann_json::nlohmann_json
+    fmt::fmt
+    xdaq::xdaq
 )
-
-
-if(UseMockOkFrontPanel)
-    find_package(fmt REQUIRED)
-    target_compile_definitions(IntanRHX PRIVATE UseMockOkFrontPanel)
-    target_link_libraries(IntanRHX PUBLIC fmt::fmt-header-only)
-endif()
 
 
 # copy the bit file and kernel.cl

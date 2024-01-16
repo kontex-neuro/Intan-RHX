@@ -37,7 +37,7 @@
 #include <vector>
 #include <mutex>
 #include "rhxglobals.h"
-#include "semaphore.h"
+#include "Semaphore.h"
 #include "minmax.h"
 #include "signalsources.h"
 

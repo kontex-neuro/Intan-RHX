@@ -14,3 +14,6 @@ UseTab: Never
 IndentWidth: 4
 BreakBeforeBraces: Linux
 AccessModifierOffset: -4
+BinPackArguments: false
+AlignAfterOpenBracket: BlockIndent
+AllowAllArgumentsOnNextLine: true
