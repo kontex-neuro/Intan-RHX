@@ -34,29 +34,65 @@
 #include "abstractrhxcontroller.h"
 #include "rhxglobals.h"
 #include "rhxdatablock.h"
-#include "okFrontPanel.h"
+#include <xdaq/xdaq/device.h>
+#include <xdaq/xdaq/device_plugin.h>
 
 using namespace std;
 
 const int USB3BlockSize	= 1024;
 const int RAMBurstSize = 32;
 
+struct XDAQDeviceProxy : private xdaq::Device{
+    int SetWireInValue(int ep, std::uint32_t value, std::uint32_t mask=xdaq::Device::value_mask){
+        return this->set_register(ep, value, mask) == xdaq::BasicDeviceStatus::Success ? 0 : -1;
+    }
+
+    int UpdateWireIns(){
+        return this->send_registers() == xdaq::BasicDeviceStatus::Success ? 0 : -1;
+    }
+
+    xdaq::Device::value_t GetWireOutValue(int ep){
+        return this->get_register(ep);
+    }
+
+    int UpdateWireOuts(){
+        return this->read_registers() == xdaq::BasicDeviceStatus::Success ? 0 : -1;
+    }
+
+    int ActivateTriggerIn(int ep, int bit){
+        return this->trigger(ep, bit) == xdaq::BasicDeviceStatus::Success ? 0 : -1;
+    }
+
+	long ReadFromBlockPipeOut(int epAddr, int blockSize, long length, unsigned char *data){
+        return this->read(epAddr, length, data);
+    }
+
+	long WriteToBlockPipeIn(int epAddr, int blockSize, long length, unsigned char *data){
+        return this->write(epAddr, length, data);
+    }
+
+	long WriteToPipeIn(int epAddr, long length, unsigned char *data){
+        throw std::runtime_error("Not implemented");
+    }
+
+	long ReadFromPipeOut(int epAddr, long length, unsigned char *data){
+        throw std::runtime_error("Not implemented");
+    }
+
+};
+
 class RHXController : public AbstractRHXController
 {
-
 public:
-    RHXController(ControllerType type_, AmplifierSampleRate sampleRate_, bool is7310_ = false);
-    ~RHXController();
+    explicit RHXController(ControllerType type_, AmplifierSampleRate sampleRate_, xdaq::Device*dev, bool is7310_ = false);
+    ~RHXController() = default;
 
     bool isSynthetic() const override { return false; }
     bool isPlayback() const override { return false; }
+    int open(const string& boardSerialNumber) override { return 0; }
+    bool uploadFPGABitfile(const string& filename) override { return true; }
     AcquisitionMode acquisitionMode() const override { return LiveMode; }
 
-    vector<string> listAvailableDeviceSerials();
-
-    int open(const string& boardSerialNumber) override;
-    int open();
-    bool uploadFPGABitfile(const string& filename) override;
     void resetBoard() override;
 
     void run() override;
@@ -125,9 +161,9 @@ public:
                            bool usePreviousDelay = false, int selectedPort = 0, int lastDetectedChip = -1) override;
 
     // Physical board only
-    static void resetBoard(okCFrontPanel* dev_);
-    static int getBoardMode(okCFrontPanel* dev_);
-    static int getNumSPIPorts(okCFrontPanel *dev_, bool isUSB3, bool& expanderBoardDetected, bool isRHS7310 = false);
+    static void resetBoard(XDAQDeviceProxy* dev_);
+    static int getBoardMode(XDAQDeviceProxy* dev_);
+    static int getNumSPIPorts(XDAQDeviceProxy* dev_, bool isUSB3, bool& expanderBoardDetected, bool isRHS7310 = false);
     void setVStimBus(int BusMode) override;
 
 private:
@@ -135,7 +171,8 @@ private:
     RHXController(const RHXController&);            // declaration only
     RHXController& operator=(const RHXController&); // declaration only
 
-    okCFrontPanel *dev;
+    XDAQDeviceProxy* dev = nullptr;
+    
     bool is7310;
 
     // Opal Kelly module USB interface endpoint addresses common to all controller types
@@ -276,7 +313,7 @@ private:
     void forceAllDataStreamsOff() override;
 
     // Physical board only
-    static void pulseWireIn(okCFrontPanel* dev_, int wireIn, unsigned int value);
+    static void pulseWireIn(XDAQDeviceProxy* dev_, int wireIn, unsigned int value);
     static int endPointWireInResetRun() { return (int)WireInResetRun; }
     static int endPointWireInSerialDigitalInCntl(bool isUSB3);
     static int endPointWireOutSerialDigitalIn(bool isUSB3);

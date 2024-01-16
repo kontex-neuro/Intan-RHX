@@ -1,6 +1,8 @@
 set(EngineSources
     Engine/API/Abstract/abstractrhxcontroller.cpp
     Engine/API/Abstract/abstractrhxcontroller.h
+    Engine/API/Hardware/controller_info.cpp
+    Engine/API/Hardware/controller_info.h
     Engine/API/Hardware/rhxcontroller.cpp
     Engine/API/Hardware/rhxcontroller.h
     Engine/API/Hardware/rhxdatablock.cpp
@@ -68,7 +70,7 @@ set(EngineSources
     Engine/Processing/probemapdatastructures.h
     Engine/Processing/rhxdatareader.cpp
     Engine/Processing/rhxdatareader.h
-    Engine/Processing/semaphore.h
+    Engine/Processing/Semaphore.h
     Engine/Processing/signalsources.cpp
     Engine/Processing/signalsources.h
     Engine/Processing/softwarereferenceprocessor.cpp
