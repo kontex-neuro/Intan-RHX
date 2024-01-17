@@ -1,5 +1,5 @@
 #pragma once
-#include <xdaq/xdaq/device.h>
+#include <xdaq/device.h>
 
 #include <functional>
 #include <string>

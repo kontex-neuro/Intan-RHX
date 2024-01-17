@@ -4,10 +4,6 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum OS X deployment ver
 
 project(IntanRHX VERSION 1.0 LANGUAGES CXX)
 
-if(APPLE)
-    set(CMAKE_OSX_ARCHITECTURES "x86_64")
-endif()
-
 SET(CMAKE_MODULE_PATH
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake
     ${CMAKE_MODULE_PATH}
@@ -68,7 +64,7 @@ option(Sanitize "Enable sanitizers" OFF)
 
 target_link_libraries(
     IntanRHX
-    PUBLIC
+    PRIVATE
     Qt5::Core
     Qt5::Gui
     Qt5::Multimedia

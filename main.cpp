@@ -28,7 +28,7 @@
 //
 //------------------------------------------------------------------------------
 #include <fmt/format.h>
-#include <xdaq/xdaq/device_plugin.h>
+#include <xdaq/device_plugin.h>
 
 #include <QApplication>
 #include <filesystem>
@@ -44,10 +44,7 @@
 #include "controllerinterface.h"
 #include "controlwindow.h"
 #include "datafilereader.h"
-#include "playbackrhxcontroller.h"
-#include "rhxcontroller.h"
 #include "rhxglobals.h"
-#include "syntheticrhxcontroller.h"
 #include "systemstate.h"
 
 using json = nlohmann::json;
@@ -65,7 +62,8 @@ auto get_plugins()
     std::vector<fs::path> search_path = {"/usr/local/lib/xdaq/plugins", "./plugins"};
     constexpr auto extention = ".so";
 #endif
-    std::unordered_set<fs::path> paths;
+    auto hash = [](const fs::path &p) { return std::hash<std::string>()(p.string()); };
+    std::unordered_set<fs::path, decltype(hash)> paths;
     for (const auto &p : search_path) {
         if (!fs::exists(p) || !fs::is_directory(p)) continue;
         for (const auto &entry : fs::directory_iterator(p)) {
