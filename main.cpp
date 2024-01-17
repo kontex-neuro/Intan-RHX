@@ -52,14 +52,16 @@ namespace fs = std::filesystem;
 
 auto get_plugins()
 {
-#ifdef __WIN32__
-    std::vector<fs::path> search_path = {R"(.\plugins)"};
+#ifdef _WIN32
+    const std::vector<fs::path> search_path = {
+        R"(C:\Program Files (x86)\libxdaq\bin)", R"(C:\Program Files\libxdaq\bin)", R"(.\plugins)"
+    };
     constexpr auto extention = ".dll";
 #elif __APPLE__
-    std::vector<fs::path> search_path = {"/usr/local/lib/xdaq/plugins", "./plugins"};
+    const std::vector<fs::path> search_path = {"/usr/local/lib/xdaq/plugins", "./plugins"};
     constexpr auto extention = ".dylib";
 #elif __linux__
-    std::vector<fs::path> search_path = {"/usr/local/lib/xdaq/plugins", "./plugins"};
+    const std::vector<fs::path> search_path = {"/usr/local/lib/xdaq/plugins", "./plugins"};
     constexpr auto extention = ".so";
 #endif
     auto hash = [](const fs::path &p) { return std::hash<std::string>()(p.string()); };
@@ -67,14 +69,14 @@ auto get_plugins()
     for (const auto &p : search_path) {
         if (!fs::exists(p) || !fs::is_directory(p)) continue;
         for (const auto &entry : fs::directory_iterator(p)) {
-            if (!fs::is_regular_file(entry) && !fs::is_symlink(entry)) continue;
+            if (!fs::is_regular_file(entry.path()) && !fs::is_symlink(entry.path())) continue;
             if (entry.path().extension() != extention) continue;
             paths.insert(fs::canonical(entry.path()));
         }
     }
     std::vector<xdaq::DevicePlugin> plugins;
     for (const auto &path : paths) {
-        auto plugin = xdaq::load_device_plugin(path);
+        auto plugin = xdaq::load_device_plugin(path.string());
         if (plugin.has_value()) plugins.emplace_back(std::move(plugin.value()));
     }
     return std::move(plugins);

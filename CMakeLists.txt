@@ -9,6 +9,10 @@ SET(CMAKE_MODULE_PATH
     ${CMAKE_MODULE_PATH}
 )
 
+if(WIN32)
+    add_definitions(-D_HAS_STD_BYTE=0)
+endif()
+
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
