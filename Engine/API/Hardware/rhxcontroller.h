@@ -34,8 +34,8 @@
 #include "abstractrhxcontroller.h"
 #include "rhxglobals.h"
 #include "rhxdatablock.h"
-#include <xdaq/xdaq/device.h>
-#include <xdaq/xdaq/device_plugin.h>
+#include <xdaq/device.h>
+#include <xdaq/device_plugin.h>
 
 using namespace std;
 
