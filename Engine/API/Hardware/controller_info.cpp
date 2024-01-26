@@ -39,8 +39,8 @@ XDAQInfo read_xdaq_info(xdaq::Device *dev)
         else
             info.model = XDAQModel::Unknown;
         break;
-    case 1: info.model = XDAQModel::Core; break;
-    case 2: info.model = XDAQModel::One; break;
+    case 2: info.model = XDAQModel::Core; break;
+    case 4: info.model = XDAQModel::One; break;
     default: info.model = XDAQModel::Unknown;
     }
     info.expander = (*dev->get_register_sync(0x35)) != 0;
