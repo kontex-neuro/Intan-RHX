@@ -28,6 +28,7 @@
 //
 //------------------------------------------------------------------------------
 #include <fmt/format.h>
+#include <qsettings.h>
 #include <xdaq/device_plugin.h>
 
 #include <QApplication>
@@ -313,9 +314,11 @@ int main(int argc, char *argv[])
         fmt::print("Device: {}\n", device);
         auto device_json = json::parse(device);
         for (const auto &device : device_json) {
-            auto dev = plugin.create(device.dump());
+            auto default_rhd = device;
+            default_rhd["mode"] = "rhd";
+            auto dev = plugin.create(default_rhd.dump());
             auto info = read_xdaq_info(dev.get());
-            info.plugin = plugin.path;
+            info.plugin = json::parse(plugin.info).at("name");
             info.device_config = device.dump();
             info.get_device = [&opened_device, &plugin](std::string device) {
                 opened_device = plugin.create(device);
@@ -333,6 +336,8 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationName(ApplicationName);
     // Globally disable unused Context Help buttons from windows/dialogs
     QApplication::setAttribute(Qt::AA_DisableWindowContextHelpButton);
+    QSettings settings;
+    std::cout << settings.fileName().toStdString() << '\n';
 
 #ifdef __APPLE__
     app.setStyle(QStyleFactory::create("Fusion"));

@@ -224,8 +224,8 @@ const uint32_t TCPSpikeMagicNumber = 0x3ae2710f;
 #ifdef USE_QT
 #include <QString>
 
-const QString OrganizationName = "Intan Technologies";
-const QString OrganizationDomain = "intantech.com";
+const QString OrganizationName = "KonteX Neuroscience";
+const QString OrganizationDomain = "kontex.io";
 const QString ApplicationName = "XDAQRHX";
 const QString ApplicationCopyrightYear = "2020-2023";
 

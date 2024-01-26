@@ -359,11 +359,13 @@ auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info)
     QObject::connect(launch_button_rhd, &QPushButton::clicked, [launch, info, launch_properties]() {
         QSettings settings;
         settings.beginGroup("XDAQ");
+        auto config = json::parse(info.device_config);
+        config["mode"] = "rhd";
         launch(
             new RHXController(
                 ControllerType::ControllerRecordUSB3,
                 launch_properties->at("sample_rate"),
-                info.get_device(info.device_config)
+                info.get_device(config.dump())
             ),
             launch_properties->at("stim_step_size")
         );
@@ -373,11 +375,13 @@ auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info)
     QObject::connect(launch_button_rhs, &QPushButton::clicked, [launch, info, launch_properties]() {
         QSettings settings;
         settings.beginGroup("XDAQ");
+        auto config = json::parse(info.device_config);
+        config["mode"] = "rhs";
         launch(
             new RHXController(
                 ControllerType::ControllerStimRecord,
                 launch_properties->at("sample_rate"),
-                info.get_device(info.device_config)
+                info.get_device(config.dump())
             ),
             launch_properties->at("stim_step_size")
         );
@@ -561,7 +565,7 @@ BoardSelectDialog::BoardSelectDialog(QWidget *parent, const std::vector<XDAQInfo
     connect(advancedButton, &QPushButton::clicked, this, [&]() {
         QSettings settings;
         settings.beginGroup("XDAQ");
-        bool use_opencl = true;
+        bool use_opencl = settings.value("useOpenCL", true).toBool();
         std::uint8_t playback_ports = 255;
         AdvancedStartupDialog advancedStartupDialog(use_opencl, playback_ports, false, this);
         advancedStartupDialog.exec();
