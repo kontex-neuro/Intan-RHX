@@ -65,9 +65,9 @@ ControlPanelKONTEXTab::ControlPanelKONTEXTab(ControllerInterface *controllerInte
     SPIGroupBox->setLayout(SPIBusLayout1);
 
 
-    auto V14Button = new QRadioButton("+14/-4V");
-    auto V9Button = new QRadioButton("+/-9V");
-    auto V4Button = new QRadioButton("+4/-14V");
+    auto V14Button = new QRadioButton("+10/-4V");
+    auto V9Button = new QRadioButton("+/-7V");
+    auto V4Button = new QRadioButton("+4/-10V");
     if (state->enableVStim) {
         V9Button->setChecked(true);
     } else {
