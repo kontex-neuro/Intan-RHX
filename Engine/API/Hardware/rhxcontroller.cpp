@@ -540,10 +540,16 @@ void RHXController::setSpiLedDisplay(const int* ledArray)
             ledOut += 1 << i;
     }
 
-    if (type == ControllerStimRecordUSB2) {
+    if (type == ControllerStimRecordUSB2) {    
         dev->SetWireInValue(WireInLedDisplay_S_USB2, (ledOut << 8), 0xff00);
     } else if (type == ControllerRecordUSB3) {
-        dev->SetWireInValue(WireInMultiUse, ledOut);
+        // every 2 channel mapping to 1 led
+        int ledOutModified = 0;
+        for (int i = 0; i < 4; ++i) {
+            if (ledArray[2*i] > 0 || ledArray[2*i+1] > 0)
+                ledOutModified += 1 << i;
+        }
+        dev->SetWireInValue(WireInMultiUse, ledOutModified);
     }
 
     dev->UpdateWireIns();
