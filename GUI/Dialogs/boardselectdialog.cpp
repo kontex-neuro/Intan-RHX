@@ -50,13 +50,11 @@
 #include <QSettings>
 #include <QTableWidget>
 #include <QtGlobal>
-#include <array>
-#include <charconv>
 #include <cstdint>
-#include <cstdlib>
 #include <filesystem>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include <ranges>
 
 #include "advancedstartupdialog.h"
 #include "datafilereader.h"
@@ -317,7 +315,7 @@ auto get_playback_board(QWidget *parent, auto launch)
     return std::make_tuple(app_icon, open_file_button, launch_button_widget, launch_properties);
 }
 
-auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info)
+auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info, const XDAQStatus &status)
 {
     auto app_icon = new QTableWidgetItem(
         getIcon(info.model, parent->style(), info.model == XDAQModel::Unknown ? 40 : 80),
@@ -347,16 +345,18 @@ auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info)
     // Report the serial number of this board.
     auto serial_layout = new QHBoxLayout;
     serial_layout->addWidget(new QLabel(parent->tr("Serial Number")));
-    serial_layout->addWidget(new QLabel(QString::fromStdString(info.serial)));
+    serial_layout->addWidget(new QLabel(QString::fromStdString(fmt::format("{}", info.serial))));
     layout->addLayout(serial_layout);
     auto device_widget = new QWidget();
     device_widget->setLayout(layout);
     device_widget->setDisabled(info.model == XDAQModel::Unknown);
 
+    // auto dio32 = info.FPGA_vender.contains("Opal Kelly") ? true : false;
+
     std::shared_ptr<json> launch_properties =
         std::shared_ptr<json>(new json{{"sample_rate", SampleRate30000Hz}, {"stim_step_size", 5}});
     auto launch_button_rhd = new QPushButton(parent->tr("Record (X3R/X6R)"));
-    QObject::connect(launch_button_rhd, &QPushButton::clicked, [launch, info, launch_properties]() {
+    QObject::connect(launch_button_rhd, &QPushButton::clicked, [launch, info, status, launch_properties]() {
         QSettings settings;
         settings.beginGroup("XDAQ");
         auto config = json::parse(info.device_config);
@@ -372,7 +372,7 @@ auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info)
         settings.endGroup();
     });
     auto launch_button_rhs = new QPushButton(parent->tr("Stim-Record (X3SR)"));
-    QObject::connect(launch_button_rhs, &QPushButton::clicked, [launch, info, launch_properties]() {
+    QObject::connect(launch_button_rhs, &QPushButton::clicked, [launch, info, status, launch_properties]() {
         QSettings settings;
         settings.beginGroup("XDAQ");
         auto config = json::parse(info.device_config);
@@ -476,7 +476,7 @@ auto get_demo_board(QWidget *parent, auto launch)
 }
 
 // Create a dialog window for user to select which board's software to initialize.
-BoardSelectDialog::BoardSelectDialog(QWidget *parent, const std::vector<XDAQInfo> &xdaq_infos)
+BoardSelectDialog::BoardSelectDialog(QWidget *parent, const std::vector<XDAQInfo> &xdaq_infos, const std::vector<XDAQStatus> &xdaq_status)
     : QDialog(parent)
 {
     auto launch_panel = new StackedWidget();
@@ -512,7 +512,7 @@ BoardSelectDialog::BoardSelectDialog(QWidget *parent, const std::vector<XDAQInfo
         }
     ));
 
-    for (const auto &info : xdaq_infos) {
+    for (auto&& xdaq : std::ranges::views::zip(xdaq_infos, xdaq_status)) {
         insert_board(get_xdaq_board(
             this,
             [this](AbstractRHXController *controller, StimStepSize step_size) {
@@ -522,21 +522,24 @@ BoardSelectDialog::BoardSelectDialog(QWidget *parent, const std::vector<XDAQInfo
                 settings.endGroup();
                 this->emit launch(controller, step_size, nullptr, use_opencl, false);
             },
-            info
+            std::get<0>(xdaq),
+            std::get<1>(xdaq)
         ));
     }
 
-    insert_board(get_demo_board(
-        this,
-        [this](AbstractRHXController *controller, StimStepSize step_size) {
-            QSettings settings;
-            settings.beginGroup("XDAQ");
-            auto use_opencl = settings.value("useOpenCL", true).toBool();
-            settings.endGroup();
-            this->emit launch(controller, step_size, nullptr, use_opencl, false);
-        }
-    ));
-
+    // TODO: controller->device->start_read_stream(...) error, 
+    // device is nullptr in usbdatathread.cpp when starting as demo mode 
+    // thus, disable demo board temporary
+    // insert_board(get_demo_board(
+    //     this,
+    //     [this](AbstractRHXController *controller, StimStepSize step_size) {
+    //         QSettings settings;
+    //         settings.beginGroup("XDAQ");
+    //         auto use_opencl = settings.value("useOpenCL", true).toBool();
+    //         settings.endGroup();
+    //         this->emit launch(controller, step_size, nullptr, use_opencl, false);
+    //     }
+    // ));
 
     // Make table visible in full (for up to 5 rows... then allow a scroll bar to be used).
     boardTable->setIconSize(QSize(283, 100));

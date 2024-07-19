@@ -41,7 +41,7 @@ class BoardSelectDialog : public QDialog
 {
     Q_OBJECT
 public:
-    BoardSelectDialog(QWidget *parent, const std::vector<XDAQInfo> &xdaq_infos);
+    BoardSelectDialog(QWidget *parent, const std::vector<XDAQInfo> &xdaq_infos, const std::vector<XDAQStatus> &xdaq_status);
 
 signals:
     void launch(
