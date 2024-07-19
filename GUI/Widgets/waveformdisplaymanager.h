@@ -142,9 +142,9 @@ public:
         { return round(sampleRate * ((double)tScaleInMsec_ / 1000.0) / (double)numRefreshZones_); }
 
     inline int getSamplesPerFullRefresh() const { return samplesPerZone * numRefreshZones; }
-//    inline int getSamplesPerFullRefresh(int tScaleInMsec_, int numRefreshZones_) const
-//        { int samplesPerZone_ = round(sampleRate * ((double)tScaleInMsec_ / 1000.0) / (double)numRefreshZones_);
-//          return samplesPerZone_* numRefreshZones_; }
+    // inline int getSamplesPerFullRefresh(int tScaleInMsec_, int numRefreshZones_) const
+    //     { int samplesPerZone_ = round(sampleRate * ((double)tScaleInMsec_ / 1000.0) / (double)numRefreshZones_);
+    //         return samplesPerZone_* numRefreshZones_; }
 
     void singlePlotFullRedrawFinished();
     void singlePlotFullResetFinished();

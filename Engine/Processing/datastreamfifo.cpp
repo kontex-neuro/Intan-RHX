@@ -28,10 +28,13 @@
 //
 //------------------------------------------------------------------------------
 
-#include <iostream>
-#include <cstring>
-#include "rhxglobals.h"
 #include "datastreamfifo.h"
+
+#include <cstring>
+#include <iostream>
+
+#include "rhxglobals.h"
+
 
 using namespace std;
 
@@ -39,37 +42,36 @@ using namespace std;
 // pointerToData(), then a maxReadLength must be defined to allocate extra space beyond the 'end'
 // of the circular buffer to maintain contiguous data arrays during these reads.  If data will only
 // be read using readFromBuffer(), then maxReadLength can be omitted.
-DataStreamFifo::DataStreamFifo(int bufferSize_, int maxReadLength_) :
-    bufferSize(bufferSize_),
-    maxReadLength(maxReadLength_)
+DataStreamFifo::DataStreamFifo(int bufferSize_, int maxReadLength_)
+    : bufferSize(bufferSize_), maxReadLength(maxReadLength_)
 {
     int bufferSizeWithExtra = bufferSize + maxReadLength;
     memoryNeededGB = sizeof(uint16_t) * bufferSizeWithExtra / (1024.0 * 1024.0 * 1024.0);
-    cout << "DataStreamFifo: Allocating " << 2 * bufferSizeWithExtra / 1.0e6 << " MBytes for FIFO buffer." << '\n';
+    cout << "DataStreamFifo: Allocating " << 2 * bufferSizeWithExtra / 1.0e6
+         << " MBytes for FIFO buffer." << '\n';
     buffer = nullptr;
 
     memoryAllocated = true;
     try {
-        buffer = new uint16_t [bufferSizeWithExtra];
-    } catch (std::bad_alloc&) {
+        buffer = new uint16_t[bufferSizeWithExtra];
+    } catch (std::bad_alloc &) {
         memoryAllocated = false;
-        cerr << "Error: DataStreamFifo constructor could not allocate " << memoryNeededGB << " GB of memory." << '\n';
+        cerr << "Error: DataStreamFifo constructor could not allocate " << memoryNeededGB
+             << " GB of memory." << '\n';
     }
 
     if (!buffer) {
-        cerr << "Error: DataStreamFifo constructor could not allocate " << 2 * bufferSizeWithExtra << " bytes of memory." << '\n';
+        cerr << "Error: DataStreamFifo constructor could not allocate " << 2 * bufferSizeWithExtra
+             << " bytes of memory." << '\n';
     }
     resetBuffer();
 }
 
-DataStreamFifo::~DataStreamFifo()
-{
-    delete [] buffer;
-}
+DataStreamFifo::~DataStreamFifo() { delete[] buffer; }
 
-bool DataStreamFifo::writeToBuffer(const uint8_t* dataSource, int numWords)
+bool DataStreamFifo::writeToBuffer(const uint8_t *dataSource, int numWords)
 {
-    const uint8_t* pRead = dataSource;
+    const uint8_t *pRead = dataSource;
     uint16_t highByte, lowByte;
 
     if (freeWords.tryAcquire(numWords)) {
@@ -80,6 +82,7 @@ bool DataStreamFifo::writeToBuffer(const uint8_t* dataSource, int numWords)
             highByte = (uint16_t) (*pRead);
             pRead++;
             buffer[bufferWriteIndex++] = lowByte | (highByte << 8);
+            // fmt::println("buffer[{}] = {}", bufferWriteIndex, buffer[bufferWriteIndex - 1]);
             if (bufferWriteIndex >= bufferSize) {
                 bufferWriteIndex = 0;
             }
@@ -95,17 +98,14 @@ bool DataStreamFifo::writeToBuffer(const uint8_t* dataSource, int numWords)
 
 bool DataStreamFifo::dataAvailable(unsigned int numWords) const
 {
-    return ((unsigned int)(usedWords.available()) >= numWords);
+    return ((unsigned int) (usedWords.available()) >= numWords);
 }
 
-int DataStreamFifo::wordsAvailable() const
-{
-    return usedWords.available();
-}
+int DataStreamFifo::wordsAvailable() const { return usedWords.available(); }
 
 double DataStreamFifo::percentFull() const
 {
-    return 100.0 * ((double)usedWords.available() / (double)bufferSize);
+    return 100.0 * ((double) usedWords.available() / (double) bufferSize);
 }
 
 // Copy numWords of data from the circular buffer to memory location dataSink.
@@ -134,10 +134,10 @@ bool DataStreamFifo::readFromBuffer(uint16_t *dataSink, int numWords)
 }
 
 // Alternate method of reading data: Return a pointer to the data in the circular buffer, extending
-// the data beyond the 'end' of the buffer if necessary to ensure a contiguous array.  We assume that
-// the user will call freeData(numWordsToRead) after reading the data at this location.
-// This method returns nullptr if there is insufficient data in the circular buffer.
-uint16_t* DataStreamFifo::pointerToData(int numWordsBeToRead_)
+// the data beyond the 'end' of the buffer if necessary to ensure a contiguous array.  We assume
+// that the user will call freeData(numWordsToRead) after reading the data at this location. This
+// method returns nullptr if there is insufficient data in the circular buffer.
+uint16_t *DataStreamFifo::pointerToData(int numWordsBeToRead_)
 {
     numWordsToBeRead = numWordsBeToRead_;
     if (numWordsToBeRead > maxReadLength) {
@@ -148,13 +148,14 @@ uint16_t* DataStreamFifo::pointerToData(int numWordsBeToRead_)
         return nullptr;  // not enough data available to read
     }
     if (bufferReadIndex + numWordsToBeRead > bufferSize) {
-        // Our read will overrun the end of the buffer; copy data to the extra space allocated after the
-        // 'end' of the buffer to ensure a contiguous array of data for reading.
-//        cout << "DataStreamFifo::pointerToData: copying data to ensure contiguous array of data for reading." << EndOfLine;
+        // Our read will overrun the end of the buffer; copy data to the extra space allocated after
+        // the 'end' of the buffer to ensure a contiguous array of data for reading. cout <<
+        // "DataStreamFifo::pointerToData: copying data to ensure contiguous array of data for
+        // reading." << EndOfLine;
         int extraWords = bufferReadIndex + numWordsToBeRead - bufferSize;
         std::memcpy(&buffer[bufferSize], &buffer[0], BytesPerWord * extraWords);
-        // Note: You can avoid this potentially time-consuming memory copy by always reading the same
-        // number of words, and making the buffer size an integer multiple of this number.
+        // Note: You can avoid this potentially time-consuming memory copy by always reading the
+        // same number of words, and making the buffer size an integer multiple of this number.
     }
 
     return &buffer[bufferReadIndex];
@@ -164,7 +165,8 @@ uint16_t* DataStreamFifo::pointerToData(int numWordsBeToRead_)
 // the data returned by that pointer.
 void DataStreamFifo::freeData()
 {
-    bufferReadIndex = (bufferReadIndex + numWordsToBeRead) % bufferSize; // okay to use % operator since first quantity must be positive
+    bufferReadIndex = (bufferReadIndex + numWordsToBeRead) %
+                      bufferSize;  // okay to use % operator since first quantity must be positive
     freeWords.release(numWordsToBeRead);
 }
 
@@ -177,4 +179,3 @@ void DataStreamFifo::resetBuffer()
     freeWords.release(bufferSize);
     numWordsToBeRead = 0;
 }
-

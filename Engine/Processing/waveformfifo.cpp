@@ -246,7 +246,7 @@ void WaveformFifo::commitNewData()
         // Note: You can avoid this potentially time-consuming memory copy by always writing the same
         // number of samples, and making the buffer size an integer multiple of this number.
 
-        //cout << "WaveformFifo::commitNewData: copying 'overhanging' data to beginning of buffer." << EndOfLine;
+        // cout << "WaveformFifo::commitNewData: copying 'overhanging' data to beginning of buffer." << EndOfLine;
 
         std::memcpy(timeStampBuffer, &timeStampBuffer[bufferSize], sizeof(uint32_t) * (bufferWriteIndex - bufferSize));
 
@@ -777,10 +777,10 @@ void WaveformFifo::freeOldData(Reader reader)
         cout << "WaveformFifo: Running out of space!  Consumer number " << minIndex << " is not reading data quickly enough." << '\n';
     }
 
-//    cout << reader << ": " << minDistanceNew - minDistanceOld << EndOfLine;
+    // cout << "reader = " << reader << ": " << minDistanceNew - minDistanceOld << std::endl;
     freeWords.release(minDistanceNew - minDistanceOld);
-//    cout << reader << ":freeWords.release(" << minDistanceNew - minDistanceOld << "); Waveform FIFO is " << percentFull() << "% full." << EndOfLine;
-//    cout << "freeWords.available() = " << freeWords.available() << EndOfLine;
+    // cout << "reader = " << reader << ":freeWords.release(" << minDistanceNew - minDistanceOld << "); Waveform FIFO is " << percentFull() << "% full." << std::endl;
+    // cout << "freeWords.available() = " << freeWords.available() << std::endl;
 }
 
 // Returns number of 'old' words in memory, not including newly written words.
@@ -795,7 +795,7 @@ int WaveformFifo::numWordsInMemory(Reader reader) const
 
 double WaveformFifo::percentFull() const
 {
-//    return 100.0 * (1.0 - ((double)freeWords.available() / (double)bufferSize));
+    // return 100.0 * (1.0 - ((double)freeWords.available() / (double)bufferSize));
     return max(100.0 * (1.0 - ((double)freeWords.available() / (double)(bufferSize - memorySize))), 0.0);
 }
 

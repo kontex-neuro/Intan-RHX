@@ -28,18 +28,22 @@
 //
 //------------------------------------------------------------------------------
 
-#include <QFileInfo>
-#include <iostream>
-#include <chrono>
-#include <thread>
-#include "rhxglobals.h"
-#include "datafilereader.h"
 #include "fileperchannelmanager.h"
 
-FilePerChannelManager::FilePerChannelManager(const QString& fileName_, IntanHeaderInfo* info_, bool& canReadFile,
-                                             QString& report, DataFileReader* parent) :
-    DataFileManager(fileName_, info_, parent),
-    timeFile(nullptr)
+#include <QFileInfo>
+#include <chrono>
+#include <iostream>
+#include <thread>
+
+#include "datafilereader.h"
+#include "rhxglobals.h"
+
+
+FilePerChannelManager::FilePerChannelManager(
+    const QString &fileName_, IntanHeaderInfo *info_, bool &canReadFile, QString &report,
+    DataFileReader *parent
+)
+    : DataFileManager(fileName_, info_, parent), timeFile(nullptr)
 {
     // TODO - somehow keep jumpToPosition dialog up-to-date
     QFileInfo fileInfo(fileName);
@@ -88,12 +92,13 @@ FilePerChannelManager::FilePerChannelManager(const QString& fileName_, IntanHead
 
     QString name;
     for (int stream = 0; stream < numDataStreams; ++stream) {
-        for (int channel = 0; channel < channelsPerStream; ++ channel) {
+        for (int channel = 0; channel < channelsPerStream; ++channel) {
             if (amplifierWasSaved[stream][channel]) {
                 name = info->getChannelName(AmplifierSignal, stream, channel);
                 amplifierFiles[stream][channel] = new DataFile(path + "/" + "amp-" + name + ".dat");
                 if (!amplifierFiles[stream][channel]->isOpen()) {
-                    report += "Warning: Could not open " + amplifierFiles[stream][channel]->getFileName() + EndOfLine;
+                    report += "Warning: Could not open " +
+                              amplifierFiles[stream][channel]->getFileName() + EndOfLine;
                     delete amplifierFiles[stream][channel];
                     amplifierFiles[stream][channel] = nullptr;
                     amplifierWasSaved[stream][channel] = false;
@@ -108,21 +113,25 @@ FilePerChannelManager::FilePerChannelManager(const QString& fileName_, IntanHead
         }
     }
 
-    // Always try opening dc files since the old RHS software does not report dcAmplifierDataSaved reliably.
-    // (dcAmplifierDataSaved is always marked 'false' in non-traditional-Intan file formats.)
-    info->dcAmplifierDataSaved = false;     // Assume no dc files are present until we find one.
+    // Always try opening dc files since the old RHS software does not report dcAmplifierDataSaved
+    // reliably. (dcAmplifierDataSaved is always marked 'false' in non-traditional-Intan file
+    // formats.)
+    info->dcAmplifierDataSaved = false;  // Assume no dc files are present until we find one.
     if (info->controllerType == ControllerStimRecord) {
         for (int stream = 0; stream < numDataStreams; ++stream) {
-            for (int channel = 0; channel < channelsPerStream; ++ channel) {
+            for (int channel = 0; channel < channelsPerStream; ++channel) {
                 name = info->getChannelName(AmplifierSignal, stream, channel);
-                dcAmplifierFiles[stream][channel] = new DataFile(path + "/" + "dc-" + name + ".dat");
+                dcAmplifierFiles[stream][channel] =
+                    new DataFile(path + "/" + "dc-" + name + ".dat");
                 if (!dcAmplifierFiles[stream][channel]->isOpen()) {
-                    report += "Warning: Could not open " + dcAmplifierFiles[stream][channel]->getFileName() + EndOfLine;
+                    report += "Warning: Could not open " +
+                              dcAmplifierFiles[stream][channel]->getFileName() + EndOfLine;
                     delete dcAmplifierFiles[stream][channel];
                     dcAmplifierFiles[stream][channel] = nullptr;
                     dcAmplifierWasSaved[stream][channel] = false;
                 } else {
-                    info->dcAmplifierDataSaved = true;  // Now set to true if we find at least one dc data file.
+                    info->dcAmplifierDataSaved =
+                        true;  // Now set to true if we find at least one dc data file.
                     dcAmplifierWasSaved[stream][channel] = true;
                     int64_t numAmpSamples = dcAmplifierFiles[stream][channel]->fileSize() / 2;
                     if (numAmpSamples < totalNumSamples) {
@@ -136,12 +145,13 @@ FilePerChannelManager::FilePerChannelManager(const QString& fileName_, IntanHead
 
     if (info->stimDataPresent) {
         for (int stream = 0; stream < numDataStreams; ++stream) {
-            for (int channel = 0; channel < channelsPerStream; ++ channel) {
+            for (int channel = 0; channel < channelsPerStream; ++channel) {
                 if (stimWasSaved[stream][channel]) {
                     name = info->getChannelName(AmplifierSignal, stream, channel);
                     stimFiles[stream][channel] = new DataFile(path + "/" + "stim-" + name + ".dat");
                     if (!stimFiles[stream][channel]->isOpen()) {
-                        report += "Warning: Could not open " + stimFiles[stream][channel]->getFileName() + EndOfLine;
+                        report += "Warning: Could not open " +
+                                  stimFiles[stream][channel]->getFileName() + EndOfLine;
                         delete stimFiles[stream][channel];
                         stimFiles[stream][channel] = nullptr;
                         stimWasSaved[stream][channel] = false;
@@ -162,12 +172,13 @@ FilePerChannelManager::FilePerChannelManager(const QString& fileName_, IntanHead
     }
 
     for (int stream = 0; stream < numDataStreams; ++stream) {
-        for (int channel = 0; channel < 3; ++ channel) {
+        for (int channel = 0; channel < 3; ++channel) {
             if (auxInputWasSaved[stream][channel]) {
                 name = info->getChannelName(AuxInputSignal, stream, channel);
                 auxInputFiles[stream][channel] = new DataFile(path + "/" + "aux-" + name + ".dat");
                 if (!auxInputFiles[stream][channel]->isOpen()) {
-                    report += "Warning: Could not open " + auxInputFiles[stream][channel]->getFileName() + EndOfLine;
+                    report += "Warning: Could not open " +
+                              auxInputFiles[stream][channel]->getFileName() + EndOfLine;
                     delete auxInputFiles[stream][channel];
                     auxInputFiles[stream][channel] = nullptr;
                     auxInputWasSaved[stream][channel] = false;
@@ -187,7 +198,8 @@ FilePerChannelManager::FilePerChannelManager(const QString& fileName_, IntanHead
             name = info->getChannelName(SupplyVoltageSignal, stream, 0);
             supplyVoltageFiles[stream] = new DataFile(path + "/" + "vdd-" + name + ".dat");
             if (!supplyVoltageFiles[stream]->isOpen()) {
-                report += "Warning: Could not open " + supplyVoltageFiles[stream]->getFileName() + EndOfLine;
+                report += "Warning: Could not open " + supplyVoltageFiles[stream]->getFileName() +
+                          EndOfLine;
                 delete supplyVoltageFiles[stream];
                 supplyVoltageFiles[stream] = nullptr;
                 supplyVoltageWasSaved[stream] = false;
@@ -206,7 +218,8 @@ FilePerChannelManager::FilePerChannelManager(const QString& fileName_, IntanHead
             name = info->getChannelName(BoardAdcSignal, 0, channel);
             analogInFiles[channel] = new DataFile(path + "/" + "board-" + name + ".dat");
             if (!analogInFiles[channel]->isOpen()) {
-                report += "Warning: Could not open " + analogInFiles[channel]->getFileName() + EndOfLine;
+                report +=
+                    "Warning: Could not open " + analogInFiles[channel]->getFileName() + EndOfLine;
                 delete analogInFiles[channel];
                 analogInFiles[channel] = nullptr;
                 analogInWasSaved[channel] = false;
@@ -244,7 +257,8 @@ FilePerChannelManager::FilePerChannelManager(const QString& fileName_, IntanHead
             name = info->getChannelName(BoardDigitalInSignal, 0, channel);
             digitalInFiles[channel] = new DataFile(path + "/" + "board-" + name + ".dat");
             if (!digitalInFiles[channel]->isOpen()) {
-                report += "Warning: Could not open " + digitalInFiles[channel]->getFileName() + EndOfLine;
+                report +=
+                    "Warning: Could not open " + digitalInFiles[channel]->getFileName() + EndOfLine;
                 delete digitalInFiles[channel];
                 digitalInFiles[channel] = nullptr;
                 digitalInWasSaved[channel] = false;
@@ -263,7 +277,8 @@ FilePerChannelManager::FilePerChannelManager(const QString& fileName_, IntanHead
             name = info->getChannelName(BoardDigitalOutSignal, 0, channel);
             digitalOutFiles[channel] = new DataFile(path + "/" + "board-" + name + ".dat");
             if (!digitalOutFiles[channel]->isOpen()) {
-                report += "Warning: Could not open " + digitalOutFiles[channel]->getFileName() + EndOfLine;
+                report += "Warning: Could not open " + digitalOutFiles[channel]->getFileName() +
+                          EndOfLine;
                 delete digitalOutFiles[channel];
                 digitalOutFiles[channel] = nullptr;
                 digitalOutWasSaved[channel] = false;
@@ -282,7 +297,9 @@ FilePerChannelManager::FilePerChannelManager(const QString& fileName_, IntanHead
     }
 
     report += "Total recording time: " + timeString(totalNumSamples) + EndOfLine;
-    report += "If the recording is still underway, data written beyond this point can still be read." + EndOfLine;
+    report +=
+        "If the recording is still underway, data written beyond this point can still be read." +
+        EndOfLine;
 
     firstTimeStamp = timeFile->readTimeStamp();
     lastTimeStamp = firstTimeStamp + totalNumSamples - 1;
@@ -291,7 +308,7 @@ FilePerChannelManager::FilePerChannelManager(const QString& fileName_, IntanHead
     readIndex = 0;
 
     // Read and store contents of live notes file, if present.
-    QFile* liveNotesFile = openLiveNotes();
+    QFile *liveNotesFile = openLiveNotes();
     if (liveNotesFile) {
         readLiveNotes(liveNotesFile);
         liveNotesFile->close();
@@ -344,7 +361,7 @@ FilePerChannelManager::~FilePerChannelManager()
 void FilePerChannelManager::loadDataFrame()
 {
     // Recalculate totalNumSamples and lastTimestamp at each load.
-    //updateEndOfData();
+    // updateEndOfData();
 
     int numDataStreams = info->numDataStreams;
     int channelsPerStream = RHXDataBlock::channelsPerStream(info->controllerType);
@@ -354,7 +371,8 @@ void FilePerChannelManager::loadDataFrame()
     for (int i = 0; i < numDataStreams; ++i) {
         for (int j = 0; j < channelsPerStream; ++j) {
             if (amplifierWasSaved[i][j]) {
-                amplifierData[i][j] = amplifierFiles[i][j]->readWord() ^ 0x8000U;  // convert from two's complement to offset
+                amplifierData[i][j] = amplifierFiles[i][j]->readWord() ^
+                                      0x8000U;  // convert from two's complement to offset
             } else {
                 amplifierData[i][j] = 32768U;
             }
@@ -386,12 +404,16 @@ void FilePerChannelManager::loadDataFrame()
                         if (stimData[i][j].stimPol != 0) {
                             if (!posStimAmplitudeFound[i][j]) {
                                 posStimAmplitudeFound[i][j] = true;
-                                dataFileReader->recordPosStimAmplitude(i, j, stimData[i][j].amplitude);
+                                dataFileReader->recordPosStimAmplitude(
+                                    i, j, stimData[i][j].amplitude
+                                );
                             }
                         } else {
                             if (!negStimAmplitudeFound[i][j]) {
                                 negStimAmplitudeFound[i][j] = true;
-                                dataFileReader->recordNegStimAmplitude(i, j, stimData[i][j].amplitude);
+                                dataFileReader->recordNegStimAmplitude(
+                                    i, j, stimData[i][j].amplitude
+                                );
                             }
                         }
                     }
@@ -445,11 +467,11 @@ void FilePerChannelManager::loadDataFrame()
     }
 }
 
-QFile* FilePerChannelManager::openLiveNotes()
+QFile *FilePerChannelManager::openLiveNotes()
 {
     QFileInfo fileInfo(fileName);
     QString path = fileInfo.path();
-    QFile* liveNotesFile = new QFile(path + "/" + "notes.txt");
+    QFile *liveNotesFile = new QFile(path + "/" + "notes.txt");
     if (!liveNotesFile->open(QIODevice::ReadOnly)) {
         delete liveNotesFile;
         liveNotesFile = nullptr;
@@ -461,7 +483,7 @@ int64_t FilePerChannelManager::jumpToTimeStamp(int64_t target)
 {
     if (target < firstTimeStamp) target = firstTimeStamp;
     if (target > lastTimeStamp) target = lastTimeStamp;
-    target -= firstTimeStamp;   // firstTimeStamp can be negative in triggered recordings.
+    target -= firstTimeStamp;  // firstTimeStamp can be negative in triggered recordings.
 
     int numDataStreams = info->numDataStreams;
     int channelsPerStream = RHXDataBlock::channelsPerStream(info->controllerType);
@@ -504,13 +526,15 @@ int64_t FilePerChannelManager::jumpToTimeStamp(int64_t target)
     }
 
     readIndex = target;
-    return readIndex + firstTimeStamp;  // Return actual timestamp jumped to, which should be same as target.
+    return readIndex +
+           firstTimeStamp;  // Return actual timestamp jumped to, which should be same as target.
 }
 
 // Update totalNumSamples and lastTimeStamp with the end of the (for now, just) amplifier data file
 void FilePerChannelManager::updateEndOfData()
 {
-    // TODO - polish up to get the actual end of all data, not just assume from end of shortest amp file
+    // TODO - polish up to get the actual end of all data, not just assume from end of shortest amp
+    // file
     int tempTotalNumSamples = 0;
     for (int stream = 0; stream < info->numDataStreams; ++stream) {
         for (int channel = 0; channel < amplifierFiles[stream].size(); ++channel) {
@@ -532,23 +556,25 @@ int64_t FilePerChannelManager::getLastTimeStamp()
     return lastTimeStamp;
 }
 
-long FilePerChannelManager::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
+long FilePerChannelManager::readDataBlocksRaw(int numBlocks, uint8_t *buffer)
 {
     // Store these values locally to speed up execution below.
     ControllerType type = info->controllerType;
-    int samplesPerDataBlock = RHXDataBlock::samplesPerDataBlock(type);  // Use RHX standard of samples per data block, not file's
+    int samplesPerDataBlock = RHXDataBlock::samplesPerDataBlock(type
+    );  // Use RHX standard of samples per data block, not file's
     int numDataStreams = info->numDataStreams;
     int channelsPerStream = RHXDataBlock::channelsPerStream(type);
 
     updateEndOfData();
-//    // ORIGINAL - STOP AS NORMAL WHEN EOF IS REACHED
-//    if (readIndex + numBlocks * samplesPerDataBlock > totalNumSamples) {
-//        emit dataFileReader->sendSetCommand("RunMode", "Stop");
-//        dataFileReader->setStatusBarEOF();
-//        return 0;
-//    }
+    //    // ORIGINAL - STOP AS NORMAL WHEN EOF IS REACHED
+    //    if (readIndex + numBlocks * samplesPerDataBlock > totalNumSamples) {
+    //        emit dataFileReader->sendSetCommand("RunMode", "Stop");
+    //        dataFileReader->setStatusBarEOF();
+    //        return 0;
+    //    }
 
-    // If liveReading, determine if readIndex is at least 1 second behind real time. If it is, boost playback speed to 5.0
+    // If liveReading, determine if readIndex is at least 1 second behind real time. If it is, boost
+    // playback speed to 5.0
     if (dataFileReader->getLive() && dataFileReader->getPlaybackSpeed() < 5.0) {
         int oneSecondOfSamples = (int) AbstractRHXController::getSampleRate(info->sampleRate);
         if (readIndex + numBlocks * samplesPerDataBlock < totalNumSamples - oneSecondOfSamples) {
@@ -556,16 +582,18 @@ long FilePerChannelManager::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
         }
     }
 
-    // When EOF is reached, keep updating end of data, trying continually for 2 seconds. If no change, then stop as normal
-    // If enough data is found after updating, then set 1.0 playback speed and set runmode on.
+    // When EOF is reached, keep updating end of data, trying continually for 2 seconds. If no
+    // change, then stop as normal If enough data is found after updating, then set 1.0 playback
+    // speed and set runmode on.
     if (readIndex + numBlocks * samplesPerDataBlock > totalNumSamples) {
-        //emit dataFileReader->sendSetCommand("RunMode", "Stop");
+        // emit dataFileReader->sendSetCommand("RunMode", "Stop");
         QElapsedTimer shortTimer;
         shortTimer.start();
         bool enoughDataFound = false;
         // Limit updateEndOfData() call frequency to limit file-size pings
         while (!shortTimer.hasExpired(2000) && !enoughDataFound) {
-            std::this_thread::sleep_for(std::chrono::microseconds(2000)); // Only repeat checking data size after waiting 2 ms
+            std::this_thread::sleep_for(std::chrono::microseconds(2000)
+            );  // Only repeat checking data size after waiting 2 ms
             updateEndOfData();
             enoughDataFound = readIndex + numBlocks * samplesPerDataBlock <= totalNumSamples;
         }
@@ -583,7 +611,7 @@ long FilePerChannelManager::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
     }
 
     uint16_t word;
-    uint8_t* pWrite = buffer;
+    uint8_t *pWrite = buffer;
     for (int block = 0; block < numBlocks; ++block) {
         for (int sample = 0; sample < samplesPerDataBlock; ++sample) {
             // Write header magic number.
@@ -622,18 +650,12 @@ long FilePerChannelManager::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
                                 if (sample == 124) {
                                     word = supplyVoltageData[stream];
                                 } else {
-                                    word = 0x0049U; // ROM register 40 read result
+                                    word = 0x0049U;  // ROM register 40 read result
                                 }
                                 break;
-                            case 1:
-                                word = auxInputData[stream][0];
-                                break;
-                            case 2:
-                                word = auxInputData[stream][1];
-                                break;
-                            case 3:
-                                word = auxInputData[stream][2];
-                                break;
+                            case 1: word = auxInputData[stream][0]; break;
+                            case 2: word = auxInputData[stream][1]; break;
+                            case 3: word = auxInputData[stream][2]; break;
                             }
                         }
                         pWrite[0] = (word & 0x00ffU) >> 0;
@@ -656,15 +678,24 @@ long FilePerChannelManager::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
                 for (int channel = 1; channel < 4; ++channel) {
                     for (int stream = 0; stream < numDataStreams; ++stream) {
                         if (channel == 2) {  // Write compliance limit data.
-                            pWrite[0] = (stimData[stream][7].complianceLimit << 7) | (stimData[stream][6].complianceLimit << 6) |
-                                        (stimData[stream][5].complianceLimit << 5) | (stimData[stream][4].complianceLimit << 4) |
-                                        (stimData[stream][3].complianceLimit << 3) | (stimData[stream][2].complianceLimit << 2) |
-                                        (stimData[stream][1].complianceLimit << 1) | (stimData[stream][0].complianceLimit << 0);
-                            pWrite[1] = (stimData[stream][15].complianceLimit << 7) | (stimData[stream][14].complianceLimit << 6) |
-                                        (stimData[stream][13].complianceLimit << 5) | (stimData[stream][12].complianceLimit << 4) |
-                                        (stimData[stream][11].complianceLimit << 3) | (stimData[stream][10].complianceLimit << 2) |
-                                        (stimData[stream][ 9].complianceLimit << 1) | (stimData[stream][ 8].complianceLimit << 0);
-                            pWrite[2] = 0;  // All zeros in MSBs signals read from register 40 (compliance limit)
+                            pWrite[0] = (stimData[stream][7].complianceLimit << 7) |
+                                        (stimData[stream][6].complianceLimit << 6) |
+                                        (stimData[stream][5].complianceLimit << 5) |
+                                        (stimData[stream][4].complianceLimit << 4) |
+                                        (stimData[stream][3].complianceLimit << 3) |
+                                        (stimData[stream][2].complianceLimit << 2) |
+                                        (stimData[stream][1].complianceLimit << 1) |
+                                        (stimData[stream][0].complianceLimit << 0);
+                            pWrite[1] = (stimData[stream][15].complianceLimit << 7) |
+                                        (stimData[stream][14].complianceLimit << 6) |
+                                        (stimData[stream][13].complianceLimit << 5) |
+                                        (stimData[stream][12].complianceLimit << 4) |
+                                        (stimData[stream][11].complianceLimit << 3) |
+                                        (stimData[stream][10].complianceLimit << 2) |
+                                        (stimData[stream][9].complianceLimit << 1) |
+                                        (stimData[stream][8].complianceLimit << 0);
+                            pWrite[2] = 0;  // All zeros in MSBs signals read from register 40
+                                            // (compliance limit)
                             pWrite[3] = 0;
                         } else {
                             pWrite[0] = 0;
@@ -715,50 +746,70 @@ long FilePerChannelManager::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
             if (type == ControllerStimRecord) {
                 // Write stimulation on/off data.
                 for (int stream = 0; stream < numDataStreams; ++stream) {
-                    pWrite[0] = (stimData[stream][7].stimOn << 7) | (stimData[stream][6].stimOn << 6) |
-                                (stimData[stream][5].stimOn << 5) | (stimData[stream][4].stimOn << 4) |
-                                (stimData[stream][3].stimOn << 3) | (stimData[stream][2].stimOn << 2) |
-                                (stimData[stream][1].stimOn << 1) | (stimData[stream][0].stimOn << 0);
-                    pWrite[1] = (stimData[stream][15].stimOn << 7) | (stimData[stream][14].stimOn << 6) |
-                                (stimData[stream][13].stimOn << 5) | (stimData[stream][12].stimOn << 4) |
-                                (stimData[stream][11].stimOn << 3) | (stimData[stream][10].stimOn << 2) |
-                                (stimData[stream][ 9].stimOn << 1) | (stimData[stream][ 8].stimOn << 0);
+                    pWrite[0] =
+                        (stimData[stream][7].stimOn << 7) | (stimData[stream][6].stimOn << 6) |
+                        (stimData[stream][5].stimOn << 5) | (stimData[stream][4].stimOn << 4) |
+                        (stimData[stream][3].stimOn << 3) | (stimData[stream][2].stimOn << 2) |
+                        (stimData[stream][1].stimOn << 1) | (stimData[stream][0].stimOn << 0);
+                    pWrite[1] =
+                        (stimData[stream][15].stimOn << 7) | (stimData[stream][14].stimOn << 6) |
+                        (stimData[stream][13].stimOn << 5) | (stimData[stream][12].stimOn << 4) |
+                        (stimData[stream][11].stimOn << 3) | (stimData[stream][10].stimOn << 2) |
+                        (stimData[stream][9].stimOn << 1) | (stimData[stream][8].stimOn << 0);
                     pWrite += 2;
                 }
                 // Write stimulation polarity data.
                 for (int stream = 0; stream < numDataStreams; ++stream) {
-                    pWrite[0] = (stimData[stream][7].stimPol << 7) | (stimData[stream][6].stimPol << 6) |
-                                (stimData[stream][5].stimPol << 5) | (stimData[stream][4].stimPol << 4) |
-                                (stimData[stream][3].stimPol << 3) | (stimData[stream][2].stimPol << 2) |
-                                (stimData[stream][1].stimPol << 1) | (stimData[stream][0].stimPol << 0);
-                    pWrite[1] = (stimData[stream][15].stimPol << 7) | (stimData[stream][14].stimPol << 6) |
-                                (stimData[stream][13].stimPol << 5) | (stimData[stream][12].stimPol << 4) |
-                                (stimData[stream][11].stimPol << 3) | (stimData[stream][10].stimPol << 2) |
-                                (stimData[stream][ 9].stimPol << 1) | (stimData[stream][ 8].stimPol << 0);
+                    pWrite[0] =
+                        (stimData[stream][7].stimPol << 7) | (stimData[stream][6].stimPol << 6) |
+                        (stimData[stream][5].stimPol << 5) | (stimData[stream][4].stimPol << 4) |
+                        (stimData[stream][3].stimPol << 3) | (stimData[stream][2].stimPol << 2) |
+                        (stimData[stream][1].stimPol << 1) | (stimData[stream][0].stimPol << 0);
+                    pWrite[1] =
+                        (stimData[stream][15].stimPol << 7) | (stimData[stream][14].stimPol << 6) |
+                        (stimData[stream][13].stimPol << 5) | (stimData[stream][12].stimPol << 4) |
+                        (stimData[stream][11].stimPol << 3) | (stimData[stream][10].stimPol << 2) |
+                        (stimData[stream][9].stimPol << 1) | (stimData[stream][8].stimPol << 0);
                     pWrite += 2;
                 }
                 // Write amplifier settle data.
                 for (int stream = 0; stream < numDataStreams; ++stream) {
-                    pWrite[0] = (stimData[stream][7].ampSettle << 7) | (stimData[stream][6].ampSettle << 6) |
-                                (stimData[stream][5].ampSettle << 5) | (stimData[stream][4].ampSettle << 4) |
-                                (stimData[stream][3].ampSettle << 3) | (stimData[stream][2].ampSettle << 2) |
-                                (stimData[stream][1].ampSettle << 1) | (stimData[stream][0].ampSettle << 0);
-                    pWrite[1] = (stimData[stream][15].ampSettle << 7) | (stimData[stream][14].ampSettle << 6) |
-                                (stimData[stream][13].ampSettle << 5) | (stimData[stream][12].ampSettle << 4) |
-                                (stimData[stream][11].ampSettle << 3) | (stimData[stream][10].ampSettle << 2) |
-                                (stimData[stream][ 9].ampSettle << 1) | (stimData[stream][ 8].ampSettle << 0);
+                    pWrite[0] = (stimData[stream][7].ampSettle << 7) |
+                                (stimData[stream][6].ampSettle << 6) |
+                                (stimData[stream][5].ampSettle << 5) |
+                                (stimData[stream][4].ampSettle << 4) |
+                                (stimData[stream][3].ampSettle << 3) |
+                                (stimData[stream][2].ampSettle << 2) |
+                                (stimData[stream][1].ampSettle << 1) |
+                                (stimData[stream][0].ampSettle << 0);
+                    pWrite[1] = (stimData[stream][15].ampSettle << 7) |
+                                (stimData[stream][14].ampSettle << 6) |
+                                (stimData[stream][13].ampSettle << 5) |
+                                (stimData[stream][12].ampSettle << 4) |
+                                (stimData[stream][11].ampSettle << 3) |
+                                (stimData[stream][10].ampSettle << 2) |
+                                (stimData[stream][9].ampSettle << 1) |
+                                (stimData[stream][8].ampSettle << 0);
                     pWrite += 2;
                 }
                 // Write charge recovery data.
                 for (int stream = 0; stream < numDataStreams; ++stream) {
-                    pWrite[0] = (stimData[stream][7].chargeRecov << 7) | (stimData[stream][6].chargeRecov << 6) |
-                                (stimData[stream][5].chargeRecov << 5) | (stimData[stream][4].chargeRecov << 4) |
-                                (stimData[stream][3].chargeRecov << 3) | (stimData[stream][2].chargeRecov << 2) |
-                                (stimData[stream][1].chargeRecov << 1) | (stimData[stream][0].chargeRecov << 0);
-                    pWrite[1] = (stimData[stream][15].chargeRecov << 7) | (stimData[stream][14].chargeRecov << 6) |
-                                (stimData[stream][13].chargeRecov << 5) | (stimData[stream][12].chargeRecov << 4) |
-                                (stimData[stream][11].chargeRecov << 3) | (stimData[stream][10].chargeRecov << 2) |
-                                (stimData[stream][ 9].chargeRecov << 1) | (stimData[stream][ 8].chargeRecov << 0);
+                    pWrite[0] = (stimData[stream][7].chargeRecov << 7) |
+                                (stimData[stream][6].chargeRecov << 6) |
+                                (stimData[stream][5].chargeRecov << 5) |
+                                (stimData[stream][4].chargeRecov << 4) |
+                                (stimData[stream][3].chargeRecov << 3) |
+                                (stimData[stream][2].chargeRecov << 2) |
+                                (stimData[stream][1].chargeRecov << 1) |
+                                (stimData[stream][0].chargeRecov << 0);
+                    pWrite[1] = (stimData[stream][15].chargeRecov << 7) |
+                                (stimData[stream][14].chargeRecov << 6) |
+                                (stimData[stream][13].chargeRecov << 5) |
+                                (stimData[stream][12].chargeRecov << 4) |
+                                (stimData[stream][11].chargeRecov << 3) |
+                                (stimData[stream][10].chargeRecov << 2) |
+                                (stimData[stream][9].chargeRecov << 1) |
+                                (stimData[stream][8].chargeRecov << 0);
                     pWrite += 2;
                 }
             }

@@ -28,7 +28,6 @@
 //
 //------------------------------------------------------------------------------
 
-#include <limits>
 #include "controllerinterface.h"
 #include "waveformfifo.h"
 #include "waveformselectdialog.h"
@@ -92,11 +91,11 @@ MultiWaveformPlot::MultiWaveformPlot(int columnIndex_, WaveformDisplayManager* w
     labelWidthFilter[2] = labelFontMetrics->horizontalAdvance("WIDE");
 
     // TEMP:
-//    cout << "labelHeight = " << labelHeight << EndOfLine;
-//    cout << "labelWidth[1] = " << labelWidth[1] << EndOfLine;
-//    cout << "labelWidth[2] = " << labelWidth[2] << EndOfLine;
-//    cout << "labelWidthFilter[1] = " << labelWidthFilter[1] << EndOfLine;
-//    cout << "labelWidthFilter[2] = " << labelWidthFilter[2] << EndOfLine;
+    // cout << "labelHeight = " << labelHeight << EndOfLine;
+    // cout << "labelWidth[1] = " << labelWidth[1] << EndOfLine;
+    // cout << "labelWidth[2] = " << labelWidth[2] << EndOfLine;
+    // cout << "labelWidthFilter[1] = " << labelWidthFilter[1] << EndOfLine;
+    // cout << "labelWidthFilter[2] = " << labelWidthFilter[2] << EndOfLine;
 
     regionWaveforms.resize(numLabelWidths);
     regionLabels.resize(numLabelWidths);
@@ -118,9 +117,9 @@ MultiWaveformPlot::MultiWaveformPlot(int columnIndex_, WaveformDisplayManager* w
     corePixmap = QPixmap(size());
     fullPixmap = QPixmap(size());
 
-//    contextMenu = nullptr;
-//    enableAction = new QAction(tr("Toggle enable"), this);
-//    connect(enableAction, SIGNAL(triggered()), this, SLOT(enableSlot()));
+    // contextMenu = nullptr;
+    // enableAction = new QAction(tr("Toggle enable"), this);
+    // connect(enableAction, SIGNAL(triggered()), this, SLOT(enableSlot()));
 
     connect(state, SIGNAL(stateChanged()), this, SLOT(updateFromState()));
 }
@@ -291,19 +290,19 @@ bool MultiWaveformPlot::event(QEvent* event)
     return QWidget::event(event);
 }
 
-//void MultiWaveformPlot::contextMenuEvent(QContextMenuEvent* event)
-//{
+// void MultiWaveformPlot::contextMenuEvent(QContextMenuEvent* event)
+// {
 //    if (!contextMenu) contextMenu = new QMenu(this);
 //    contextMenu->addAction(enableAction);
 //    contextMenu->popup(event->globalPos());  // Use popup() for asynchronous execution; exec() for synchronous execution.
-//}
+// }
 
 void MultiWaveformPlot::paintEvent(QPaintEvent* /* event */)
 {
     if (state->plottingMode->getValue() == "Original" || state->rollMode->getValue()) {
         // ORIGINAL
-            //QElapsedTimer timer;
-            //timer.start();
+        // QElapsedTimer timer;
+        // timer.start();
 
         QPainter painter(&image);
         bool showDisabledChannels = state->showDisabledChannels->getValue();
@@ -513,13 +512,13 @@ void MultiWaveformPlot::paintEvent(QPaintEvent* /* event */)
         QStylePainter stylePainter(this);
         stylePainter.drawImage(0, 0, image);
 
-//    cout << "plot time (ms): " << timer.nsecsElapsed() / 1.0e6 << EndOfLine;
-//        qDebug() << "plot time (ms): " << timer.nsecsElapsed() / 1.0e6;
+        // cout << "plot time (ms): " << timer.nsecsElapsed() / 1.0e6 << EndOfLine;
+        // qDebug() << "plot time (ms): " << timer.nsecsElapsed() / 1.0e6;
     } else {
 
         // EXPERIMENTAL
-        //QElapsedTimer timer;
-        //timer.start();
+        // QElapsedTimer timer;
+        // timer.start();
         QPainter painter(&corePixmap);
         bool showDisabledChannels = state->showDisabledChannels->getValue();
         bool clipWaveforms = state->clipWaveforms->getValue();
@@ -591,7 +590,7 @@ void MultiWaveformPlot::paintEvent(QPaintEvent* /* event */)
                     if (enabled || showDisabledChannels) {
                         QString waveName = displayList.at(i).waveName;
                         if (enabled) {
-                            //bool hoverHighlight = hoverWaveIndex.inPinned && i == hoverWaveIndex.index && cursorInWaveformArea;
+                            // bool hoverHighlight = hoverWaveIndex.inPinned && i == hoverWaveIndex.index && cursorInWaveformArea;
                             // for high-efficiency mode to reduce redraws, do not highlight waveforms upon hovering.
                             bool hoverHighlight = false;
                             QColor waveColor = adjustedColor(displayList.at(i), hoverHighlight);
@@ -632,7 +631,7 @@ void MultiWaveformPlot::paintEvent(QPaintEvent* /* event */)
                 bool enabled = pinnedList.at(i).isEnabled();
                 if (enabled || showDisabledChannels) {
                     if (enabled) {
-                        //bool hoverHighlight = hoverWaveIndex.inPinned && i == hoverWaveIndex.index && cursorInWaveformArea;
+                        // bool hoverHighlight = hoverWaveIndex.inPinned && i == hoverWaveIndex.index && cursorInWaveformArea;
                         // for high-efficiency mode to reduce redraws, do not highlight waveforms upon hovering.
                         bool hoverHighlight = false;
                         QColor waveColor = adjustedColor(pinnedList.at(i), hoverHighlight);
@@ -808,8 +807,8 @@ void MultiWaveformPlot::paintEvent(QPaintEvent* /* event */)
         QStylePainter stylePainter(this);
         stylePainter.drawPixmap(0, 0, fullPixmap);
 
-        //qDebug() << "plot time (ms): " << timer.nsecsElapsed() / 1.0e6;
-        //cout << "plot time (ms): " << timer.nsecsElapsed() / 1.0e6 << EndOfLine;
+        // qDebug() << "plot time (ms): " << timer.nsecsElapsed() / 1.0e6;
+        // cout << "plot time (ms): " << timer.nsecsElapsed() / 1.0e6 << EndOfLine;
     }
 }
 
@@ -1572,7 +1571,7 @@ void MultiWaveformPlot::loadWaveformData(WaveformFifo* waveformFifo)
         if (displayList.at(i).isCurrentlyVisible && !displayList.at(i).isDivider()) {
         // Of interest for future improvements to high-efficiency data plotting:
         // inefficient way to make sure all data is plotted immediately after scrolling
-        //if (!displayList.at(i).isDivider()) {
+        // if (!displayList.at(i).isDivider()) {
             QString waveName = displayList.at(i).waveName;
             if (!loadAllFilters || !waveName.contains('|')) {
                 waveformManager->loadNewData(waveformFifo, waveName);
@@ -1590,7 +1589,7 @@ void MultiWaveformPlot::loadWaveformData(WaveformFifo* waveformFifo)
     }
     // Note: repaint() seems to give slightly smoother animation than update(), but may cause "QWidget::repaint.
     // Recursive repaint detected" crash when columns are added.
-//    repaint();
+    // repaint();
     update();
 }
 
@@ -1608,7 +1607,7 @@ void MultiWaveformPlot::loadWaveformDataFromMemory(WaveformFifo* waveformFifo, i
     }
     // Note: repaint() seems to give slightly smoother animation than update(), but may cause "QWidget::repaint.
     // Recursive repaint detected" crash when columns are added.
-//    repaint();
+    // repaint();
     update();
 }
 

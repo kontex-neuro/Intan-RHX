@@ -458,14 +458,14 @@ void CPUInterface::processDataBlock(uint16_t * data, uint16_t *lowChunk, uint16_
                 if (detection.maxSurpassed) {  // If max has been detected, ID is 128 for max surpassing.
                     ID = 128;
                 } else if (true) {
-                //} else if (!useHoops) {  // If useHoops is false, ID is 1 to signify threshold crossing.
+                // } else if (!useHoops) {  // If useHoops is false, ID is 1 to signify threshold crossing.
                     ID = 1;
                 } else {  // If useHoops is true, ID is either (a) an active unit or (b) just a threshold crossing.
                     // (a) If a unit is active, ID is either 1, 2, 4, or 8 for the unit.
                     for (uint8_t unit = 0; unit < 4; ++unit) {
                         if (detection.units[unit].hoops[0] && detection.units[unit].hoops[1] &&
                                 detection.units[unit].hoops[2] && detection.units[unit].hoops[3]) {
-//                            ID = (uint8_t) pow(2.0f, (float) unit);
+                            // ID = (uint8_t) pow(2.0f, (float) unit);
                             ID = 1u << unit;  // faster implementation of 2^unit
                             break;
                         }
@@ -540,7 +540,7 @@ void CPUInterface::processDataBlock(uint16_t * data, uint16_t *lowChunk, uint16_
     }
 
     // Set the last 50 samples of high to parsedPrevHigh so that they can be used in the next data block
-//    memcpy(parsedPrevHigh, &highChunk[(FramesPerBlock - SnippetSize) * channels], SnippetSize * sizeof(uint16_t));
+    // memcpy(parsedPrevHigh, &highChunk[(FramesPerBlock - SnippetSize) * channels], SnippetSize * sizeof(uint16_t));
     parsedPrevHigh = &highChunk[(FramesPerBlock - SnippetSize) * channels];
 }
 
@@ -613,7 +613,7 @@ void CPUInterface::initializeMemory()
             }
         }
         hoops[c].threshold = -70.0F;
-        //hoops[c].useHoops = 0; // 1 = true, 0 = false
+        // hoops[c].useHoops = 0; // 1 = true, 0 = false
     }
 
     // Prep before loop.

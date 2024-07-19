@@ -28,38 +28,41 @@
 //
 //------------------------------------------------------------------------------
 
-#include <QElapsedTimer>
-#include <iostream>
-#include "rhxdatablock.h"
-#include "softwarereferenceprocessor.h"
-#include "rhxdatareader.h"
-#include "signalsources.h"
 #include "waveformprocessorthread.h"
 
-WaveformProcessorThread::WaveformProcessorThread(SystemState* state_, int numDataStreams_, double sampleRate_,
-                                                 DataStreamFifo *usbFifo_, WaveformFifo *waveformFifo_,
-                                                 XPUController* xpuController_, QObject *parent) :
-    QThread(parent),
-    state(state_),
-    signalSources(state_->signalSources),
-    type(state_->getControllerTypeEnum()),
-    sampleRate(sampleRate_),
-    usbFifo(usbFifo_),
-    waveformFifo(waveformFifo_),
-    numDataStreams(numDataStreams_),
-    xpuController(xpuController_),
-    keepGoing(false),
-    running(false),
-    stopThread(false)
+#include <QElapsedTimer>
+#include "rhxdatablock.h"
+#include "rhxdatareader.h"
+#include "signalsources.h"
+#include "softwarereferenceprocessor.h"
+
+
+WaveformProcessorThread::WaveformProcessorThread(
+    SystemState *state_, int numDataStreams_, double sampleRate_, DataStreamFifo *usbFifo_,
+    WaveformFifo *waveformFifo_, XPUController *xpuController_, QObject *parent
+)
+    : QThread(parent),
+      state(state_),
+      signalSources(state_->signalSources),
+      type(state_->getControllerTypeEnum()),
+      sampleRate(sampleRate_),
+      usbFifo(usbFifo_),
+      waveformFifo(waveformFifo_),
+      numDataStreams(numDataStreams_),
+      xpuController(xpuController_),
+      keepGoing(false),
+      running(false),
+      stopThread(false)
 {
     cpuLoadHistory.resize(20, 0.0);
 }
 
 void WaveformProcessorThread::run()
 {
-    const int NumBlocks = 1;  // Note: GPU spike extraction works on single data blocks only; this value must be 1 if spikes are read.
+    const int NumBlocks = 1;  // Note: GPU spike extraction works on single data blocks only; this
+                              // value must be 1 if spikes are read.
     const int NumSamples = NumBlocks * RHXDataBlock::samplesPerDataBlock(type);
-    uint16_t* usbData = nullptr;
+    uint16_t *usbData = nullptr;
     bool firstTime = true;
     bool softwareRefInfoUpdated = false;
     SoftwareReferenceProcessor swRefProcessor(type, numDataStreams, NumSamples, state);
@@ -82,7 +85,7 @@ void WaveformProcessorThread::run()
             xpuController->resetPrev();
 
             // Determine how many microseconds of data one block represents.
-//            float oneBlockus = (numSamples / sampleRate) * 1e6;
+            // float oneBlockus = (NumSamples / sampleRate) * 1e6;
 
             while (keepGoing && !stopThread) {
                 // workTimer.restart();
@@ -93,7 +96,8 @@ void WaveformProcessorThread::run()
                     softwareRefInfoUpdated = true;
                 }
 
-                usbData = usbFifo->pointerToData(numUsbWords);  // Get pointer to new USB data, if available.
+                usbData = usbFifo->pointerToData(numUsbWords
+                );  // Get pointer to new USB data, if available.
                 if (usbData) {
                     if (state->getReportSpikes()) {
                         state->advanceSpikeTimer();
@@ -109,90 +113,120 @@ void WaveformProcessorThread::run()
                     }
 
                     // Get wide, low, and high pointers from WaveformFifo.
-                    uint16_t* wide = waveformFifo->pointerToGpuWidebandWriteSpace();
-                    uint16_t* low = waveformFifo->pointerToGpuLowpassWriteSpace();
-                    uint16_t* high = waveformFifo->pointerToGpuHighpassWriteSpace();
+                    uint16_t *wide = waveformFifo->pointerToGpuWidebandWriteSpace();
+                    uint16_t *low = waveformFifo->pointerToGpuLowpassWriteSpace();
+                    uint16_t *high = waveformFifo->pointerToGpuHighpassWriteSpace();
 
-                    uint32_t* spike = waveformFifo->pointerToGpuSpikeTimestampsWriteSpace();
-                    uint8_t* spikeID = waveformFifo->pointerToGpuSpikeIdsWriteSpace();
+                    uint32_t *spike = waveformFifo->pointerToGpuSpikeTimestampsWriteSpace();
+                    uint8_t *spikeID = waveformFifo->pointerToGpuSpikeIdsWriteSpace();
 
                     // Process one data block through GPU, and write the results to WaveformFifo.
-//                    auto start = chrono::steady_clock::now();
-
+                    // auto start = chrono::steady_clock::now();
                     xpuController->processDataBlock(usbData, low, wide, high, spike, spikeID);
-//                    auto end = chrono::steady_clock::now();
+                    // auto end = chrono::steady_clock::now();
+                    // Determine how long this processing took, and report if it's approaching
+                    // real-time. float elapsedus = (float)
+                    // chrono::duration_cast<chrono::microseconds>(end - start).count(); float
+                    // gpuAccel = oneBlockus / elapsedus; if (gpuAccel < 2.0)
+                    //     qDebug() << "Warning: GPU process time approaching real-time. Real-time
+                    //     data block length: " << oneBlockus << " us. Processing time: " <<
+                    //     elapsedus << " us. GPU is " << gpuAccel << "x faster";
 
-                    // Determine how long this processing took, and report if it's approaching real-time.
-//                    float elapsedus = (float) chrono::duration_cast<chrono::microseconds>(end - start).count();
-//                    float gpuAccel = oneBlockus / elapsedus;
-//                    if (gpuAccel < 2.0)
-//                        qDebug() << "Warning: GPU process time approaching real-time. Real-time data block length: " << oneBlockus << " us. Processing time: " << elapsedus << " us. GPU is " << gpuAccel << "x faster";
-
-                    // Read and process waveform data from USB buffer, and write data to waveform FIFO.
+                    // Read and process waveform data from USB buffer, and write data to waveform
+                    // FIFO.
                     RHXDataReader dataReader(type, numDataStreams, usbData, NumSamples);
 
-                    float* analogWaveform = nullptr;
-                    uint16_t* digitalWaveform = nullptr;
+                    float *analogWaveform = nullptr;
+                    uint16_t *digitalWaveform = nullptr;
 
-                    int lastTimestamp = dataReader.readTimeStampData(waveformFifo->pointerToTimeStampWriteSpace());
+                    int lastTimestamp =
+                        dataReader.readTimeStampData(waveformFifo->pointerToTimeStampWriteSpace());
                     state->setLastTimestamp(lastTimestamp);
 
                     QString spikingChannelNames("");
 
                     for (int group = 0; group < signalSources->numGroups(); group++) {
-                        SignalGroup* signalGroup = signalSources->groupByIndex(group);
+                        SignalGroup *signalGroup = signalSources->groupByIndex(group);
                         for (int signal = 0; signal < signalGroup->numChannels(); signal++) {
-                            Channel* channel = signalGroup->channelByIndex(signal);
+                            Channel *channel = signalGroup->channelByIndex(signal);
                             string waveName = channel->getNativeNameString();
                             if (channel->getSignalType() == AmplifierSignal) {
-                                GpuWaveformAddress gpuWaveformAddress = waveformFifo->getGpuWaveformAddress(waveName + "|SPK");
-                                digitalWaveform = waveformFifo->getDigitalWaveformPointer(waveName + "|SPK");
+                                GpuWaveformAddress gpuWaveformAddress =
+                                    waveformFifo->getGpuWaveformAddress(waveName + "|SPK");
+                                digitalWaveform =
+                                    waveformFifo->getDigitalWaveformPointer(waveName + "|SPK");
                                 // Note: GPU spike extraction only works on single data blocks.
-                                bool spikeFound = waveformFifo->extractGpuSpikeDataOneDataBlock(digitalWaveform, gpuWaveformAddress, firstTime);
+                                bool spikeFound = waveformFifo->extractGpuSpikeDataOneDataBlock(
+                                    digitalWaveform, gpuWaveformAddress, firstTime
+                                );
 
                                 if (state->getReportSpikes()) {
                                     if (spikeFound) {
-                                        spikingChannelNames.append(QString::fromStdString(waveName) + ",");
-                                        //state->spikeReport(QString::fromStdString(waveName));
+                                        spikingChannelNames.append(
+                                            QString::fromStdString(waveName) + ","
+                                        );
+                                        // state->spikeReport(QString::fromStdString(waveName));
                                     }
                                     // Find if a spike happened on this channel. If so, get its name
                                     // If there's a name, send the spikeReport() signal.
-                                    // This signal should be ultimately received by ProbeMapWindow, which will then internally handle the time decay
+                                    // This signal should be ultimately received by ProbeMapWindow,
+                                    // which will then internally handle the time decay
                                 }
 
                                 if (signalSources->getControllerType() == ControllerStimRecord) {
                                     // Load DC amplifier data and stimulation markers.
-                                    analogWaveform = waveformFifo->getAnalogWaveformPointer(waveName + "|DC");
-                                    dataReader.readDcAmplifierData(waveformFifo->pointerToAnalogWriteSpace(analogWaveform),
-                                                                   channel->getBoardStream(), channel->getChipChannel());
-                                    digitalWaveform = waveformFifo->getDigitalWaveformPointer(waveName + "|STIM");
-                                    dataReader.readStimParamData(waveformFifo->pointerToDigitalWriteSpace(digitalWaveform),
-                                                              channel->getBoardStream(), channel->getChipChannel());
+                                    analogWaveform =
+                                        waveformFifo->getAnalogWaveformPointer(waveName + "|DC");
+                                    dataReader.readDcAmplifierData(
+                                        waveformFifo->pointerToAnalogWriteSpace(analogWaveform),
+                                        channel->getBoardStream(),
+                                        channel->getChipChannel()
+                                    );
+                                    digitalWaveform =
+                                        waveformFifo->getDigitalWaveformPointer(waveName + "|STIM");
+                                    dataReader.readStimParamData(
+                                        waveformFifo->pointerToDigitalWriteSpace(digitalWaveform),
+                                        channel->getBoardStream(),
+                                        channel->getChipChannel()
+                                    );
                                 }
                             } else if (channel->getSignalType() == AuxInputSignal) {
                                 analogWaveform = waveformFifo->getAnalogWaveformPointer(waveName);
-                                dataReader.readAuxInData(waveformFifo->pointerToAnalogWriteSpace(analogWaveform),
-                                                         channel->getBoardStream(), channel->getChipChannel());
+                                dataReader.readAuxInData(
+                                    waveformFifo->pointerToAnalogWriteSpace(analogWaveform),
+                                    channel->getBoardStream(),
+                                    channel->getChipChannel()
+                                );
                             } else if (channel->getSignalType() == SupplyVoltageSignal) {
                                 analogWaveform = waveformFifo->getAnalogWaveformPointer(waveName);
-                                dataReader.readSupplyVoltageData(waveformFifo->pointerToAnalogWriteSpace(analogWaveform),
-                                                                 channel->getBoardStream());
+                                dataReader.readSupplyVoltageData(
+                                    waveformFifo->pointerToAnalogWriteSpace(analogWaveform),
+                                    channel->getBoardStream()
+                                );
                             } else if (channel->getSignalType() == BoardAdcSignal) {
                                 analogWaveform = waveformFifo->getAnalogWaveformPointer(waveName);
-                                dataReader.readBoardAdcData(waveformFifo->pointerToAnalogWriteSpace(analogWaveform),
-                                                            channel->getNativeChannelNumber());
+                                dataReader.readBoardAdcData(
+                                    waveformFifo->pointerToAnalogWriteSpace(analogWaveform),
+                                    channel->getNativeChannelNumber()
+                                );
                             } else if (channel->getSignalType() == BoardDacSignal) {
                                 analogWaveform = waveformFifo->getAnalogWaveformPointer(waveName);
-                                dataReader.readBoardDacData(waveformFifo->pointerToAnalogWriteSpace(analogWaveform),
-                                                            channel->getNativeChannelNumber());
+                                dataReader.readBoardDacData(
+                                    waveformFifo->pointerToAnalogWriteSpace(analogWaveform),
+                                    channel->getNativeChannelNumber()
+                                );
                             } else if (channel->getSignalType() == BoardDigitalInSignal) {
                                 analogWaveform = waveformFifo->getAnalogWaveformPointer(waveName);
-                                dataReader.readDigInData(waveformFifo->pointerToAnalogWriteSpace(analogWaveform),
-                                                         channel->getNativeChannelNumber());
+                                dataReader.readDigInData(
+                                    waveformFifo->pointerToAnalogWriteSpace(analogWaveform),
+                                    channel->getNativeChannelNumber()
+                                );
                             } else if (channel->getSignalType() == BoardDigitalOutSignal) {
                                 analogWaveform = waveformFifo->getAnalogWaveformPointer(waveName);
-                                dataReader.readDigOutData(waveformFifo->pointerToAnalogWriteSpace(analogWaveform),
-                                                         channel->getNativeChannelNumber());
+                                dataReader.readDigOutData(
+                                    waveformFifo->pointerToAnalogWriteSpace(analogWaveform),
+                                    channel->getNativeChannelNumber()
+                                );
                             }
                         }
                     }
@@ -202,9 +236,13 @@ void WaveformProcessorThread::run()
                     }
 
                     digitalWaveform = waveformFifo->getDigitalWaveformPointer("DIGITAL-IN-WORD");
-                    dataReader.readDigInData(waveformFifo->pointerToDigitalWriteSpace(digitalWaveform));
+                    dataReader.readDigInData(
+                        waveformFifo->pointerToDigitalWriteSpace(digitalWaveform)
+                    );
                     digitalWaveform = waveformFifo->getDigitalWaveformPointer("DIGITAL-OUT-WORD");
-                    dataReader.readDigOutData(waveformFifo->pointerToDigitalWriteSpace(digitalWaveform));
+                    dataReader.readDigOutData(
+                        waveformFifo->pointerToDigitalWriteSpace(digitalWaveform)
+                    );
 
                     // Done reading and processing all waveforms.
                     waveformFifo->commitNewData();  // Commit waveform data we have just written.
@@ -227,19 +265,20 @@ void WaveformProcessorThread::run()
                         for (int i = 0; i < (int) cpuLoadHistory.size(); ++i) {
                             total += cpuLoadHistory[i];
                         }
-                        double averageCpuLoad = total / (double)(cpuLoadHistory.size());
+                        double averageCpuLoad = total / (double) (cpuLoadHistory.size());
 
                         emit cpuLoadPercent(averageCpuLoad);
 
-//                        cout << "                   WaveformProcessorThread CPU usage: " << (int) averageCpuLoad << "%" << EndOfLine;
-//                        cout << "USB FIFO " << (int) usbFifo->percentFull() << "% full.  ";
-//                        cout << "Waveform FIFO " << (int) waveformFifo->percentFull() << "% full." << EndOfLine;
+                        // cout << "                   WaveformProcessorThread CPU usage: " << (int)
+                        // averageCpuLoad << "%" << EndOfLine; cout << "USB FIFO " << (int)
+                        // usbFifo->percentFull() << "% full.  "; cout << "Waveform FIFO " << (int)
+                        // waveformFifo->percentFull() << "% full." << EndOfLine;
                         reportTimer.restart();
                     }
                     workTimer.restart();
                     loopTimer.restart();
                 } else {
-                    usleep(100);    // Wait 100 microseconds.
+                    usleep(100);  // Wait 100 microseconds.
                 }
             }
             running = false;
@@ -258,10 +297,7 @@ void WaveformProcessorThread::startRunning(int numDataStreams_)
     keepGoing = true;
 }
 
-void WaveformProcessorThread::stopRunning()
-{
-    keepGoing = false;
-}
+void WaveformProcessorThread::stopRunning() { keepGoing = false; }
 
 void WaveformProcessorThread::close()
 {
@@ -269,7 +305,4 @@ void WaveformProcessorThread::close()
     stopThread = true;
 }
 
-bool WaveformProcessorThread::isActive() const
-{
-    return running;
-}
+bool WaveformProcessorThread::isActive() const { return running; }

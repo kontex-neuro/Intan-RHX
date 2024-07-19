@@ -36,7 +36,7 @@ MultiColumnDisplay::MultiColumnDisplay(ControllerInterface* controllerInterface_
     state(state_)
 {
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-//    setFocusPolicy(Qt::StrongFocus);
+    // setFocusPolicy(Qt::StrongFocus);
 
     QHBoxLayout* mainLayout = new QHBoxLayout;
     mainLayout->setContentsMargins(0, 0, 0, 0);

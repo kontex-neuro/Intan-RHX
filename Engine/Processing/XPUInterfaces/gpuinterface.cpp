@@ -182,19 +182,19 @@ void GPUInterface::initializeKernelMemory()
         startSearchPos[c] = 0;
     }
 
-//    // Default no-detection initialization
-//    for (int c = 0; c < channels; ++c) {
-//        for (int unit = 0; unit < 4; ++unit) {
-//            for (int hoop = 0; hoop < 4; ++hoop) {
-//                gpuHoops[c].unitHoops[unit].hoopInfo[hoop].tA = -1.0F;
-//                gpuHoops[c].unitHoops[unit].hoopInfo[hoop].yA = 10000.0F;
-//                gpuHoops[c].unitHoops[unit].hoopInfo[hoop].tB = -1.0F;
-//                gpuHoops[c].unitHoops[unit].hoopInfo[hoop].yB = 10000.0F;
-//            }
-//        }
-//        gpuHoops[c].threshold = 10000.0F;
-//        gpuHoops[c].useHoops = 0; // 1 = true, 0 = false
-//    }
+    // Default no-detection initialization
+    // for (int c = 0; c < channels; ++c) {
+    //     for (int unit = 0; unit < 4; ++unit) {
+    //         for (int hoop = 0; hoop < 4; ++hoop) {
+    //             gpuHoops[c].unitHoops[unit].hoopInfo[hoop].tA = -1.0F;
+    //             gpuHoops[c].unitHoops[unit].hoopInfo[hoop].yA = 10000.0F;
+    //             gpuHoops[c].unitHoops[unit].hoopInfo[hoop].tB = -1.0F;
+    //             gpuHoops[c].unitHoops[unit].hoopInfo[hoop].yB = 10000.0F;
+    //         }
+    //     }
+    //     gpuHoops[c].threshold = 10000.0F;
+    //     gpuHoops[c].useHoops = 0; // 1 = true, 0 = false
+    // }
 
 
     // Simple spike detection initialization w/o using hoops
@@ -208,22 +208,22 @@ void GPUInterface::initializeKernelMemory()
             }
         }
         hoops[c].threshold = -70.0F;
-        //hoops[c].useHoops = 0;  // 1 = true, 0 = false
+        // hoops[c].useHoops = 0;  // 1 = true, 0 = false
     }
 
-//    // Simple spike detection initialization: 70 uV threshold, single unit with single horizontal 70 uV hoop between 100 us and 1 ms
-//    for (int c = 0; c < channels; ++c) {
-//        for (int unit = 0; unit < 4; ++unit) {
-//            for (int hoop = 0; hoop < 4; ++hoop) {
-//                gpuHoops[c].unitHoops[unit].hoopInfo[hoop].tA = 0.0001f;
-//                gpuHoops[c].unitHoops[unit].hoopInfo[hoop].yA = 70.0f;
-//                gpuHoops[c].unitHoops[unit].hoopInfo[hoop].tB = 0.001f;
-//                gpuHoops[c].unitHoops[unit].hoopInfo[hoop].yB = 70.0f;
-//            }
-//        }
-//        gpuHoops[c].threshold = -70.0f;
-//        gpuHoops[c].useHoops = 1; // 1 = true, 0 = false
-//    }
+    // Simple spike detection initialization: 70 uV threshold, single unit with single horizontal 70 uV hoop between 100 us and 1 ms
+    // for (int c = 0; c < channels; ++c) {
+    //     for (int unit = 0; unit < 4; ++unit) {
+    //         for (int hoop = 0; hoop < 4; ++hoop) {
+    //             gpuHoops[c].unitHoops[unit].hoopInfo[hoop].tA = 0.0001f;
+    //             gpuHoops[c].unitHoops[unit].hoopInfo[hoop].yA = 70.0f;
+    //             gpuHoops[c].unitHoops[unit].hoopInfo[hoop].tB = 0.001f;
+    //             gpuHoops[c].unitHoops[unit].hoopInfo[hoop].yB = 70.0f;
+    //         }
+    //     }
+    //     gpuHoops[c].threshold = -70.0f;
+    //     gpuHoops[c].useHoops = 1; // 1 = true, 0 = false
+    // }
 
     // Set kernel args.
     ret = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&globalParametersHandle);
