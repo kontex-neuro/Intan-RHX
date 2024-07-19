@@ -1,0 +1,3 @@
+[submodule "libxdaq-dist"]
+	path = libxdaq-dist
+	url = git@github.com:kontex-neuro/libxdaq-dist.git

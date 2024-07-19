@@ -413,7 +413,9 @@ void SynthDataBlockGenerator::createSynthDataBlock(int numBlocks, int numDataStr
             if (type == ControllerRecordUSB2) {
                 numFillerWords = numDataStreams;
             } else if (type == ControllerRecordUSB3) {
-                numFillerWords = numDataStreams % 4;
+                numFillerWords = (numDataStreams + true * 2) % 4;
+            } else if (type == ControllerStimRecord) {
+                numFillerWords = true * 2;
             }
             for (int i = 0; i < numFillerWords; ++i) {
                 *pWrite = (uint16_t) 0U;
@@ -471,11 +473,11 @@ void SynthDataBlockGenerator::createSynthDataBlock(int numBlocks, int numDataStr
 
             // Write Digital In data.
             *pWrite = digitalSynthSources[0]->nextSample() + 2 * digitalSynthSources[1]->nextSample();
-            pWrite++;
+            pWrite += 2;
 
             // Write Digital Out data.
             *pWrite = (uint16_t) 0U;
-            pWrite++;
+            pWrite += 2;
 
             tIndex++;
         }

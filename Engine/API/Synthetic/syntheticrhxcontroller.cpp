@@ -69,8 +69,8 @@ bool SyntheticRHXController::readDataBlocks(int numBlocks, deque<RHXDataBlock*> 
 
     unsigned int numWordsToRead = numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
 
-    if (numWordsInFifo() < numWordsToRead)
-        return false;
+    // if (numWordsInFifo() < numWordsToRead)
+    //     return false;
 
     unsigned int numBytesToRead = BytesPerWord * numWordsToRead;
 
@@ -246,8 +246,8 @@ int SyntheticRHXController::findConnectedChips(vector<ChipType> &chipType, vecto
 
     // When highestCapacity is false, the default synthetic data of 32 channels on Ports A and B will be set up.
     // When highestCapacity is true, the maximum # of channels per port will be set up.
-    //bool highestCapacity = false;
-    //bool highestCapacity = true;
+    // bool highestCapacity = false;
+    // bool highestCapacity = true;
 
     if (synthMaxChannels) {
         if (type == ControllerRecordUSB2 || type == ControllerRecordUSB3) {
