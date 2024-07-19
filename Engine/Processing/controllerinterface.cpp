@@ -28,48 +28,58 @@
 //
 //------------------------------------------------------------------------------
 
+#include "controllerinterface.h"
+
 #include <QApplication>
-#include <QtGlobal>
 #include <QElapsedTimer>
+#include <QtGlobal>
 #include <iostream>
+
 #include "controlpanel.h"
 #include "impedancereader.h"
-#include "controllerinterface.h"
+
 
 using namespace std;
 
-ControllerInterface::ControllerInterface(SystemState* state_, AbstractRHXController* rhxController_, const QString& boardSerialNumber, bool useOpenCL,
-                                         DataFileReader* dataFileReader_, QObject* parent, bool is7310_) :
-    QObject(parent),
-    state(state_),
-    rhxController(rhxController_),
-    dataFileReader(dataFileReader_),
-    tcpDataOutputThread(nullptr),
-    xpuController(nullptr),
-    usbStreamFifo(nullptr),
-    usbDataThread(nullptr),
-    waveformFifo(nullptr),
-    waveformProcessorThread(nullptr),
-    display(nullptr),
-    controlPanel(nullptr),
-    isiDialog(nullptr),
-    psthDialog(nullptr),
-    spectrogramDialog(nullptr),
-    spikeSortingDialog(nullptr),
-    audioThread(nullptr),
-    saveToDiskThread(nullptr),
-    is7310(is7310_)
+ControllerInterface::ControllerInterface(
+    SystemState *state_, AbstractRHXController *rhxController_, const QString &boardSerialNumber,
+    bool useOpenCL, DataFileReader *dataFileReader_, QObject *parent, bool is7310_
+)
+    : QObject(parent),
+      state(state_),
+      rhxController(rhxController_),
+      dataFileReader(dataFileReader_),
+      tcpDataOutputThread(nullptr),
+      xpuController(nullptr),
+      usbStreamFifo(nullptr),
+      usbDataThread(nullptr),
+      waveformFifo(nullptr),
+      waveformProcessorThread(nullptr),
+      display(nullptr),
+      controlPanel(nullptr),
+      isiDialog(nullptr),
+      psthDialog(nullptr),
+      spectrogramDialog(nullptr),
+      spikeSortingDialog(nullptr),
+      audioThread(nullptr),
+      saveToDiskThread(nullptr),
+      is7310(is7310_)
 {
     connect(state, SIGNAL(stateChanged()), this, SLOT(updateFromState()));
     openController(boardSerialNumber);
 
     const int NumSeconds = 10;  // Size of RAM buffer, in seconds.
     int fifoBufferSize = NumSeconds * rhxController->getSampleRate() * BytesPerWord *
-            (RHXDataBlock::dataBlockSizeInWords(state->getControllerTypeEnum(),
-                                                RHXController::maxNumDataStreams(state->getControllerTypeEnum())) / RHXDataBlock::samplesPerDataBlock(state->getControllerTypeEnum()));
+                         (RHXDataBlock::dataBlockSizeInWords(
+                              state->getControllerTypeEnum(),
+                              RHXController::maxNumDataStreams(state->getControllerTypeEnum())
+                          ) /
+                          RHXDataBlock::samplesPerDataBlock(state->getControllerTypeEnum()));
 
-    int usbBufferSize = MaxNumBlocksToRead * RHXDataBlock::dataBlockSizeInWords(state->getControllerTypeEnum(),
-                                                                                    rhxController->maxNumDataStreams());
+    int usbBufferSize =
+        MaxNumBlocksToRead * RHXDataBlock::dataBlockSizeInWords(
+                                 state->getControllerTypeEnum(), rhxController->maxNumDataStreams()
+                             );
 
     double memoryRequired = 0.0;
 
@@ -86,9 +96,13 @@ ControllerInterface::ControllerInterface(SystemState* state_, AbstractRHXControl
         outOfMemoryError(memoryRequired);
     }
 
-    usbDataThread->setNumUsbBlocksToRead(state->playback->getValue() ? 1 : RHXDataBlock::blocksFor30Hz(state->getSampleRateEnum()));
+    usbDataThread->setNumUsbBlocksToRead(
+        state->playback->getValue() ? 1 : RHXDataBlock::blocksFor30Hz(state->getSampleRateEnum())
+    );
     connect(usbDataThread, SIGNAL(finished()), usbDataThread, SLOT(deleteLater()));
-    connect(usbDataThread, SIGNAL(hardwareFifoReport(double)), this, SLOT(updateHardwareFifo(double)));
+    connect(
+        usbDataThread, SIGNAL(hardwareFifoReport(double)), this, SLOT(updateHardwareFifo(double))
+    );
 
     initializeController();
 
@@ -101,29 +115,60 @@ ControllerInterface::ControllerInterface(SystemState* state_, AbstractRHXControl
 
     xpuController->runDiagnostic();
 
-    double waveformMemoryInSeconds = 30.0;  // TODO: Eventually increase this to 45 or 60 if there is sufficient RAM?
+    double waveformMemoryInSeconds =
+        30.0;  // TODO: Eventually increase this to 45 or 60 if there is sufficient RAM?
     double waveformExtraBufferInSeconds = 15.0;
     double sampleRate = state->sampleRate->getNumericValue();
-    double samplesPerDataBlock = (double) RHXDataBlock::samplesPerDataBlock(state->getControllerTypeEnum());
-    int waveformFifoMemoryDataBlocks = ceil(waveformMemoryInSeconds * sampleRate / samplesPerDataBlock);
-    int waveformFifoBufferDataBlocks = ceil((waveformMemoryInSeconds + waveformExtraBufferInSeconds) * sampleRate / samplesPerDataBlock);
-    waveformFifo = new WaveformFifo(state->signalSources, waveformFifoBufferDataBlocks, waveformFifoMemoryDataBlocks, 1, state);
+    double samplesPerDataBlock =
+        (double) RHXDataBlock::samplesPerDataBlock(state->getControllerTypeEnum());
+    int waveformFifoMemoryDataBlocks =
+        ceil(waveformMemoryInSeconds * sampleRate / samplesPerDataBlock);
+    int waveformFifoBufferDataBlocks = ceil(
+        (waveformMemoryInSeconds + waveformExtraBufferInSeconds) * sampleRate / samplesPerDataBlock
+    );
+    waveformFifo = new WaveformFifo(
+        state->signalSources, waveformFifoBufferDataBlocks, waveformFifoMemoryDataBlocks, 1, state
+    );
     if (!waveformFifo->memoryWasAllocated(memoryRequired)) {
         outOfMemoryError(memoryRequired);
     }
 
-    waveformProcessorThread = new WaveformProcessorThread(state, rhxController->getNumEnabledDataStreams(), rhxController->getSampleRate(), usbStreamFifo, waveformFifo, xpuController, this);
-    connect(waveformProcessorThread, SIGNAL(finished()), waveformProcessorThread, SLOT(deleteLater()));
-    connect(waveformProcessorThread, SIGNAL(cpuLoadPercent(double)), this, SLOT(updateWaveformProcessorCpuLoad(double)));
+    waveformProcessorThread = new WaveformProcessorThread(
+        state,
+        rhxController->getNumEnabledDataStreams(),
+        rhxController->getSampleRate(),
+        usbStreamFifo,
+        waveformFifo,
+        xpuController,
+        this
+    );
+    connect(
+        waveformProcessorThread, SIGNAL(finished()), waveformProcessorThread, SLOT(deleteLater())
+    );
+    connect(
+        waveformProcessorThread,
+        SIGNAL(cpuLoadPercent(double)),
+        this,
+        SLOT(updateWaveformProcessorCpuLoad(double))
+    );
 
     saveToDiskThread = new SaveToDiskThread(waveformFifo, state, this);
     connect(saveToDiskThread, SIGNAL(finished()), saveToDiskThread, SLOT(deleteLater()));
     if (dataFileReader) {
-        // Establish connections so that stimulation amplitudes read from playback file can be re-saved.
-        connect(dataFileReader, SIGNAL(setPosStimAmplitude(int, int, int)),
-                saveToDiskThread, SLOT(setPosStimAmplitude(int, int, int)));
-        connect(dataFileReader, SIGNAL(setNegStimAmplitude(int, int, int)),
-                saveToDiskThread, SLOT(setNegStimAmplitude(int, int, int)));
+        // Establish connections so that stimulation amplitudes read from playback file can be
+        // re-saved.
+        connect(
+            dataFileReader,
+            SIGNAL(setPosStimAmplitude(int, int, int)),
+            saveToDiskThread,
+            SLOT(setPosStimAmplitude(int, int, int))
+        );
+        connect(
+            dataFileReader,
+            SIGNAL(setNegStimAmplitude(int, int, int)),
+            saveToDiskThread,
+            SLOT(setNegStimAmplitude(int, int, int))
+        );
     }
 
     currentSweepPosition = 0;
@@ -170,10 +215,13 @@ ControllerInterface::~ControllerInterface()
 
 void ControllerInterface::outOfMemoryError(double memRequiredGB)
 {
-    QMessageBox::critical(nullptr, tr("Out of Memory Error"), tr("Software was unable to allocate ") +
-                          QString::number(memRequiredGB, 'f', 1) +
-                          tr(" GB of memory.  Try running with fewer amplifier channels or a lower sample rate, "
-                             "or use a computer with more RAM."));
+    QMessageBox::critical(
+        nullptr,
+        tr("Out of Memory Error"),
+        tr("Software was unable to allocate ") + QString::number(memRequiredGB, 'f', 1) +
+            tr(" GB of memory.  Try running with fewer amplifier channels or a lower sample rate, "
+               "or use a computer with more RAM.")
+    );
     exit(EXIT_FAILURE);
 }
 
@@ -194,7 +242,9 @@ void ControllerInterface::toggleAudioThread(bool enabled)
         audioEnabled = true;
         audioThread = new AudioThread(state, waveformFifo, rhxController->getSampleRate());
         connect(audioThread, SIGNAL(finished()), audioThread, SLOT(deleteLater()));
-        connect(audioThread, SIGNAL(newChannel(QString)), this, SLOT(updateCurrentAudioChannel(QString)));
+        connect(
+            audioThread, SIGNAL(newChannel(QString)), this, SLOT(updateCurrentAudioChannel(QString))
+        );
 
         // This starts the thread running, ideally on its own CPU core.
         audioThread->start();
@@ -221,22 +271,23 @@ void ControllerInterface::updateCurrentAudioChannel(QString name)
 
 void ControllerInterface::runTCPDataOutputThread()
 {
-        tcpDataOutputEnabled = true;
-        if (!tcpDataOutputThread) {
-            tcpDataOutputThread = new TCPDataOutputThread(waveformFifo, rhxController->getSampleRate(), state, this);
-        }
+    tcpDataOutputEnabled = true;
+    if (!tcpDataOutputThread) {
+        tcpDataOutputThread =
+            new TCPDataOutputThread(waveformFifo, rhxController->getSampleRate(), state, this);
+    }
 
-        state->tcpWaveformDataCommunicator->moveToThread(tcpDataOutputThread);
-        state->tcpSpikeDataCommunicator->moveToThread(tcpDataOutputThread);
+    state->tcpWaveformDataCommunicator->moveToThread(tcpDataOutputThread);
+    state->tcpSpikeDataCommunicator->moveToThread(tcpDataOutputThread);
 
-        connect(tcpDataOutputThread, SIGNAL(finished()), tcpDataOutputThread, SLOT(deleteLater()));
+    connect(tcpDataOutputThread, SIGNAL(finished()), tcpDataOutputThread, SLOT(deleteLater()));
 
-        // This starts the thread running, ideally on its own CPU core.
-        tcpDataOutputThread->start();
-        tcpDataOutputThread->setPriority(QThread::HighestPriority);
+    // This starts the thread running, ideally on its own CPU core.
+    tcpDataOutputThread->start();
+    tcpDataOutputThread->setPriority(QThread::HighestPriority);
 
-        // This activates the thread so it can do useful activity.
-        tcpDataOutputThread->startRunning();
+    // This activates the thread so it can do useful activity.
+    tcpDataOutputThread->startRunning();
 }
 
 void ControllerInterface::rescanPorts(bool updateDisplay)
@@ -263,11 +314,13 @@ void ControllerInterface::rescanPorts(bool updateDisplay)
     }
 
     state->signalSources->autoColorAmplifierChannels(32, 1);
+    // xpuController->updateNumStreams(numDataStreams, dio32);
     xpuController->updateNumStreams(numDataStreams);
 
     if (updateDisplay) {
         // Determine if port selection should switch to a headstage port
-        // This should only occur if prior to scanning, 0 headstages were present, and after, at least 1 was present
+        // This should only occur if prior to scanning, 0 headstages were present, and after, at
+        // least 1 was present
         bool currentHeadstagePresent = state->signalSources->numAmplifierChannels() != 0;
         bool switchToFirstPort = !previousHeadstagePresent && currentHeadstagePresent;
         display->updatePortSelectionBoxes(switchToFirstPort);
@@ -286,17 +339,24 @@ void ControllerInterface::rescanPorts(bool updateDisplay)
 }
 
 // Returns number of data streams used.
-int ControllerInterface::scanPorts(vector<ChipType> &chipType, vector<int> &portIndex, vector<int> &commandStream,
-                                    vector<int> &numChannelsOnPort)
+int ControllerInterface::scanPorts(
+    vector<ChipType> &chipType, vector<int> &portIndex, vector<int> &commandStream,
+    vector<int> &numChannelsOnPort
+)
 {
     // Scan SPI Ports.
     QSettings settings;
-    int warningCode = rhxController->findConnectedChips(chipType, portIndex, commandStream,
-                                                        numChannelsOnPort, settings.value("synthMaxChannels", false).toBool(),
-                                                        state->manualFastSettleEnabled->getValue(),
-                                                        state->usePreviousDelay->getValue(),
-                                                        state->previousDelaySelectedPort->getValue(),
-                                                        state->lastDetectedChip->getValue());
+    int warningCode = rhxController->findConnectedChips(
+        chipType,
+        portIndex,
+        commandStream,
+        numChannelsOnPort,
+        settings.value("synthMaxChannels", false).toBool(),
+        state->manualFastSettleEnabled->getValue(),
+        state->usePreviousDelay->getValue(),
+        state->previousDelaySelectedPort->getValue(),
+        state->lastDetectedChip->getValue()
+    );
 
     for (int i = 0; i < chipType.size(); i++) {
         if (chipType[i] != NoChip) {
@@ -306,16 +366,22 @@ int ControllerInterface::scanPorts(vector<ChipType> &chipType, vector<int> &port
     }
 
     if (warningCode == -1) {
-        QMessageBox::warning(nullptr, tr("Capacity of RHD USB Interface Exceeded"),
-                             tr("This RHD USB interface board can support only 256 amplifier channels."
-                                "<p>More than 256 total amplifier channels are currently connected."
-                                "<p>Amplifier chips exceeding this limit will not appear in the GUI."));
+        QMessageBox::warning(
+            nullptr,
+            tr("Capacity of RHD USB Interface Exceeded"),
+            tr("This RHD USB interface board can support only 256 amplifier channels."
+               "<p>More than 256 total amplifier channels are currently connected."
+               "<p>Amplifier chips exceeding this limit will not appear in the GUI.")
+        );
     } else if (warningCode == -2) {
-        QMessageBox::warning(nullptr, tr("Capacity of RHD USB Interface Exceeded"),
-                             tr("This RHD USB interface board can support only 256 amplifier channels."
-                                "<p>More than 256 total amplifier channels are currently connected.  (Each RHD2216 "
-                                "chip counts as 32 channels.)"
-                                "<p>Amplifier chips exceeding this limit will not appear in the GUI."));
+        QMessageBox::warning(
+            nullptr,
+            tr("Capacity of RHD USB Interface Exceeded"),
+            tr("This RHD USB interface board can support only 256 amplifier channels."
+               "<p>More than 256 total amplifier channels are currently connected.  (Each RHD2216 "
+               "chip counts as 32 channels.)"
+               "<p>Amplifier chips exceeding this limit will not appear in the GUI.")
+        );
     }
 
     int numDataStreams = 0;
@@ -338,15 +404,17 @@ int ControllerInterface::scanPorts(vector<ChipType> &chipType, vector<int> &port
     return numDataStreams;
 }
 
-void ControllerInterface::addAmplifierChannels(const vector<ChipType> &chipType, const vector<int> &portIndex,
-                                               const vector<int> &commandStream, const vector<int> &numChannelsOnPort)
+void ControllerInterface::addAmplifierChannels(
+    const vector<ChipType> &chipType, const vector<int> &portIndex,
+    const vector<int> &commandStream, const vector<int> &numChannelsOnPort
+)
 {
     state->signalSources->undoManager->clearUndoStack();
 
     int numDataStreams = (int) chipType.size();
 
     for (int port = 0; port < state->numSPIPorts; port++) {
-        SignalGroup* group = state->signalSources->portGroupByIndex(port);
+        SignalGroup *group = state->signalSources->portGroupByIndex(port);
         if (numChannelsOnPort[port] == 0) {
             group->removeAllChannels();
             group->setEnabled(false);
@@ -359,14 +427,12 @@ void ControllerInterface::addAmplifierChannels(const vector<ChipType> &chipType,
             // Create amplifier channels for each chip.
             for (int stream = 0; stream < numDataStreams; stream++) {
                 if (portIndex[stream] == port) {
-                    if (chipType[stream] == RHD2216Chip ||
-                        chipType[stream] == RHS2116Chip) {
+                    if (chipType[stream] == RHD2216Chip || chipType[stream] == RHS2116Chip) {
                         for (int i = 0; i < 16; i++) {
                             group->addAmplifierChannel(channel, stream, commandStream[stream], i);
                             channel++;
                         }
-                    } else if (chipType[stream] == RHD2132Chip ||
-                               chipType[stream] == RHD2164Chip ||
+                    } else if (chipType[stream] == RHD2132Chip || chipType[stream] == RHD2164Chip ||
                                chipType[stream] == RHD2164MISOBChip) {
                         for (int i = 0; i < 32; i++) {
                             group->addAmplifierChannel(channel, stream, commandStream[stream], i);
@@ -380,8 +446,7 @@ void ControllerInterface::addAmplifierChannels(const vector<ChipType> &chipType,
             int vddName = 1;
             for (int stream = 0; stream < numDataStreams; stream++) {
                 if (portIndex[stream] == port) {
-                    if (chipType[stream] == RHD2216Chip ||
-                        chipType[stream] == RHD2132Chip ||
+                    if (chipType[stream] == RHD2216Chip || chipType[stream] == RHD2132Chip ||
                         chipType[stream] == RHD2164Chip) {
                         group->addAuxInputChannel(channel++, stream, 0, auxName++);
                         group->addAuxInputChannel(channel++, stream, 1, auxName++);
@@ -390,26 +455,24 @@ void ControllerInterface::addAmplifierChannels(const vector<ChipType> &chipType,
                     }
                 }
             }
-        } else {    // If number of channels on port has not changed, don't create new channels (since this
-                    // would clear all user-defined channel names.  But we must update the data stream indices
-                    // on the port.
+        } else {  // If number of channels on port has not changed, don't create new channels (since
+                  // this would clear all user-defined channel names.  But we must update the data
+                  // stream indices on the port.
             int channel = 0;
             // Update stream indices for amplifier channels.
             for (int stream = 0; stream < numDataStreams; stream++) {
                 if (portIndex[stream] == port) {
-                    if (chipType[stream] == RHD2216Chip ||
-                        chipType[stream] == RHS2116Chip) {
+                    if (chipType[stream] == RHD2216Chip || chipType[stream] == RHS2116Chip) {
                         for (int i = channel; i < channel + 16; i++) {
-                            Channel* channel = group->channelByIndex(i);
+                            Channel *channel = group->channelByIndex(i);
                             channel->setBoardStream(stream);
                             channel->setCommandStream(commandStream[stream]);
                         }
                         channel += 16;
-                    } else if (chipType[stream] == RHD2132Chip ||
-                               chipType[stream] == RHD2164Chip ||
+                    } else if (chipType[stream] == RHD2132Chip || chipType[stream] == RHD2164Chip ||
                                chipType[stream] == RHD2164MISOBChip) {
                         for (int i = channel; i < channel + 32; i++) {
-                            Channel* channel = group->channelByIndex(i);
+                            Channel *channel = group->channelByIndex(i);
                             channel->setBoardStream(stream);
                             channel->setCommandStream(commandStream[stream]);
                         }
@@ -420,14 +483,13 @@ void ControllerInterface::addAmplifierChannels(const vector<ChipType> &chipType,
             // Update stream indices for auxiliary channels and supply voltage channels.
             for (int stream = 0; stream < numDataStreams; ++stream) {
                 if (portIndex[stream] == port) {
-                    if (chipType[stream] == RHD2216Chip ||
-                        chipType[stream] == RHD2132Chip ||
+                    if (chipType[stream] == RHD2216Chip || chipType[stream] == RHD2132Chip ||
                         chipType[stream] == RHD2164Chip) {
                         group->channelByIndex(channel++)->setBoardStream(stream);
                         group->channelByIndex(channel++)->setBoardStream(stream);
                         group->channelByIndex(channel++)->setBoardStream(stream);
                         group->channelByIndex(channel++)->setBoardStream(stream);
-                   }
+                    }
                 }
             }
         }
@@ -437,36 +499,42 @@ void ControllerInterface::addAmplifierChannels(const vector<ChipType> &chipType,
 void ControllerInterface::enablePlaybackChannels()
 {
     if (!dataFileReader) return;
-    const IntanHeaderInfo* fileInfo = dataFileReader->getHeaderInfo();
+    const IntanHeaderInfo *fileInfo = dataFileReader->getHeaderInfo();
 
     for (int i = 0; i < state->signalSources->numGroups(); ++i) {
-        SignalGroup* group = state->signalSources->groupByIndex(i);
+        SignalGroup *group = state->signalSources->groupByIndex(i);
         QString groupPrefix = group->getPrefix();
         int index = fileInfo->groupIndex(groupPrefix);
         // If this group prefix can't be found, and it's one of the prefixes that had a name
         // change from the original USB Interface Board software, try looking for the original
         // prefix name.
         if (index == -1) {
-            if (groupPrefix == "DIGITAL-IN") index = fileInfo->groupIndex("DIN");
-            else if (groupPrefix == "DIGITAL-OUT") index = fileInfo->groupIndex("DOUT");
-            else if (groupPrefix == "ANALOG-IN") index = fileInfo->groupIndex("ADC");
+            if (groupPrefix == "DIGITAL-IN")
+                index = fileInfo->groupIndex("DIN");
+            else if (groupPrefix == "DIGITAL-OUT")
+                index = fileInfo->groupIndex("DOUT");
+            else if (groupPrefix == "ANALOG-IN")
+                index = fileInfo->groupIndex("ADC");
         }
 
         // If this group prefix still can't be found, print an error.
         if (index == -1) {
-            cerr << "ControllerInterface::enablePlaybackChannels: Could not find group with prefix " <<
-                    groupPrefix.toStdString() << '\n';
+            cerr << "ControllerInterface::enablePlaybackChannels: Could not find group with prefix "
+                 << groupPrefix.toStdString() << '\n';
         } else {
-            const HeaderFileGroup& fileGroup = fileInfo->groups[index];
+            const HeaderFileGroup &fileGroup = fileInfo->groups[index];
             for (int i = 0; i < fileGroup.numChannels(); ++i) {
-                const HeaderFileChannel& fileChannel = fileGroup.channels[i];
-                Channel* channel = state->signalSources->channelByName(fileChannel.nativeChannelName);
+                const HeaderFileChannel &fileChannel = fileGroup.channels[i];
+                Channel *channel =
+                    state->signalSources->channelByName(fileChannel.nativeChannelName);
                 // If this channel can't be found, and it's one of the channel names that had a name
                 // change from the original USB Interface Board software, try looking for the same
                 // channel with the original naming convention.
                 if (!channel) {
-                    if (groupPrefix == "DIGITAL-IN" || groupPrefix == "DIGITAL-OUT" || groupPrefix == "ANALOG-IN") {
-                        QString nativeChannelName = groupPrefix + fileChannel.nativeChannelName.right(3);
+                    if (groupPrefix == "DIGITAL-IN" || groupPrefix == "DIGITAL-OUT" ||
+                        groupPrefix == "ANALOG-IN") {
+                        QString nativeChannelName =
+                            groupPrefix + fileChannel.nativeChannelName.right(3);
                         channel = state->signalSources->channelByName(nativeChannelName);
                     }
                 }
@@ -474,8 +542,8 @@ void ControllerInterface::enablePlaybackChannels()
                 if (channel) {
                     channel->setEnabled(fileChannel.enabled);
                 } else {
-                    cerr << "ControllerInterface::enablePlaybackChannels: Could not find channel " <<
-                            fileChannel.nativeChannelName.toStdString() << '\n';
+                    cerr << "ControllerInterface::enablePlaybackChannels: Could not find channel "
+                         << fileChannel.nativeChannelName.toStdString() << '\n';
                 }
             }
         }
@@ -485,7 +553,7 @@ void ControllerInterface::enablePlaybackChannels()
 void ControllerInterface::addPlaybackHeadstageChannels()
 {
     if (!dataFileReader) return;
-    const IntanHeaderInfo* fileInfo = dataFileReader->getHeaderInfo();
+    const IntanHeaderInfo *fileInfo = dataFileReader->getHeaderInfo();
 
     // Set bandwidth parameters from playback file.
     state->holdUpdate();
@@ -499,36 +567,52 @@ void ControllerInterface::addPlaybackHeadstageChannels()
     state->releaseUpdate();
 
     for (int port = 0; port < fileInfo->numSPIPorts; ++port) {
-        SignalGroup* group = state->signalSources->portGroupByIndex(port);
+        SignalGroup *group = state->signalSources->portGroupByIndex(port);
         QString portPrefix = QString(QChar('A' + port));
         int index = fileInfo->groupIndex(portPrefix);
         if (index == -1) {
             group->removeAllChannels();
             group->setEnabled(false);
         } else {
-            const HeaderFileGroup& fileGroup = fileInfo->groups[index];
+            const HeaderFileGroup &fileGroup = fileInfo->groups[index];
             if (!fileGroup.enabled) {
                 group->removeAllChannels();
                 group->setEnabled(false);
             } else {
                 for (int i = 0; i < fileGroup.numChannels(); ++i) {
-                    const HeaderFileChannel& fileChannel = fileGroup.channels[i];
+                    const HeaderFileChannel &fileChannel = fileGroup.channels[i];
                     if (fileChannel.signalType == AmplifierSignal) {
-                        group->addAmplifierChannel(fileChannel.nativeOrder, fileChannel.boardStream,
-                                                   fileChannel.commandStream, fileChannel.chipChannel,
-                                                   fileChannel.impedanceMagnitude, fileChannel.impedancePhase);
-//                       cout << "Playback configuration: Adding " << portPrefix.toStdString() << "-" <<
-//                                QString("%1").arg(fileChannel.channelNumber(), 3, 10, QChar('0')).toStdString() << endl;
+                        group->addAmplifierChannel(
+                            fileChannel.nativeOrder,
+                            fileChannel.boardStream,
+                            fileChannel.commandStream,
+                            fileChannel.chipChannel,
+                            fileChannel.impedanceMagnitude,
+                            fileChannel.impedancePhase
+                        );
+                        //                       cout << "Playback configuration: Adding " <<
+                        //                       portPrefix.toStdString() << "-" <<
+                        //                                QString("%1").arg(fileChannel.channelNumber(),
+                        //                                3, 10, QChar('0')).toStdString() << endl;
                     } else if (fileChannel.signalType == AuxInputSignal) {
-                        group->addAuxInputChannel(fileChannel.nativeOrder, fileChannel.boardStream,
-                                                  fileChannel.chipChannel, fileChannel.endingNumber(1));
-//                       cout << "Playback configuration: Adding " << portPrefix.toStdString() << "-AUX" <<
-//                                fileChannel.endingNumber(1) << endl;
+                        group->addAuxInputChannel(
+                            fileChannel.nativeOrder,
+                            fileChannel.boardStream,
+                            fileChannel.chipChannel,
+                            fileChannel.endingNumber(1)
+                        );
+                        //                       cout << "Playback configuration: Adding " <<
+                        //                       portPrefix.toStdString() << "-AUX" <<
+                        //                                fileChannel.endingNumber(1) << endl;
                     } else if (fileChannel.signalType == SupplyVoltageSignal) {
-                        group->addSupplyVoltageChannel(fileChannel.nativeOrder, fileChannel.boardStream,
-                                                       fileChannel.endingNumber(1));
-//                       cout << "Playback configuration: Adding " << portPrefix.toStdString() << "-VDD" <<
-//                                fileChannel.endingNumber(1) << endl;
+                        group->addSupplyVoltageChannel(
+                            fileChannel.nativeOrder,
+                            fileChannel.boardStream,
+                            fileChannel.endingNumber(1)
+                        );
+                        //                       cout << "Playback configuration: Adding " <<
+                        //                       portPrefix.toStdString() << "-VDD" <<
+                        //                                fileChannel.endingNumber(1) << endl;
                     }
                 }
             }
@@ -538,15 +622,17 @@ void ControllerInterface::addPlaybackHeadstageChannels()
 
 void ControllerInterface::setManualCableDelays()
 {
-    SignalSources* signalSources = state->signalSources;
+    SignalSources *signalSources = state->signalSources;
     for (int port = 0; port < signalSources->numPortGroups(); ++port) {
         if (signalSources->portGroupByIndex(port)->manualDelayEnabled->getValue()) {
-            rhxController->setCableDelay((BoardPort)port, signalSources->portGroupByIndex(port)->manualDelay->getValue());
+            rhxController->setCableDelay(
+                (BoardPort) port, signalSources->portGroupByIndex(port)->manualDelay->getValue()
+            );
         }
     }
 }
 
-void ControllerInterface::openController(const QString& boardSerialNumber)
+void ControllerInterface::openController(const QString &boardSerialNumber)
 {
     rhxController->open(boardSerialNumber.toStdString());
 
@@ -554,15 +640,20 @@ void ControllerInterface::openController(const QString& boardSerialNumber)
     QString bitfilename;
     if (state->getControllerTypeEnum() == ControllerRecordUSB3) {
         bitfilename = ConfigFileRHDController;
-    } else if (state->getControllerTypeEnum() == ControllerStimRecord){
+    } else if (state->getControllerTypeEnum() == ControllerStimRecord) {
         bitfilename = ConfigFileRHSController;
     } else {
         bitfilename = ConfigFileRHDController;
     }
-    if (!rhxController->uploadFPGABitfile(QString(QCoreApplication::applicationDirPath() + "/" + bitfilename).toStdString())) {
-        QMessageBox::critical(nullptr, tr("Configuration File Error: Software Aborting"),
-                              tr("Cannot upload configuration file: ") + bitfilename +
-                              tr(".  Make sure file is in the same directory as the executable file."));
+    if (!rhxController->uploadFPGABitfile(
+            QString(QCoreApplication::applicationDirPath() + "/" + bitfilename).toStdString()
+        )) {
+        QMessageBox::critical(
+            nullptr,
+            tr("Configuration File Error: Software Aborting"),
+            tr("Cannot upload configuration file: ") + bitfilename +
+                tr(".  Make sure file is in the same directory as the executable file.")
+        );
         exit(EXIT_FAILURE);
     }
 
@@ -592,7 +683,8 @@ void ControllerInterface::initializeController()
     }
 
     // Since our longest command sequence is N commands, we run the SPI interface for N samples.
-    rhxController->setMaxTimeStep(RHXDataBlock::samplesPerDataBlock(state->getControllerTypeEnum()));
+    rhxController->setMaxTimeStep(RHXDataBlock::samplesPerDataBlock(state->getControllerTypeEnum())
+    );
     rhxController->setContinuousRunMode(false);
 
     // Start SPI interface.
@@ -604,20 +696,27 @@ void ControllerInterface::initializeController()
     }
 
     // Read the resulting single data block from the USB interface.
-    RHXDataBlock dataBlock(state->getControllerTypeEnum(), rhxController->getNumEnabledDataStreams());
-    if (!state->synthetic->getValue() && !state->playback->getValue()) rhxController->readDataBlock(&dataBlock);
+    RHXDataBlock dataBlock(
+        state->getControllerTypeEnum(), rhxController->getNumEnabledDataStreams()
+    );
+    if (!state->synthetic->getValue() && !state->playback->getValue())
+        rhxController->readDataBlock(&dataBlock);
 
     if (state->getControllerTypeEnum() != ControllerStimRecord) {
-        // Now that ADC calibration has been performed, we switch to the command sequence that does not execute
-        // ADC calibration.
-        rhxController->selectAuxCommandBankAllPorts(RHXController::AuxCmd3, state->manualFastSettleEnabled->getValue() ? 2 : 1);
+        // Now that ADC calibration has been performed, we switch to the command sequence that does
+        // not execute ADC calibration.
+        rhxController->selectAuxCommandBankAllPorts(
+            RHXController::AuxCmd3, state->manualFastSettleEnabled->getValue() ? 2 : 1
+        );
     }
 
     // Set default configuration for all eight DACs on controller.
     int dacManualStream = (state->getControllerTypeEnum() == ControllerRecordUSB3) ? 32 : 8;
     for (int i = 0; i < 8; i++) {
         rhxController->enableDac(i, false);
-        rhxController->selectDacDataStream(i, dacManualStream); // Initially point DACs to DacManual1 input
+        rhxController->selectDacDataStream(
+            i, dacManualStream
+        );  // Initially point DACs to DacManual1 input
         rhxController->selectDacDataChannel(i, 0);
         setDacThreshold(i, 0);
     }
@@ -641,42 +740,62 @@ void ControllerInterface::initializeController()
 // Create SPI command lists and upload to auxiliary command slots.
 void ControllerInterface::updateChipCommandLists(bool updateStimParams)
 {
-    RHXRegisters chipRegisters(state->getControllerTypeEnum(), rhxController->getSampleRate(), state->getStimStepSizeEnum());
+    RHXRegisters chipRegisters(
+        state->getControllerTypeEnum(), rhxController->getSampleRate(), state->getStimStepSizeEnum()
+    );
 
-    chipRegisters.setDigOutLow(RHXRegisters::DigOut::DigOut1); // Take auxiliary output out of HiZ mode.
-    chipRegisters.setDigOutLow(RHXRegisters::DigOut::DigOut2); // Take auxiliary output out of HiZ mode.
-    chipRegisters.setDigOutLow(RHXRegisters::DigOut::DigOutOD); // Take auxiliary output out of HiZ mode.
+    chipRegisters.setDigOutLow(RHXRegisters::DigOut::DigOut1
+    );  // Take auxiliary output out of HiZ mode.
+    chipRegisters.setDigOutLow(RHXRegisters::DigOut::DigOut2
+    );  // Take auxiliary output out of HiZ mode.
+    chipRegisters.setDigOutLow(RHXRegisters::DigOut::DigOutOD
+    );  // Take auxiliary output out of HiZ mode.
 
     vector<unsigned int> commandList;
     int numCommands = RHXDataBlock::samplesPerDataBlock(state->getControllerTypeEnum());
     int commandSequenceLength;
 
     if (state->getControllerTypeEnum() == ControllerStimRecord) {
-        // Create a command list for the AuxCmd1 slot.  This command sequence programs most of the RAM registers
-        // on the RHS2116 chip.
-        commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, updateStimParams);
-        rhxController->uploadCommandList(commandList, RHXController::AuxCmd1, 0); // RHS - bank doesn't matter
+        // Create a command list for the AuxCmd1 slot.  This command sequence programs most of the
+        // RAM registers on the RHS2116 chip.
+        commandSequenceLength =
+            chipRegisters.createCommandListRHSRegisterConfig(commandList, updateStimParams);
+        rhxController->uploadCommandList(
+            commandList, RHXController::AuxCmd1, 0
+        );  // RHS - bank doesn't matter
         rhxController->selectAuxCommandLength(RHXController::AuxCmd1, 0, commandSequenceLength - 1);
 
         // Next, fill the other three command slots with dummy commands
-        chipRegisters.createCommandListDummy(commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 255));
-        rhxController->uploadCommandList(commandList, RHXController::AuxCmd2, 0); // RHS - bank doesn't matter
-        chipRegisters.createCommandListDummy(commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 254));
-        rhxController->uploadCommandList(commandList, RHXController::AuxCmd3, 0); // RHS - bank doesn't matter
-        chipRegisters.createCommandListDummy(commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 253));
+        chipRegisters.createCommandListDummy(
+            commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 255)
+        );
+        rhxController->uploadCommandList(
+            commandList, RHXController::AuxCmd2, 0
+        );  // RHS - bank doesn't matter
+        chipRegisters.createCommandListDummy(
+            commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 254)
+        );
+        rhxController->uploadCommandList(
+            commandList, RHXController::AuxCmd3, 0
+        );  // RHS - bank doesn't matter
+        chipRegisters.createCommandListDummy(
+            commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 253)
+        );
         rhxController->uploadCommandList(commandList, RHXController::AuxCmd4, 0);
     } else {
         // Create a command list for the AuxCmd1 slot.  This command sequence will continuously
         // update Register 3, which controls the auxiliary digital output pin on each chip.
         // This permits real-time control of the digital output pin on chips on each SPI port.
-        commandSequenceLength = chipRegisters.createCommandListRHDUpdateDigOut(commandList, numCommands);
+        commandSequenceLength =
+            chipRegisters.createCommandListRHDUpdateDigOut(commandList, numCommands);
         rhxController->uploadCommandList(commandList, RHXController::AuxCmd1, 0);
         rhxController->selectAuxCommandLength(RHXController::AuxCmd1, 0, commandSequenceLength - 1);
         rhxController->selectAuxCommandBankAllPorts(RHXController::AuxCmd1, 0);
 
         // Next, we'll create a command list for the AuxCmd2 slot.  This command sequence
         // will sample the temperature sensor and other auxiliary ADC inputs.
-        commandSequenceLength = chipRegisters.createCommandListRHDSampleAuxIns(commandList, numCommands);
+        commandSequenceLength =
+            chipRegisters.createCommandListRHDSampleAuxIns(commandList, numCommands);
         rhxController->uploadCommandList(commandList, RHXController::AuxCmd2, 0);
         rhxController->selectAuxCommandLength(RHXController::AuxCmd2, 0, commandSequenceLength - 1);
         rhxController->selectAuxCommandBankAllPorts(RHXController::AuxCmd2, 0);
@@ -684,17 +803,28 @@ void ControllerInterface::updateChipCommandLists(bool updateStimParams)
 
     // Set amplifier bandwidth parameters.
     state->holdUpdate();
-    state->actualDspCutoffFreq->setValueWithLimits(chipRegisters.setDspCutoffFreq(state->desiredDspCutoffFreq->getValue()));
-    state->actualLowerBandwidth->setValueWithLimits(chipRegisters.setLowerBandwidth(state->desiredLowerBandwidth->getValue(), 0));
-    state->actualLowerSettleBandwidth->setValueWithLimits(chipRegisters.setLowerBandwidth(state->desiredLowerSettleBandwidth->getValue(), 1));
-    state->actualUpperBandwidth->setValueWithLimits(chipRegisters.setUpperBandwidth(state->desiredUpperBandwidth->getValue()));
+    state->actualDspCutoffFreq->setValueWithLimits(
+        chipRegisters.setDspCutoffFreq(state->desiredDspCutoffFreq->getValue())
+    );
+    state->actualLowerBandwidth->setValueWithLimits(
+        chipRegisters.setLowerBandwidth(state->desiredLowerBandwidth->getValue(), 0)
+    );
+    state->actualLowerSettleBandwidth->setValueWithLimits(
+        chipRegisters.setLowerBandwidth(state->desiredLowerSettleBandwidth->getValue(), 1)
+    );
+    state->actualUpperBandwidth->setValueWithLimits(
+        chipRegisters.setUpperBandwidth(state->desiredUpperBandwidth->getValue())
+    );
     chipRegisters.enableDsp(state->dspEnabled->getValue());
     state->releaseUpdate();
 
     if (state->getControllerTypeEnum() == ControllerStimRecord) {
-        commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, updateStimParams);
+        commandSequenceLength =
+            chipRegisters.createCommandListRHSRegisterConfig(commandList, updateStimParams);
         // Upload version with no ADC calibration to AuxCmd1 RAM Bank.
-        rhxController->uploadCommandList(commandList, RHXController::AuxCmd1, 0); // RHS - bank doesn't matter
+        rhxController->uploadCommandList(
+            commandList, RHXController::AuxCmd1, 0
+        );  // RHS - bank doesn't matter
         rhxController->selectAuxCommandLength(RHXController::AuxCmd1, 0, commandSequenceLength - 1);
 
         // Run system once for changes to take effect.
@@ -715,24 +845,29 @@ void ControllerInterface::updateChipCommandLists(bool updateStimParams)
         // will configure and read back the RHD2000 chip registers, but one sequence will
         // also run ADC calibration.  Another sequence will enable amplifier 'fast settle'.
 
-        commandSequenceLength = chipRegisters.createCommandListRHDRegisterConfig(commandList, true, numCommands);
+        commandSequenceLength =
+            chipRegisters.createCommandListRHDRegisterConfig(commandList, true, numCommands);
         // Upload version with ADC calibration to AuxCmd3 RAM Bank 0.
         rhxController->uploadCommandList(commandList, RHXController::AuxCmd3, 0);
         rhxController->selectAuxCommandLength(RHXController::AuxCmd3, 0, commandSequenceLength - 1);
 
-        commandSequenceLength = chipRegisters.createCommandListRHDRegisterConfig(commandList, false, numCommands);
+        commandSequenceLength =
+            chipRegisters.createCommandListRHDRegisterConfig(commandList, false, numCommands);
         // Upload version with no ADC calibration to AuxCmd3 RAM Bank 1.
         rhxController->uploadCommandList(commandList, RHXController::AuxCmd3, 1);
         rhxController->selectAuxCommandLength(RHXController::AuxCmd3, 0, commandSequenceLength - 1);
 
         chipRegisters.setFastSettle(true);
-        commandSequenceLength = chipRegisters.createCommandListRHDRegisterConfig(commandList, false, numCommands);
+        commandSequenceLength =
+            chipRegisters.createCommandListRHDRegisterConfig(commandList, false, numCommands);
         // Upload version with fast settle enabled to AuxCmd3 RAM Bank 2.
         rhxController->uploadCommandList(commandList, RHXController::AuxCmd3, 2);
         rhxController->selectAuxCommandLength(RHXController::AuxCmd3, 0, commandSequenceLength - 1);
         chipRegisters.setFastSettle(false);
 
-        rhxController->selectAuxCommandBankAllPorts(RHXController::AuxCmd3, state->manualFastSettleEnabled->getValue() ? 2 : 1);
+        rhxController->selectAuxCommandBankAllPorts(
+            RHXController::AuxCmd3, state->manualFastSettleEnabled->getValue() ? 2 : 1
+        );
     }
 
     setDacHighpassFilterEnabled(state->analogOutHighpassFilterEnabled->getValue());
@@ -742,7 +877,10 @@ void ControllerInterface::updateChipCommandLists(bool updateStimParams)
 void ControllerInterface::runController()
 {
     if (state->uploadInProgress->getValue()) {
-        sendTCPError("Error - To avoid data corruption, controller cannot start running until previously started upload function completes");
+        sendTCPError(
+            "Error - To avoid data corruption, controller cannot start running until previously "
+            "started upload function completes"
+        );
         return;
     }
 
@@ -760,12 +898,12 @@ void ControllerInterface::runController()
 
     int numSamples = display->getSamplesPerRefresh();  // 1000 at 20 kHz; 1500 at 30 kHz
 
-    uint32_t* timeStamps = new uint32_t [display->getMaxSamplesPerRefresh()];
+    uint32_t *timeStamps = new uint32_t[display->getMaxSamplesPerRefresh()];
     int lastTimeStamp = -1;
     int currentTimeStamp = 0;
 
     QElapsedTimer loopTimer, workTimer, reportTimer;
-//    QElapsedTimer plotTimer;
+    // QElapsedTimer plotTimer;
 
     fill(cpuLoadHistory.begin(), cpuLoadHistory.end(), 0.0);
 
@@ -787,11 +925,12 @@ void ControllerInterface::runController()
             pipeReadErrorMessage(rhxController->pipeReadError());
         }
 
-        if (state->running && waveformFifo->requestReadNewData(WaveformFifo::ReaderDisplay, numSamples)) {
+        if (state->running &&
+            waveformFifo->requestReadNewData(WaveformFifo::ReaderDisplay, numSamples)) {
             waveformFifo->copyTimeStamps(WaveformFifo::ReaderDisplay, timeStamps, 0, numSamples);
 
             // Main thread plots data:
-//            plotTimer.start();
+            // plotTimer.start();
 
             if (!state->triggerModeDisplay->getValue()) {
                 // Normal (non-triggered) display
@@ -800,21 +939,29 @@ void ControllerInterface::runController()
             } else {
                 // Triggered display
                 int numSamplesDisplayed = display->getSamplesPerFullRefresh();
-                if (waveformFifo->numWordsInMemory(WaveformFifo::ReaderDisplay) > numSamplesDisplayed + numSamples) {
-                    int memoryPosition = -round((1.0 - state->triggerPositionDisplay->getNumericValue()) * numSamplesDisplayed);
+                if (waveformFifo->numWordsInMemory(WaveformFifo::ReaderDisplay) >
+                    numSamplesDisplayed + numSamples) {
+                    int memoryPosition = -round(
+                        (1.0 - state->triggerPositionDisplay->getNumericValue()) *
+                        numSamplesDisplayed
+                    );
 
                     QString triggerChannelName = state->triggerSourceDisplay->getValueString();
                     bool useAnalogTrigger = triggerChannelName.left(1).toUpper() == "A";
 
                     uint16_t triggerMask = 0x01u;
-                    if (!useAnalogTrigger) triggerMask = 0x01u << (int)state->triggerSourceDisplay->getNumericValue();
+                    if (!useAnalogTrigger)
+                        triggerMask = 0x01u << (int) state->triggerSourceDisplay->getNumericValue();
 
-                    uint16_t* digitalInWaveform = waveformFifo->getDigitalWaveformPointer("DIGITAL-IN-WORD");
-                    float* analogInWaveform = nullptr;
+                    uint16_t *digitalInWaveform =
+                        waveformFifo->getDigitalWaveformPointer("DIGITAL-IN-WORD");
+                    float *analogInWaveform = nullptr;
                     float logicThreshold = 0.0F;
                     if (useAnalogTrigger) {  // Get thresholded analog signal as digital signal
-                        analogInWaveform = waveformFifo->getAnalogWaveformPointer(triggerChannelName.toStdString());
-                        logicThreshold = (float)state->triggerAnalogVoltageThreshold->getValue();
+                        analogInWaveform =
+                            waveformFifo->getAnalogWaveformPointer(triggerChannelName.toStdString()
+                            );
+                        logicThreshold = (float) state->triggerAnalogVoltageThreshold->getValue();
                     }
 
                     bool risingEdge = state->triggerPolarityDisplay->getValue() == "Rising";
@@ -824,21 +971,29 @@ void ControllerInterface::runController()
                     bool prevTriggerValue;
                     if (useAnalogTrigger) {
                         prevTriggerValue =
-                                waveformFifo->getAnalogDataAsDigital(WaveformFifo::ReaderDisplay, analogInWaveform, t, logicThreshold) &
-                                triggerMask;
+                            waveformFifo->getAnalogDataAsDigital(
+                                WaveformFifo::ReaderDisplay, analogInWaveform, t, logicThreshold
+                            ) &
+                            triggerMask;
                     } else {
-                        prevTriggerValue = waveformFifo->getDigitalData(WaveformFifo::ReaderDisplay, digitalInWaveform, t) &
-                                triggerMask;
+                        prevTriggerValue = waveformFifo->getDigitalData(
+                                               WaveformFifo::ReaderDisplay, digitalInWaveform, t
+                                           ) &
+                                           triggerMask;
                     }
                     for (++t; t <= memoryPosition; ++t) {
                         bool triggerValue;
                         if (useAnalogTrigger) {
                             triggerValue =
-                                    waveformFifo->getAnalogDataAsDigital(WaveformFifo::ReaderDisplay, analogInWaveform, t, logicThreshold) &
-                                    triggerMask;
+                                waveformFifo->getAnalogDataAsDigital(
+                                    WaveformFifo::ReaderDisplay, analogInWaveform, t, logicThreshold
+                                ) &
+                                triggerMask;
                         } else {
-                            triggerValue = waveformFifo->getDigitalData(WaveformFifo::ReaderDisplay, digitalInWaveform, t) &
-                                    triggerMask;
+                            triggerValue = waveformFifo->getDigitalData(
+                                               WaveformFifo::ReaderDisplay, digitalInWaveform, t
+                                           ) &
+                                           triggerMask;
                         }
                         if (risingEdge) {
                             if (!prevTriggerValue && triggerValue) {
@@ -854,8 +1009,12 @@ void ControllerInterface::runController()
                         prevTriggerValue = triggerValue;
                     }
                     if (triggerFound) {
-                        int startTime = t - round((state->triggerPositionDisplay->getNumericValue()) * numSamplesDisplayed);
-                        yScaleUsed = display->loadWaveformDataFromMemory(waveformFifo, startTime, true);
+                        int startTime = t - round(
+                                                (state->triggerPositionDisplay->getNumericValue()) *
+                                                numSamplesDisplayed
+                                            );
+                        yScaleUsed =
+                            display->loadWaveformDataFromMemory(waveformFifo, startTime, true);
                         emit setTopStatusLabel("");
                         triggerWaitNotify = 0;
                     } else {
@@ -876,7 +1035,7 @@ void ControllerInterface::runController()
 
             waveformFifo->freeOldData(WaveformFifo::ReaderDisplay);
 
-//            double plotTime = (double) plotTimer.nsecsElapsed();
+            // double plotTime = (double) plotTimer.nsecsElapsed();
 
             if (!audioThread) {
                 if (waveformFifo->requestReadNewData(WaveformFifo::ReaderAudio, numSamples)) {
@@ -893,7 +1052,8 @@ void ControllerInterface::runController()
             for (int i = 0; i < numSamples; ++i) {
                 currentTimeStamp = (int) timeStamps[i];
                 if (currentTimeStamp - lastTimeStamp != 1 && lastTimeStamp != -1) {
-                    cout << "Timestamp discontinuity: " << lastTimeStamp << " " << currentTimeStamp << '\n';
+                    cout << "Timestamp discontinuity: " << lastTimeStamp << " " << currentTimeStamp
+                         << '\n';
                 }
                 lastTimeStamp = currentTimeStamp;
             }
@@ -914,14 +1074,14 @@ void ControllerInterface::runController()
                 for (int i = 0; i < (int) cpuLoadHistory.size(); ++i) {
                     total += cpuLoadHistory[i];
                 }
-                double averageCpuLoad = total / (double)(cpuLoadHistory.size());
+                double averageCpuLoad = total / (double) (cpuLoadHistory.size());
 
                 emit cpuLoadPercent(averageCpuLoad);
 
-//                cout << "        Controller Interface (Main Thread) CPU usage: " << (int) cpuUsage << "%" << EndOfLine;
-//                cout << "Plot time = " << plotTime / 1.0e6 << " ms" << EndOfLine;
-//                cout << "Work time = " << workTime / 1.0e6 << " ms" << EndOfLine;
-//                cout << "Loop time = " << loopTime / 1.0e6 << " ms" << EndOfLine;
+                // cout << "Controller Interface (Main Thread) CPU usage: " << (int) cpuUsage << "%"
+                // << std::endl; cout << "Plot time = " << plotTime / 1.0e6 << " ms" << std::endl;
+                // cout << "Work time = " << workTime / 1.0e6 << " ms" << std::endl;
+                // cout << "Loop time = " << loopTime / 1.0e6 << " ms" << std::endl;
                 reportTimer.restart();
             }
             qApp->processEvents();
@@ -947,16 +1107,19 @@ void ControllerInterface::runController()
     }
 
     usbDataThread->stopRunning();
-    while (usbDataThread->isActive()) { // Important: Must wait for usbDataThread to fully stop before we reset usbStreamFifo buffer!
-        qApp->processEvents(); // Stay responsive to GUI events during this loop.
+    while (usbDataThread->isActive()) {  // Important: Must wait for usbDataThread to fully stop
+                                         // before we reset usbStreamFifo buffer!
+        qApp->processEvents();           // Stay responsive to GUI events during this loop.
     }
-    QThread::usleep(1000); // Pause briefly to make sure tail end of data gets through waveformProcessorThread before it is also destroyed
+    QThread::usleep(1000);  // Pause briefly to make sure tail end of data gets through
+                            // waveformProcessorThread before it is also destroyed
 
     waveformProcessorThread->stopRunning();
     while (waveformProcessorThread->isActive()) {
         qApp->processEvents();
     }
-    QThread::usleep(1000); // Pause briefly to make sure tail end of data gets through saveToDiskThread before it is also destroyed
+    QThread::usleep(1000);  // Pause briefly to make sure tail end of data gets through
+                            // saveToDiskThread before it is also destroyed
 
     saveToDiskThread->stopRunning();
     while (saveToDiskThread->isActive()) {
@@ -967,13 +1130,13 @@ void ControllerInterface::runController()
 
     usbStreamFifo->resetBuffer();
 
-    delete [] timeStamps;
+    delete[] timeStamps;
     fill(cpuLoadHistory.begin(), cpuLoadHistory.end(), 0.0);
     emit cpuLoadPercent(0.0);
     emit haveStopped();
 }
 
-void ControllerInterface::runControllerSilently(double nSeconds, QProgressDialog* progress)
+void ControllerInterface::runControllerSilently(double nSeconds, QProgressDialog *progress)
 {
     qint64 runTimeNsecs = nSeconds * 1e9;
     qint64 progressTickNsecs = 0.1 * 1e9;
@@ -1031,13 +1194,14 @@ void ControllerInterface::runControllerSilently(double nSeconds, QProgressDialog
     }
 
     waveformProcessorThread->stopRunning();
-    while(waveformProcessorThread->isActive()) {
+    while (waveformProcessorThread->isActive()) {
         qApp->processEvents();
     }
 
     usbDataThread->stopRunning();
-    while (usbDataThread->isActive()) {  // Important: Must wait for usbDataThread to fully stop before we reset usbStreamFifo buffer!
-        qApp->processEvents();  // Stay responsive to GUI events during this loop.
+    while (usbDataThread->isActive()) {  // Important: Must wait for usbDataThread to fully stop
+                                         // before we reset usbStreamFifo buffer!
+        qApp->processEvents();           // Stay responsive to GUI events during this loop.
     }
 
     waveformFifo->pauseBuffer();
@@ -1051,18 +1215,20 @@ void ControllerInterface::runControllerSilently(double nSeconds, QProgressDialog
 float ControllerInterface::measureRmsLevel(string waveName, double timeSec) const
 {
     int numSamples = round(state->sampleRate->getNumericValue() * timeSec);
-    float* waveform = new float [numSamples];
+    float *waveform = new float[numSamples];
     GpuWaveformAddress gpuWaveformAddress = waveformFifo->getGpuWaveformAddress(waveName);
-    waveformFifo->copyGpuAmplifierData(WaveformFifo::ReaderDisplay, waveform, gpuWaveformAddress, -numSamples, numSamples);
+    waveformFifo->copyGpuAmplifierData(
+        WaveformFifo::ReaderDisplay, waveform, gpuWaveformAddress, -numSamples, numSamples
+    );
 
     // Calculate RMS value of waveform.
     float sumOfSquares = 0.0;
     for (int i = 0; i < numSamples; ++i) {
         sumOfSquares += waveform[i] * waveform[i];
     }
-    float rmsLevel = sqrt(sumOfSquares / (float)numSamples);
+    float rmsLevel = sqrt(sumOfSquares / (float) numSamples);
 
-    delete [] waveform;
+    delete[] waveform;
 
     return rmsLevel;
 }
@@ -1073,7 +1239,7 @@ void ControllerInterface::setAllSpikeDetectionThresholds()
         double threshold = state->absoluteThreshold->getValue();
         vector<string> waveNameList = state->signalSources->amplifierChannelsNameList();
         for (int i = 0; i < (int) waveNameList.size(); ++i) {
-            Channel* channel = state->signalSources->channelByName(waveNameList[i]);
+            Channel *channel = state->signalSources->channelByName(waveNameList[i]);
             if (channel) {
                 if (channel->isEnabled()) {
                     channel->setSpikeThreshold(round(threshold));
@@ -1085,15 +1251,20 @@ void ControllerInterface::setAllSpikeDetectionThresholds()
         if (state->negativeRelativeThreshold->getValue()) rmsMultiple *= -1;
         double numSecondsToMeasure = 3.0;
 
-        QProgressDialog* progress = new QProgressDialog(QObject::tr("Measuring Noise Floor to Calculate Thresholds"), QString(), 0, 1);
-        runControllerSilently(numSecondsToMeasure + 1.0, progress);  // Add one second at beginning so we ignore starting transients.
+        QProgressDialog *progress = new QProgressDialog(
+            QObject::tr("Measuring Noise Floor to Calculate Thresholds"), QString(), 0, 1
+        );
+        runControllerSilently(
+            numSecondsToMeasure + 1.0, progress
+        );  // Add one second at beginning so we ignore starting transients.
         delete progress;
 
         vector<string> waveNameList = state->signalSources->amplifierChannelsNameList();
         for (int i = 0; i < (int) waveNameList.size(); ++i) {
-            string waveName = waveNameList[i] + "|HIGH";  // Measure RMS levels of highpass filtered signal for spike threshold calculation.
+            string waveName = waveNameList[i] + "|HIGH";  // Measure RMS levels of highpass filtered
+                                                          // signal for spike threshold calculation.
             float rmsLevel = measureRmsLevel(waveName, numSecondsToMeasure);
-            Channel* channel = state->signalSources->channelByName(waveNameList[i]);
+            Channel *channel = state->signalSources->channelByName(waveNameList[i]);
             if (channel) {
                 if (channel->isEnabled()) {
                     channel->setSpikeThreshold(round(rmsMultiple * rmsLevel));
@@ -1103,11 +1274,13 @@ void ControllerInterface::setAllSpikeDetectionThresholds()
     }
 }
 
-// Negative values of speed rewind into waveform FIFO memory; positive values fast forward, at the specified multiple of realtime.
+// Negative values of speed rewind into waveform FIFO memory; positive values fast forward, at the
+// specified multiple of realtime.
 void ControllerInterface::sweepDisplay(double speed)
 {
     int numSamples = display->getSamplesPerRefresh();
-    double nanosecondsPerRefresh = 1.0e9 * (double)numSamples / state->sampleRate->getNumericValue();
+    double nanosecondsPerRefresh =
+        1.0e9 * (double) numSamples / state->sampleRate->getNumericValue();
     double speedUpFactor = fabs(speed);
     int64_t nanosecondsPerLoop = round(nanosecondsPerRefresh / speedUpFactor);
     int numSamplesInMemory = waveformFifo->numWordsInMemory(WaveformFifo::ReaderDisplay);
@@ -1126,10 +1299,12 @@ void ControllerInterface::sweepDisplay(double speed)
                 if (controlPanel) controlPanel->updateSlidersEnabled(yScaleUsed);
                 QTime sweepTime(0, 0);
                 int timeStamp = currentTimeStamp + startTime;
-                int totalSweepTimeSeconds = round((double)timeStamp / state->sampleRate->getNumericValue());
+                int totalSweepTimeSeconds =
+                    round((double) timeStamp / state->sampleRate->getNumericValue());
                 QString timeString;
                 if (timeStamp < 0) {
-                    timeString = "-" + sweepTime.addSecs(-totalSweepTimeSeconds).toString("HH:mm:ss");
+                    timeString =
+                        "-" + sweepTime.addSecs(-totalSweepTimeSeconds).toString("HH:mm:ss");
                     if (timeString == "-00:00:00") timeString = "00:00:00";
                 } else {
                     timeString = sweepTime.addSecs(totalSweepTimeSeconds).toString("HH:mm:ss");
@@ -1154,15 +1329,9 @@ void ControllerInterface::sweepDisplay(double speed)
     emit haveStopped();
 }
 
-void ControllerInterface::resetWaveformFifo()
-{
-    waveformFifo->resetBuffer();
-}
+void ControllerInterface::resetWaveformFifo() { waveformFifo->resetBuffer(); }
 
-void ControllerInterface::setDacGain(int dacGainIndex)
-{
-    rhxController->setDacGain(dacGainIndex);
-}
+void ControllerInterface::setDacGain(int dacGainIndex) { rhxController->setDacGain(dacGainIndex); }
 
 void ControllerInterface::setAudioNoiseSuppress(int noiseSuppressIndex)
 {
@@ -1205,27 +1374,38 @@ QString ControllerInterface::endTimePlaybackFile() const
     return timeString;
 }
 
-void ControllerInterface::setStimSequenceParameters(Channel* ampChannel)
+void ControllerInterface::setStimSequenceParameters(Channel *ampChannel)
 {
     if (rhxController->isSynthetic() || rhxController->isPlayback()) return;
 
     const int Never = 65535;
 
-    StimParameters* parameters = ampChannel->stimParameters;
+    StimParameters *parameters = ampChannel->stimParameters;
     int stream = ampChannel->getCommandStream();
     int channel = ampChannel->getChipChannel();
     double timestep = 1.0e6 / state->sampleRate->getNumericValue();  // time step in microseconds
-    double currentstep = RHXRegisters::stimStepSizeToDouble(state->getStimStepSizeEnum()) * 1.0e6;  // current step in microamps
+    double currentstep = RHXRegisters::stimStepSizeToDouble(state->getStimStepSizeEnum()) *
+                         1.0e6;  // current step in microamps
 
-    int numOfPulses = ((PulseOrTrain) parameters->pulseOrTrain->getIndex() == SinglePulse) ?
-                1 : parameters->numberOfStimPulses->getValue();
+    int numOfPulses = ((PulseOrTrain) parameters->pulseOrTrain->getIndex() == SinglePulse)
+                          ? 1
+                          : parameters->numberOfStimPulses->getValue();
 
-    rhxController->configureStimTrigger(stream, channel, parameters->triggerSource->getIndex(),
-                                        parameters->enabled->getValue(),
-                                        ((TriggerEdgeOrLevel) parameters->triggerEdgeOrLevel->getIndex() == TriggerEdge),
-                                        ((TriggerHighOrLow) parameters->triggerHighOrLow->getIndex() == TriggerLow));
-    rhxController->configureStimPulses(stream, channel, numOfPulses, (StimShape)(parameters->stimShape->getIndex()),
-                                       ((StimPolarity) parameters->stimPolarity->getIndex() == NegativeFirst));
+    rhxController->configureStimTrigger(
+        stream,
+        channel,
+        parameters->triggerSource->getIndex(),
+        parameters->enabled->getValue(),
+        ((TriggerEdgeOrLevel) parameters->triggerEdgeOrLevel->getIndex() == TriggerEdge),
+        ((TriggerHighOrLow) parameters->triggerHighOrLow->getIndex() == TriggerLow)
+    );
+    rhxController->configureStimPulses(
+        stream,
+        channel,
+        numOfPulses,
+        (StimShape) (parameters->stimShape->getIndex()),
+        ((StimPolarity) parameters->stimPolarity->getIndex() == NegativeFirst)
+    );
 
     int preStimAmpSettle = round(parameters->preStimAmpSettle->getValue() / timestep);
     int postStimAmpSettle = round(parameters->postStimAmpSettle->getValue() / timestep);
@@ -1235,7 +1415,7 @@ void ControllerInterface::setStimSequenceParameters(Channel* ampChannel)
     int interphaseDelay = round(parameters->interphaseDelay->getValue() / timestep);
     int refractoryPeriod = round(parameters->refractoryPeriod->getValue() / timestep);
     int postStimChargeRecovOn = round(parameters->postStimChargeRecovOn->getValue() / timestep);
-    int postStimChargeRecovOff = round(parameters->postStimChargeRecovOff->getValue() / timestep );
+    int postStimChargeRecovOff = round(parameters->postStimChargeRecovOff->getValue() / timestep);
     int pulseTrainPeriod = round(parameters->pulseTrainPeriod->getValue() / timestep);
 
     int eventStartStim;
@@ -1310,40 +1490,80 @@ void ControllerInterface::setStimSequenceParameters(Channel* ampChannel)
         eventChargeRecovOff = 0;
     }
 
-    rhxController->programStimReg(stream, channel, AbstractRHXController::EventAmpSettleOn, eventAmpSettleOn);
-    rhxController->programStimReg(stream, channel, AbstractRHXController::EventStartStim, eventStartStim);
-    rhxController->programStimReg(stream, channel, AbstractRHXController::EventStimPhase2, eventStimPhase2);
-    rhxController->programStimReg(stream, channel, AbstractRHXController::EventStimPhase3, eventStimPhase3);
-    rhxController->programStimReg(stream, channel, AbstractRHXController::EventEndStim, eventEndStim);
-    rhxController->programStimReg(stream, channel, AbstractRHXController::EventRepeatStim, eventRepeatStim);
-    rhxController->programStimReg(stream, channel, AbstractRHXController::EventAmpSettleOff, eventAmpSettleOff);
-    rhxController->programStimReg(stream, channel, AbstractRHXController::EventChargeRecovOn, eventChargeRecovOn);
-    rhxController->programStimReg(stream, channel, AbstractRHXController::EventChargeRecovOff, eventChargeRecovOff);
-    rhxController->programStimReg(stream, channel, AbstractRHXController::EventAmpSettleOnRepeat, eventAmpSettleOnRepeat);
-    rhxController->programStimReg(stream, channel, AbstractRHXController::EventAmpSettleOffRepeat, eventAmpSettleOffRepeat);
+    rhxController->programStimReg(
+        stream, channel, AbstractRHXController::EventAmpSettleOn, eventAmpSettleOn
+    );
+    rhxController->programStimReg(
+        stream, channel, AbstractRHXController::EventStartStim, eventStartStim
+    );
+    rhxController->programStimReg(
+        stream, channel, AbstractRHXController::EventStimPhase2, eventStimPhase2
+    );
+    rhxController->programStimReg(
+        stream, channel, AbstractRHXController::EventStimPhase3, eventStimPhase3
+    );
+    rhxController->programStimReg(
+        stream, channel, AbstractRHXController::EventEndStim, eventEndStim
+    );
+    rhxController->programStimReg(
+        stream, channel, AbstractRHXController::EventRepeatStim, eventRepeatStim
+    );
+    rhxController->programStimReg(
+        stream, channel, AbstractRHXController::EventAmpSettleOff, eventAmpSettleOff
+    );
+    rhxController->programStimReg(
+        stream, channel, AbstractRHXController::EventChargeRecovOn, eventChargeRecovOn
+    );
+    rhxController->programStimReg(
+        stream, channel, AbstractRHXController::EventChargeRecovOff, eventChargeRecovOff
+    );
+    rhxController->programStimReg(
+        stream, channel, AbstractRHXController::EventAmpSettleOnRepeat, eventAmpSettleOnRepeat
+    );
+    rhxController->programStimReg(
+        stream, channel, AbstractRHXController::EventAmpSettleOffRepeat, eventAmpSettleOffRepeat
+    );
     rhxController->programStimReg(stream, channel, AbstractRHXController::EventEnd, eventEnd);
 
     rhxController->enableAuxCommandsOnOneStream(stream);
 
-    RHXRegisters chipRegisters(rhxController->getType(), rhxController->getSampleRate(), state->getStimStepSizeEnum());
+    RHXRegisters chipRegisters(
+        rhxController->getType(), rhxController->getSampleRate(), state->getStimStepSizeEnum()
+    );
     int commandSequenceLength;
     vector<unsigned int> commandList;
 
     int firstPhaseAmplitude = round(parameters->firstPhaseAmplitude->getValue() / currentstep);
     int secondPhaseAmplitude = round(parameters->secondPhaseAmplitude->getValue() / currentstep);
-    int posMag = ((StimPolarity) parameters->stimPolarity->getIndex() == PositiveFirst) ?
-                firstPhaseAmplitude : secondPhaseAmplitude;
-    int negMag = ((StimPolarity) parameters->stimPolarity->getIndex() == NegativeFirst) ?
-                firstPhaseAmplitude : secondPhaseAmplitude;
+    int posMag = ((StimPolarity) parameters->stimPolarity->getIndex() == PositiveFirst)
+                     ? firstPhaseAmplitude
+                     : secondPhaseAmplitude;
+    int negMag = ((StimPolarity) parameters->stimPolarity->getIndex() == NegativeFirst)
+                     ? firstPhaseAmplitude
+                     : secondPhaseAmplitude;
 
-    commandSequenceLength = chipRegisters.createCommandListSetStimMagnitudes(commandList, channel, posMag, 0, negMag, 0);
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter
-    rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
+    commandSequenceLength = chipRegisters.createCommandListSetStimMagnitudes(
+        commandList, channel, posMag, 0, negMag, 0
+    );
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd1, 0
+    );  // RHS - bank doesn't matter
+    rhxController->selectAuxCommandLength(
+        AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1
+    );
 
-    chipRegisters.createCommandListDummy(commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 255));
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd2, 0);  // RHS - bank doesn't matter
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd3, 0);  // RHS - bank doesn't matter
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd4, 0);  // RHS - bank doesn't matter
+    chipRegisters.createCommandListDummy(
+        commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 255)
+    );
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd2, 0
+    );  // RHS - bank doesn't matter
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd3, 0
+    );  // RHS - bank doesn't matter
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd4, 0
+    );  // RHS - bank doesn't matter
 
     rhxController->setMaxTimeStep(commandSequenceLength);
     rhxController->setContinuousRunMode(false);
@@ -1351,49 +1571,67 @@ void ControllerInterface::setStimSequenceParameters(Channel* ampChannel)
     rhxController->enableAuxCommandsOnOneStream(stream);
 
     rhxController->run();
-    while (rhxController->isRunning() ) {
+    while (rhxController->isRunning()) {
         qApp->processEvents();
     }
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterRead(commandList);
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter
-    rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd1, 0
+    );  // RHS - bank doesn't matter
+    rhxController->selectAuxCommandLength(
+        AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1
+    );
     rhxController->run();
-    while (rhxController->isRunning() ) {
+    while (rhxController->isRunning()) {
         qApp->processEvents();
     }
 
     RHXDataBlock dataBlock(rhxController->getType(), rhxController->getNumEnabledDataStreams());
     rhxController->readDataBlock(&dataBlock);
-    rhxController->readDataBlock(&dataBlock);
+    // rhxController->readDataBlock(&dataBlock);
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, true);
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter
-    rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd1, 0
+    );  // RHS - bank doesn't matter
+    rhxController->selectAuxCommandLength(
+        AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1
+    );
 
     rhxController->enableAuxCommandsOnAllStreams();
 }
 
-void ControllerInterface::setAnalogOutSequenceParameters(Channel* anOutChannel)
+void ControllerInterface::setAnalogOutSequenceParameters(Channel *anOutChannel)
 {
     if (rhxController->isSynthetic() || rhxController->isPlayback()) return;
 
     const int Never = 65535;
 
-    StimParameters* parameters = anOutChannel->stimParameters;
+    StimParameters *parameters = anOutChannel->stimParameters;
     int channel = anOutChannel->getNativeChannelNumber();
     int stream = 8 + channel;
     double timestep = 1.0e6 / state->sampleRate->getNumericValue();  // time step in microseconds
 
-    int numOfPulses = ((PulseOrTrain) parameters->pulseOrTrain->getIndex() == SinglePulse) ?
-                1 : parameters->numberOfStimPulses->getValue();
+    int numOfPulses = ((PulseOrTrain) parameters->pulseOrTrain->getIndex() == SinglePulse)
+                          ? 1
+                          : parameters->numberOfStimPulses->getValue();
 
-    rhxController->configureStimTrigger(stream, 0, parameters->triggerSource->getIndex(),
-                                        parameters->enabled->getValue(),
-                                        ((TriggerEdgeOrLevel) parameters->triggerEdgeOrLevel->getIndex() == TriggerEdge),
-                                        ((TriggerHighOrLow) parameters->triggerHighOrLow->getIndex() == TriggerLow));
-    rhxController->configureStimPulses(stream, 0, numOfPulses, (StimShape)(parameters->stimShape->getIndex()),
-                                       ((StimPolarity) parameters->stimPolarity->getIndex() == NegativeFirst));
+    rhxController->configureStimTrigger(
+        stream,
+        0,
+        parameters->triggerSource->getIndex(),
+        parameters->enabled->getValue(),
+        ((TriggerEdgeOrLevel) parameters->triggerEdgeOrLevel->getIndex() == TriggerEdge),
+        ((TriggerHighOrLow) parameters->triggerHighOrLow->getIndex() == TriggerLow)
+    );
+    rhxController->configureStimPulses(
+        stream,
+        0,
+        numOfPulses,
+        (StimShape) (parameters->stimShape->getIndex()),
+        ((StimPolarity) parameters->stimPolarity->getIndex() == NegativeFirst)
+    );
 
     int postTriggerDelay = round(parameters->postTriggerDelay->getValue() / timestep);
     int firstPhaseDuration = round(parameters->firstPhaseDuration->getValue() / timestep);
@@ -1447,32 +1685,45 @@ void ControllerInterface::setAnalogOutSequenceParameters(Channel* anOutChannel)
     }
 
     rhxController->programStimReg(stream, 0, AbstractRHXController::EventStartStim, eventStartStim);
-    rhxController->programStimReg(stream, 0, AbstractRHXController::EventStimPhase2, eventStimPhase2);
-    rhxController->programStimReg(stream, 0, AbstractRHXController::EventStimPhase3, eventStimPhase3);
+    rhxController->programStimReg(
+        stream, 0, AbstractRHXController::EventStimPhase2, eventStimPhase2
+    );
+    rhxController->programStimReg(
+        stream, 0, AbstractRHXController::EventStimPhase3, eventStimPhase3
+    );
     rhxController->programStimReg(stream, 0, AbstractRHXController::EventEndStim, eventEndStim);
-    rhxController->programStimReg(stream, 0, AbstractRHXController::EventRepeatStim, eventRepeatStim);
+    rhxController->programStimReg(
+        stream, 0, AbstractRHXController::EventRepeatStim, eventRepeatStim
+    );
     rhxController->programStimReg(stream, 0, AbstractRHXController::EventEnd, eventEnd);
 
     int dacBaseline, dacPositive, dacNegative;
     const double dacLsb = (2 * 10.24) / 65536;
     const int dacMid = 32768;
-    dacBaseline = dacMid + (int)(parameters->baselineVoltage->getValue() / dacLsb);
+    dacBaseline = dacMid + (int) (parameters->baselineVoltage->getValue() / dacLsb);
 
     if ((StimShape) parameters->stimShape->getIndex() == Monophasic) {
         if ((StimPolarity) parameters->stimPolarity->getIndex() == NegativeFirst) {
             dacPositive = dacBaseline;
-            dacNegative = dacBaseline + (int)(-1.0 * parameters->firstPhaseAmplitude->getValue() / dacLsb);
+            dacNegative =
+                dacBaseline + (int) (-1.0 * parameters->firstPhaseAmplitude->getValue() / dacLsb);
         } else {
-            dacPositive = dacBaseline + (int)(parameters->firstPhaseAmplitude->getValue() / dacLsb);
+            dacPositive =
+                dacBaseline + (int) (parameters->firstPhaseAmplitude->getValue() / dacLsb);
             dacNegative = dacBaseline;
         }
     } else {
-        dacPositive = dacBaseline + (int)(((StimPolarity) parameters->stimPolarity->getIndex() == NegativeFirst ?
-                                               parameters->secondPhaseAmplitude->getValue() :
-                                               parameters->firstPhaseAmplitude->getValue()) / dacLsb);
-        dacNegative = dacBaseline + (int)(-1.0 * ((StimPolarity) parameters->stimPolarity->getIndex() == NegativeFirst ?
-                                                      parameters->firstPhaseAmplitude->getValue() :
-                                                      parameters->secondPhaseAmplitude->getValue()) / dacLsb);
+        dacPositive = dacBaseline +
+                      (int) (((StimPolarity) parameters->stimPolarity->getIndex() == NegativeFirst
+                                  ? parameters->secondPhaseAmplitude->getValue()
+                                  : parameters->firstPhaseAmplitude->getValue()) /
+                             dacLsb);
+        dacNegative = dacBaseline +
+                      (int) (-1.0 *
+                             ((StimPolarity) parameters->stimPolarity->getIndex() == NegativeFirst
+                                  ? parameters->firstPhaseAmplitude->getValue()
+                                  : parameters->secondPhaseAmplitude->getValue()) /
+                             dacLsb);
     }
 
     dacBaseline = qBound(0, dacBaseline, 65535);
@@ -1484,24 +1735,29 @@ void ControllerInterface::setAnalogOutSequenceParameters(Channel* anOutChannel)
     rhxController->programStimReg(stream, 0, AbstractRHXController::DacNegative, dacNegative);
 }
 
-void ControllerInterface::setDigitalOutSequenceParameters(Channel* digOutChannel)
+void ControllerInterface::setDigitalOutSequenceParameters(Channel *digOutChannel)
 {
     if (rhxController->isSynthetic() || rhxController->isPlayback()) return;
 
     const int Never = 65535;
 
-    StimParameters* parameters = digOutChannel->stimParameters;
+    StimParameters *parameters = digOutChannel->stimParameters;
     int channel = digOutChannel->getNativeChannelNumber();
     int stream = 16;
     double timestep = 1.0e6 / state->sampleRate->getNumericValue();  // time step in microseconds
 
-    int numOfPulses = ((PulseOrTrain) parameters->pulseOrTrain->getIndex() == SinglePulse) ?
-                1 : parameters->numberOfStimPulses->getValue();
+    int numOfPulses = ((PulseOrTrain) parameters->pulseOrTrain->getIndex() == SinglePulse)
+                          ? 1
+                          : parameters->numberOfStimPulses->getValue();
 
-    rhxController->configureStimTrigger(stream, channel, parameters->triggerSource->getIndex(),
-                                        parameters->enabled->getValue(),
-                                        ((TriggerEdgeOrLevel) parameters->triggerEdgeOrLevel->getIndex() == TriggerEdge),
-                                        ((TriggerHighOrLow) parameters->triggerHighOrLow->getIndex() == TriggerLow));
+    rhxController->configureStimTrigger(
+        stream,
+        channel,
+        parameters->triggerSource->getIndex(),
+        parameters->enabled->getValue(),
+        ((TriggerEdgeOrLevel) parameters->triggerEdgeOrLevel->getIndex() == TriggerEdge),
+        ((TriggerHighOrLow) parameters->triggerHighOrLow->getIndex() == TriggerLow)
+    );
     rhxController->configureStimPulses(stream, channel, numOfPulses, Monophasic, false);
 
     int postTriggerDelay = round(parameters->postTriggerDelay->getValue() / timestep);
@@ -1520,9 +1776,15 @@ void ControllerInterface::setDigitalOutSequenceParameters(Channel* digOutChannel
         eventRepeatStim = Never;
     }
 
-    rhxController->programStimReg(stream, channel, AbstractRHXController::EventStartStim, eventStartStim);
-    rhxController->programStimReg(stream, channel, AbstractRHXController::EventEndStim, eventEndStim);
-    rhxController->programStimReg(stream, channel, AbstractRHXController::EventRepeatStim, eventRepeatStim);
+    rhxController->programStimReg(
+        stream, channel, AbstractRHXController::EventStartStim, eventStartStim
+    );
+    rhxController->programStimReg(
+        stream, channel, AbstractRHXController::EventEndStim, eventEndStim
+    );
+    rhxController->programStimReg(
+        stream, channel, AbstractRHXController::EventRepeatStim, eventRepeatStim
+    );
     rhxController->programStimReg(stream, channel, AbstractRHXController::EventEnd, eventEnd);
 }
 
@@ -1562,8 +1824,9 @@ void ControllerInterface::setManualStimTrigger(QString keyName, bool triggerOn)
     }
 }
 
-void ControllerInterface::setChargeRecoveryParameters(bool mode, RHXRegisters::ChargeRecoveryCurrentLimit currentLimit,
-                                                      double targetVoltage)
+void ControllerInterface::setChargeRecoveryParameters(
+    bool mode, RHXRegisters::ChargeRecoveryCurrentLimit currentLimit, double targetVoltage
+)
 {
     if (rhxController->isSynthetic() || rhxController->isPlayback()) return;
     if (state->getControllerTypeEnum() != ControllerStimRecord) return;
@@ -1571,15 +1834,23 @@ void ControllerInterface::setChargeRecoveryParameters(bool mode, RHXRegisters::C
     rhxController->setChargeRecoveryMode(mode);
     rhxController->enableAuxCommandsOnAllStreams();
 
-    RHXRegisters chipRegisters(rhxController->getType(), rhxController->getSampleRate(), state->getStimStepSizeEnum());
+    RHXRegisters chipRegisters(
+        rhxController->getType(), rhxController->getSampleRate(), state->getStimStepSizeEnum()
+    );
     int commandSequenceLength;
     vector<unsigned int> commandList;
 
-    commandSequenceLength = chipRegisters.createCommandListConfigChargeRecovery(commandList, currentLimit, targetVoltage);
+    commandSequenceLength = chipRegisters.createCommandListConfigChargeRecovery(
+        commandList, currentLimit, targetVoltage
+    );
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);
-    rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
+    rhxController->selectAuxCommandLength(
+        AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1
+    );
 
-    chipRegisters.createCommandListDummy(commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 255));
+    chipRegisters.createCommandListDummy(
+        commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 255)
+    );
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd2, 0);
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd3, 0);
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd4, 0);
@@ -1589,25 +1860,31 @@ void ControllerInterface::setChargeRecoveryParameters(bool mode, RHXRegisters::C
     rhxController->setStimCmdMode(false);
 
     rhxController->run();
-    while (rhxController->isRunning() ) {
+    while (rhxController->isRunning()) {
         qApp->processEvents();
     }
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterRead(commandList);
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);
-    rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
+    rhxController->selectAuxCommandLength(
+        AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1
+    );
     rhxController->run();
-    while (rhxController->isRunning() ) {
+    while (rhxController->isRunning()) {
         qApp->processEvents();
     }
 
-    RHXDataBlock dataBlock(state->getControllerTypeEnum(), rhxController->getNumEnabledDataStreams());
+    RHXDataBlock dataBlock(
+        state->getControllerTypeEnum(), rhxController->getNumEnabledDataStreams()
+    );
     rhxController->readDataBlock(&dataBlock);
-    rhxController->readDataBlock(&dataBlock);
+    // rhxController->readDataBlock(&dataBlock);
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, true);
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);
-    rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
+    rhxController->selectAuxCommandLength(
+        AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1
+    );
 }
 
 void ControllerInterface::manualStimTriggerPulse(QString keyName)
@@ -1643,23 +1920,26 @@ void ControllerInterface::pipeReadErrorMessage(int errorID)
 {
     QString errorMessage;
     switch (errorID) {
-    case -1: // ok_Failed: -1
+    case -1:  // ok_Failed: -1
         errorMessage = "Failure on USB Read.\n\n";
         break;
-    case -2: // ok_Timeout: -2
+    case -2:  // ok_Timeout: -2
         errorMessage = "Timeout on USB Read.\n\n";
         break;
-    case -100: // Result value not matching expected size
+    case -100:  // Result value not matching expected size
         errorMessage = "Mismatch in USB Read result and expected result sizes.\n\n";
         break;
-    default: // any other ok_ error
-        errorMessage = "Failed USB Read. okFrontPanel returned error code: " + QString::number(errorID) + "\n\n";
+    default:  // any other ok_ error
+        errorMessage =
+            "Failed USB Read. okFrontPanel returned error code: " + QString::number(errorID) +
+            "\n\n";
         break;
     }
 
-    errorMessage = errorMessage + "This may be caused by interference along the USB cable.\n"
-                                  "Try using another USB port or move the cable away from\n"
-                                  "EMF interference sources (e.g., wireless mouse receivers).";
+    errorMessage = errorMessage +
+                   "This may be caused by interference along the USB cable.\n"
+                   "Try using another USB port or move the cable away from\n"
+                   "EMF interference sources (e.g., wireless mouse receivers).";
 
     QMessageBox::critical(nullptr, "USB Read Error", errorMessage);
     exit(EXIT_FAILURE);
@@ -1675,30 +1955,33 @@ void ControllerInterface::setDacHighpassFilterFrequency(double frequency)
     rhxController->setDacHighpassFilter(frequency);
 }
 
-void ControllerInterface::setDacChannel(int dac, const QString& channelName)
+void ControllerInterface::setDacChannel(int dac, const QString &channelName)
 {
     if (channelName.toLower() == "off" || channelName.toLower() == "n/a") {
         rhxController->enableDac(dac, false);
         rhxController->selectDacDataStream(dac, 0);
         rhxController->selectDacDataChannel(dac, 0);
     } else {
-        Channel* channel = state->signalSources->channelByName(channelName);
+        Channel *channel = state->signalSources->channelByName(channelName);
         if (!channel) return;
         if (channel->getSignalType() != AmplifierSignal) return;
-        int stream = state->getControllerTypeEnum() == ControllerRecordUSB2 ? channel->getBoardStream() : channel->getCommandStream();
+        int stream = state->getControllerTypeEnum() == ControllerRecordUSB2
+                         ? channel->getBoardStream()
+                         : channel->getCommandStream();
         rhxController->selectDacDataStream(dac, stream);
         rhxController->selectDacDataChannel(dac, channel->getChipChannel());
         rhxController->enableDac(dac, true);
     }
 }
 
-void ControllerInterface::setDacRefChannel(const QString& channelName)
+void ControllerInterface::setDacRefChannel(const QString &channelName)
 {
-    if (channelName.toLower() == "hardware" || channelName.toLower() == "off" || channelName.toLower() == "n/a") {
+    if (channelName.toLower() == "hardware" || channelName.toLower() == "off" ||
+        channelName.toLower() == "n/a") {
         rhxController->enableDacReref(false);
         rhxController->setDacRerefSource(0, 0);
     } else {
-        Channel* channel = state->signalSources->channelByName(channelName);
+        Channel *channel = state->signalSources->channelByName(channelName);
         if (!channel) return;
         if (channel->getSignalType() != AmplifierSignal) return;
         rhxController->setDacRerefSource(channel->getCommandStream(), channel->getChipChannel());
@@ -1717,8 +2000,9 @@ void ControllerInterface::setDacEnabled(int dac, bool enabled)
     rhxController->enableDac(dac, enabled);
 }
 
-void ControllerInterface::setTtlOutMode(bool mode1, bool mode2, bool mode3, bool mode4, bool mode5, bool mode6, bool mode7,
-                                        bool mode8)
+void ControllerInterface::setTtlOutMode(
+    bool mode1, bool mode2, bool mode3, bool mode4, bool mode5, bool mode6, bool mode7, bool mode8
+)
 {
     rhxController->setTtlOutMode(mode1, mode2, mode3, mode4, mode5, mode6, mode7, mode8);
 }
@@ -1760,7 +2044,8 @@ double ControllerInterface::swBufferPercentFull() const
 void ControllerInterface::uploadAmpSettleSettings()
 {
     if (state->uploadInProgress->getValue()) {
-        sendTCPError("Error - Another upload cannot be started until the previous upload completes");
+        sendTCPError("Error - Another upload cannot be started until the previous upload completes"
+        );
         return;
     }
     state->uploadInProgress->setValue(true);
@@ -1770,28 +2055,32 @@ void ControllerInterface::uploadAmpSettleSettings()
     bool gSettle = state->headstageGlobalSettle->getValue();
     setGlobalSettlePolicy(gSettle, gSettle, gSettle, gSettle, false);
 
-    updateChipCommandLists(false); // Update amplifier bandwidth (new desiredLowerSettleBandwidth)
+    updateChipCommandLists(false);  // Update amplifier bandwidth (new desiredLowerSettleBandwidth)
     state->uploadInProgress->setValue(false);
 }
 
 void ControllerInterface::uploadChargeRecoverySettings()
 {
     if (state->uploadInProgress->getValue()) {
-        sendTCPError("Error - Another upload cannot be started until the previous upload completes");
+        sendTCPError("Error - Another upload cannot be started until the previous upload completes"
+        );
         return;
     }
     state->uploadInProgress->setValue(true);
     // Update values in hardware.
-    setChargeRecoveryParameters(state->chargeRecoveryMode->getValue(),
-                                (RHXRegisters::ChargeRecoveryCurrentLimit) state->chargeRecoveryCurrentLimit->getIndex(),
-                                state->chargeRecoveryTargetVoltage->getValue());
+    setChargeRecoveryParameters(
+        state->chargeRecoveryMode->getValue(),
+        (RHXRegisters::ChargeRecoveryCurrentLimit) state->chargeRecoveryCurrentLimit->getIndex(),
+        state->chargeRecoveryTargetVoltage->getValue()
+    );
     state->uploadInProgress->setValue(false);
 }
 
 void ControllerInterface::uploadBandwidthSettings()
 {
     if (state->uploadInProgress->getValue()) {
-        sendTCPError("Error - Another upload cannot be started until the previous upload completes");
+        sendTCPError("Error - Another upload cannot be started until the previous upload completes"
+        );
         return;
     }
     state->uploadInProgress->setValue(true);
@@ -1827,39 +2116,77 @@ void ControllerInterface::uploadAutoStimParameters(int stream)
 
 
     for (int channel = 0; channel < 16; channel++) {
-        rhxController->programStimReg(stream, channel, AbstractRHXController::EventAmpSettleOn, eventAmpSettleOn);
-        rhxController->programStimReg(stream, channel, AbstractRHXController::EventStartStim, eventStartStim);
-        rhxController->programStimReg(stream, channel, AbstractRHXController::EventStimPhase2, eventStimPhase2);
-        rhxController->programStimReg(stream, channel, AbstractRHXController::EventStimPhase3, eventStimPhase3);
-        rhxController->programStimReg(stream, channel, AbstractRHXController::EventEndStim, eventEndStim);
-        rhxController->programStimReg(stream, channel, AbstractRHXController::EventRepeatStim, eventRepeatStim);
-        rhxController->programStimReg(stream, channel, AbstractRHXController::EventAmpSettleOff, eventAmpSettleOff);
-        rhxController->programStimReg(stream, channel, AbstractRHXController::EventChargeRecovOn, eventChargeRecovOn);
-        rhxController->programStimReg(stream, channel, AbstractRHXController::EventChargeRecovOff, eventChargeRecovOff);
-        rhxController->programStimReg(stream, channel, AbstractRHXController::EventAmpSettleOnRepeat, eventAmpSettleOnRepeat);
-        rhxController->programStimReg(stream, channel, AbstractRHXController::EventAmpSettleOffRepeat, eventAmpSettleOffRepeat);
+        rhxController->programStimReg(
+            stream, channel, AbstractRHXController::EventAmpSettleOn, eventAmpSettleOn
+        );
+        rhxController->programStimReg(
+            stream, channel, AbstractRHXController::EventStartStim, eventStartStim
+        );
+        rhxController->programStimReg(
+            stream, channel, AbstractRHXController::EventStimPhase2, eventStimPhase2
+        );
+        rhxController->programStimReg(
+            stream, channel, AbstractRHXController::EventStimPhase3, eventStimPhase3
+        );
+        rhxController->programStimReg(
+            stream, channel, AbstractRHXController::EventEndStim, eventEndStim
+        );
+        rhxController->programStimReg(
+            stream, channel, AbstractRHXController::EventRepeatStim, eventRepeatStim
+        );
+        rhxController->programStimReg(
+            stream, channel, AbstractRHXController::EventAmpSettleOff, eventAmpSettleOff
+        );
+        rhxController->programStimReg(
+            stream, channel, AbstractRHXController::EventChargeRecovOn, eventChargeRecovOn
+        );
+        rhxController->programStimReg(
+            stream, channel, AbstractRHXController::EventChargeRecovOff, eventChargeRecovOff
+        );
+        rhxController->programStimReg(
+            stream, channel, AbstractRHXController::EventAmpSettleOnRepeat, eventAmpSettleOnRepeat
+        );
+        rhxController->programStimReg(
+            stream, channel, AbstractRHXController::EventAmpSettleOffRepeat, eventAmpSettleOffRepeat
+        );
         rhxController->programStimReg(stream, channel, AbstractRHXController::EventEnd, eventEnd);
     }
 
     rhxController->enableAuxCommandsOnOneStream(stream);
 
-    RHXRegisters chipRegisters(rhxController->getType(), rhxController->getSampleRate(), state->getStimStepSizeEnum());
+    RHXRegisters chipRegisters(
+        rhxController->getType(), rhxController->getSampleRate(), state->getStimStepSizeEnum()
+    );
     int commandSequenceLength;
     vector<unsigned int> commandList;
 
     int posMag = 200;
     int negMag = 200;
 
-    //mimic createCommandListSetStimMagnitudes, where it can be set for all channels
-    commandSequenceLength = chipRegisters.createCommandListSetStimMagnitudesAllChannels(commandList, posMag, 0, negMag, 0);
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0); // RHS - bank doesn't matter
-    rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
+    // mimic createCommandListSetStimMagnitudes, where it can be set for all channels
+    commandSequenceLength = chipRegisters.createCommandListSetStimMagnitudesAllChannels(
+        commandList, posMag, 0, negMag, 0
+    );
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd1, 0
+    );  // RHS - bank doesn't matter
+    rhxController->selectAuxCommandLength(
+        AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1
+    );
 
 
-    chipRegisters.createCommandListDummy(commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 255));
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd2, 0);  // RHS - bank doesn't matter
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd3, 0);  // RHS - bank doesn't matter
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd4, 0);  // RHS - bank doesn't matter
+    chipRegisters.createCommandListDummy(
+        commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 255)
+    );
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd2, 0
+    );  // RHS - bank doesn't matter
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd3, 0
+    );  // RHS - bank doesn't matter
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd4, 0
+    );  // RHS - bank doesn't matter
 
     rhxController->setMaxTimeStep(commandSequenceLength);
     rhxController->setContinuousRunMode(false);
@@ -1867,15 +2194,19 @@ void ControllerInterface::uploadAutoStimParameters(int stream)
     rhxController->enableAuxCommandsOnOneStream(stream);
 
     rhxController->run();
-    while (rhxController->isRunning() ) {
+    while (rhxController->isRunning()) {
         qApp->processEvents();
     }
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterRead(commandList);
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter
-    rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd1, 0
+    );  // RHS - bank doesn't matter
+    rhxController->selectAuxCommandLength(
+        AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1
+    );
     rhxController->run();
-    while (rhxController->isRunning() ) {
+    while (rhxController->isRunning()) {
         qApp->processEvents();
     }
 
@@ -1884,8 +2215,12 @@ void ControllerInterface::uploadAutoStimParameters(int stream)
     rhxController->readDataBlock(&dataBlock);
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, true);
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter
-    rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd1, 0
+    );  // RHS - bank doesn't matter
+    rhxController->selectAuxCommandLength(
+        AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1
+    );
 
     rhxController->enableAuxCommandsOnAllStreams();
 }
@@ -1899,23 +2234,39 @@ void ControllerInterface::clearStimParameters(int stream)
 
     rhxController->enableAuxCommandsOnOneStream(stream);
 
-    RHXRegisters chipRegisters(rhxController->getType(), rhxController->getSampleRate(), state->getStimStepSizeEnum());
+    RHXRegisters chipRegisters(
+        rhxController->getType(), rhxController->getSampleRate(), state->getStimStepSizeEnum()
+    );
     int commandSequenceLength;
     vector<unsigned int> commandList;
 
     int posMag = 0;
     int negMag = 0;
 
-    //mimic createCommandListSetStimMagnitudes, where it can be set for all channels
-    commandSequenceLength = chipRegisters.createCommandListSetStimMagnitudesAllChannels(commandList, posMag, 0, negMag, 0);
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0); // RHS - bank doesn't matter
-    rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
+    // mimic createCommandListSetStimMagnitudes, where it can be set for all channels
+    commandSequenceLength = chipRegisters.createCommandListSetStimMagnitudesAllChannels(
+        commandList, posMag, 0, negMag, 0
+    );
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd1, 0
+    );  // RHS - bank doesn't matter
+    rhxController->selectAuxCommandLength(
+        AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1
+    );
 
 
-    chipRegisters.createCommandListDummy(commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 255));
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd2, 0);  // RHS - bank doesn't matter
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd3, 0);  // RHS - bank doesn't matter
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd4, 0);  // RHS - bank doesn't matter
+    chipRegisters.createCommandListDummy(
+        commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 255)
+    );
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd2, 0
+    );  // RHS - bank doesn't matter
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd3, 0
+    );  // RHS - bank doesn't matter
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd4, 0
+    );  // RHS - bank doesn't matter
 
     rhxController->setMaxTimeStep(commandSequenceLength);
     rhxController->setContinuousRunMode(false);
@@ -1923,15 +2274,19 @@ void ControllerInterface::clearStimParameters(int stream)
     rhxController->enableAuxCommandsOnOneStream(stream);
 
     rhxController->run();
-    while (rhxController->isRunning() ) {
+    while (rhxController->isRunning()) {
         qApp->processEvents();
     }
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterRead(commandList);
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter
-    rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd1, 0
+    );  // RHS - bank doesn't matter
+    rhxController->selectAuxCommandLength(
+        AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1
+    );
     rhxController->run();
-    while (rhxController->isRunning() ) {
+    while (rhxController->isRunning()) {
         qApp->processEvents();
     }
 
@@ -1940,16 +2295,21 @@ void ControllerInterface::clearStimParameters(int stream)
     rhxController->readDataBlock(&dataBlock);
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, true);
-    rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter
-    rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
+    rhxController->uploadCommandList(
+        commandList, AbstractRHXController::AuxCmd1, 0
+    );  // RHS - bank doesn't matter
+    rhxController->selectAuxCommandLength(
+        AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1
+    );
 
     rhxController->enableAuxCommandsOnAllStreams();
 }
 
-void ControllerInterface::uploadStimParameters(Channel* channel)
+void ControllerInterface::uploadStimParameters(Channel *channel)
 {
     if (state->uploadInProgress->getValue()) {
-        sendTCPError("Error - Another upload cannot be started until the previous upload completes");
+        sendTCPError("Error - Another upload cannot be started until the previous upload completes"
+        );
         return;
     }
     state->uploadInProgress->setValue(true);
@@ -1967,17 +2327,12 @@ void ControllerInterface::uploadStimParameters()
 {
     vector<string> allChannels = state->signalSources->completeChannelsNameList();
     for (int i = 0; i < (int) allChannels.size(); i++) {
-        Channel* channel = state->signalSources->channelByName(QString::fromStdString(allChannels[i]));
+        Channel *channel =
+            state->signalSources->channelByName(QString::fromStdString(allChannels[i]));
         uploadStimParameters(channel);
     }
 }
 
-void ControllerInterface::setVStimBus(int bus)
-{
-    rhxController->setVStimBus(bus);
-}
+void ControllerInterface::setVStimBus(int bus) { rhxController->setVStimBus(bus); }
 
-void ControllerInterface::sendTCPError(QString errorMessage)
-{
-    emit TCPErrorMessage(errorMessage);
-}
+void ControllerInterface::sendTCPError(QString errorMessage) { emit TCPErrorMessage(errorMessage); }

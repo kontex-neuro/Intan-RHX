@@ -64,9 +64,12 @@ void XPUController::processDataBlock(uint16_t *data, uint16_t *lowChunk, uint16_
     activeInterface->processDataBlock(data, lowChunk, wideChunk, highChunk, spikeChunk, spikeIDChunk);
 }
 
+// void XPUController::updateNumStreams(int numStreams, bool dio32)
 void XPUController::updateNumStreams(int numStreams)
 {
+    // cpuInterface->updateNumStreams(numStreams, dio32);
     cpuInterface->updateNumStreams(numStreams);
+    // gpuInterface->updateNumStreams(numStreams, dio32);
     gpuInterface->updateNumStreams(numStreams);
 }
 

@@ -31,66 +31,83 @@
 #ifndef RHXCONTROLLER_H
 #define RHXCONTROLLER_H
 
-#include "abstractrhxcontroller.h"
-#include "rhxglobals.h"
-#include "rhxdatablock.h"
 #include <xdaq/device.h>
 #include <xdaq/device_plugin.h>
 
+#include "abstractrhxcontroller.h"
+#include "rhxdatablock.h"
+#include "rhxglobals.h"
+
+
 using namespace std;
 
-const int USB3BlockSize	= 1024;
+const int USB3BlockSize = 1024;
 const int RAMBurstSize = 32;
 
-struct XDAQDeviceProxy : private xdaq::Device{
-    int SetWireInValue(int ep, std::uint32_t value, std::uint32_t mask=xdaq::Device::value_mask){
+struct XDAQDeviceProxy : private xdaq::Device {
+    int SetWireInValue(int ep, std::uint32_t value, std::uint32_t mask = xdaq::Device::value_mask)
+    {
         return this->set_register(ep, value, mask) == xdaq::BasicDeviceStatus::Success ? 0 : -1;
     }
 
-    int UpdateWireIns(){
+    int UpdateWireIns()
+    {
         return this->send_registers() == xdaq::BasicDeviceStatus::Success ? 0 : -1;
     }
 
-    xdaq::Device::value_t GetWireOutValue(int ep){
-        return this->get_register(ep);
-    }
+    xdaq::Device::value_t GetWireOutValue(int ep) { return this->get_register(ep); }
 
-    int UpdateWireOuts(){
+    int UpdateWireOuts()
+    {
         return this->read_registers() == xdaq::BasicDeviceStatus::Success ? 0 : -1;
     }
 
-    int ActivateTriggerIn(int ep, int bit){
+    int ActivateTriggerIn(int ep, int bit)
+    {
         return this->trigger(ep, bit) == xdaq::BasicDeviceStatus::Success ? 0 : -1;
     }
 
-	long ReadFromBlockPipeOut(int epAddr, int blockSize, long length, unsigned char *data){
+    long ReadFromBlockPipeOut(int epAddr, int blockSize, long length, unsigned char *data)
+    {
         return this->read(epAddr, length, data);
     }
 
-	long WriteToBlockPipeIn(int epAddr, int blockSize, long length, unsigned char *data){
+    long WriteToBlockPipeIn(int epAddr, int blockSize, long length, unsigned char *data)
+    {
         return this->write(epAddr, length, data);
     }
 
-	long WriteToPipeIn(int epAddr, long length, unsigned char *data){
+    long WriteToPipeIn(int epAddr, long length, unsigned char *data)
+    {
         throw std::runtime_error("Not implemented");
     }
 
-	long ReadFromPipeOut(int epAddr, long length, unsigned char *data){
+    long ReadFromPipeOut(int epAddr, long length, unsigned char *data)
+    {
         throw std::runtime_error("Not implemented");
     }
-
 };
 
 class RHXController : public AbstractRHXController
 {
 public:
-    explicit RHXController(ControllerType type_, AmplifierSampleRate sampleRate_, xdaq::Device*dev, bool is7310_ = false);
+    explicit RHXController(
+        ControllerType type_, AmplifierSampleRate sampleRate_, bool is7310_ = false
+    );
+    // explicit RHXController(
+    //     ControllerType type_, AmplifierSampleRate sampleRate_,
+    //     xdaq::DevicePlugin::PluginOwnedDevice dev, bool is7310_ = false, bool dio32 = false
+    // );
+    explicit RHXController(
+        ControllerType type_, AmplifierSampleRate sampleRate_,
+        xdaq::DevicePlugin::PluginOwnedDevice dev, bool is7310_ = false
+    );
     ~RHXController() = default;
 
     bool isSynthetic() const override { return false; }
     bool isPlayback() const override { return false; }
-    int open(const string& boardSerialNumber) override { return 0; }
-    bool uploadFPGABitfile(const string& filename) override { return true; }
+    int open(const string &boardSerialNumber) override { return 0; }
+    bool uploadFPGABitfile(const string &filename) override { return true; }
     AcquisitionMode acquisitionMode() const override { return LiveMode; }
 
     void resetBoard() override;
@@ -101,42 +118,51 @@ public:
     void resetFpga() override;
 
     bool readDataBlock(RHXDataBlock *dataBlock) override;
-    bool readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue) override;
-    long readDataBlocksRaw(int numBlocks, uint8_t* buffer) override;
+    bool readDataBlocks(int numBlocks, deque<RHXDataBlock *> &dataQueue) override;
+    long readDataBlocksRaw(int numBlocks, uint8_t *buffer) override;
 
-    int queueToFile(deque<RHXDataBlock*> &dataQueue, ofstream &saveOut);
+    int queueToFile(deque<RHXDataBlock *> &dataQueue, ofstream &saveOut);
 
     void setContinuousRunMode(bool continuousMode) override;
     void setMaxTimeStep(unsigned int maxTimeStep) override;
     void setCableDelay(BoardPort port, int delay) override;
     void setDspSettle(bool enabled) override;
-    void setDataSource(int stream, BoardDataSource dataSource) override;  // used only with ControllerRecordUSB2
-    void setTtlOut(const int* ttlOutArray) override;  // not used with ControllerStimRecord
+    void setDataSource(int stream, BoardDataSource dataSource)
+        override;                                     // used only with ControllerRecordUSB2
+    void setTtlOut(const int *ttlOutArray) override;  // not used with ControllerStimRecord
     void setDacManual(int value) override;
-    void setLedDisplay(const int* ledArray) override;
-    void setSpiLedDisplay(const int* ledArray) override;  // not used with ControllerRecordUSB2
+    void setLedDisplay(const int *ledArray) override;
+    void setSpiLedDisplay(const int *ledArray) override;  // not used with ControllerRecordUSB2
     void setDacGain(int gain) override;
     void setAudioNoiseSuppress(int noiseSuppress) override;
-    void setExternalFastSettleChannel(int channel) override;             // not used with ControllerStimRecord
-    void setExternalDigOutChannel(BoardPort port, int channel) override; // not used with ControllerStimRecord
+    void setExternalFastSettleChannel(int channel) override;  // not used with ControllerStimRecord
+    void setExternalDigOutChannel(BoardPort port, int channel)
+        override;  // not used with ControllerStimRecord
     void setDacHighpassFilter(double cutoff) override;
     void setDacThreshold(int dacChannel, int threshold, bool trigPolarity) override;
-    void setTtlMode(int mode) override;      // not used with ControllerStimRecord
+    void setTtlMode(int mode) override;                        // not used with ControllerStimRecord
     void setDacRerefSource(int stream, int channel) override;  // not used with ControllerRecordUSB2
     void setExtraStates(unsigned int extraStates) override;
     void setStimCmdMode(bool enabled) override;
     void setAnalogInTriggerThreshold(double voltageThreshold) override;
     void setManualStimTrigger(int trigger, bool triggerOn) override;
-    void setGlobalSettlePolicy(bool settleWholeHeadstageA, bool settleWholeHeadstageB, bool settleWholeHeadstageC, bool settleWholeHeadstageD, bool settleAllHeadstages) override;
-    void setTtlOutMode(bool mode1, bool mode2, bool mode3, bool mode4, bool mode5, bool mode6, bool mode7, bool mode8) override;
+    void setGlobalSettlePolicy(
+        bool settleWholeHeadstageA, bool settleWholeHeadstageB, bool settleWholeHeadstageC,
+        bool settleWholeHeadstageD, bool settleAllHeadstages
+    ) override;
+    void setTtlOutMode(
+        bool mode1, bool mode2, bool mode3, bool mode4, bool mode5, bool mode6, bool mode7,
+        bool mode8
+    ) override;
     void setAmpSettleMode(bool useFastSettle) override;
     void setChargeRecoveryMode(bool useSwitch) override;
     bool setSampleRate(AmplifierSampleRate newSampleRate) override;
 
     void enableDataStream(int stream, bool enabled) override;
     void enableDac(int dacChannel, bool enabled) override;
-    void enableExternalFastSettle(bool enable) override;                 // not used with ControllerStimRecord
-    void enableExternalDigOut(BoardPort port, bool enable) override;     // not used with ControllerStimRecord
+    void enableExternalFastSettle(bool enable) override;  // not used with ControllerStimRecord
+    void enableExternalDigOut(BoardPort port, bool enable)
+        override;  // not used with ControllerStimRecord
     void enableDacHighpassFilter(bool enable) override;
     void enableDacReref(bool enabled) override;  // not used with ControllerRecordUSB2
     void enableDcAmpConvert(bool enable) override;
@@ -146,33 +172,41 @@ public:
     void selectDacDataStream(int dacChannel, int stream) override;
     void selectDacDataChannel(int dacChannel, int dataChannel) override;
     void selectAuxCommandLength(AuxCmdSlot auxCommandSlot, int loopIndex, int endIndex) override;
-    void selectAuxCommandBank(BoardPort port, AuxCmdSlot auxCommandSlot, int bank) override; // not used with ControllerStimRecord
+    void selectAuxCommandBank(BoardPort port, AuxCmdSlot auxCommandSlot, int bank)
+        override;  // not used with ControllerStimRecord
 
     int getBoardMode() override;
-    int getNumSPIPorts(bool& expanderBoardDetected) override;
+    int getNumSPIPorts(bool &expanderBoardDetected) override;
 
-    void clearTtlOut() override;                 // not used with ControllerStimRecord
+    void clearTtlOut() override;  // not used with ControllerStimRecord
     void resetSequencers() override;
     void programStimReg(int stream, int channel, StimRegister reg, int value) override;
-    void uploadCommandList(const vector<unsigned int> &commandList, AuxCmdSlot auxCommandSlot, int bank = 0) override;
+    void uploadCommandList(
+        const vector<unsigned int> &commandList, AuxCmdSlot auxCommandSlot, int bank = 0
+    ) override;
 
-    int findConnectedChips(vector<ChipType> &chipType, vector<int> &portIndex, vector<int> &commandStream,
-                           vector<int> &numChannelsOnPort, bool = false, bool returnToFastSettle = false,
-                           bool usePreviousDelay = false, int selectedPort = 0, int lastDetectedChip = -1) override;
+    int findConnectedChips(
+        vector<ChipType> &chipType, vector<int> &portIndex, vector<int> &commandStream,
+        vector<int> &numChannelsOnPort, bool = false, bool returnToFastSettle = false,
+        bool usePreviousDelay = false, int selectedPort = 0, int lastDetectedChip = -1
+    ) override;
 
     // Physical board only
-    static void resetBoard(XDAQDeviceProxy* dev_);
-    static int getBoardMode(XDAQDeviceProxy* dev_);
-    static int getNumSPIPorts(XDAQDeviceProxy* dev_, bool isUSB3, bool& expanderBoardDetected, bool isRHS7310 = false);
+    static void resetBoard(XDAQDeviceProxy *dev_);
+    static int getBoardMode(XDAQDeviceProxy *dev_);
+    static int getNumSPIPorts(
+        XDAQDeviceProxy *dev_, bool isUSB3, bool &expanderBoardDetected, bool isRHS7310 = false
+    );
     void setVStimBus(int BusMode) override;
 
 private:
     // Objects of this class should not be copied.  Disable copy and assignment operators.
-    RHXController(const RHXController&);            // declaration only
-    RHXController& operator=(const RHXController&); // declaration only
+    RHXController(const RHXController &);             // declaration only
+    RHXController &operator=(const RHXController &);  // declaration only
 
-    XDAQDeviceProxy* dev = nullptr;
-    
+    XDAQDeviceProxy *dev = nullptr;
+    bool dio32;
+
     bool is7310;
 
     // Opal Kelly module USB interface endpoint addresses common to all controller types
@@ -313,13 +347,13 @@ private:
     void forceAllDataStreamsOff() override;
 
     // Physical board only
-    static void pulseWireIn(XDAQDeviceProxy* dev_, int wireIn, unsigned int value);
-    static int endPointWireInResetRun() { return (int)WireInResetRun; }
+    static void pulseWireIn(XDAQDeviceProxy *dev_, int wireIn, unsigned int value);
+    static int endPointWireInResetRun() { return (int) WireInResetRun; }
     static int endPointWireInSerialDigitalInCntl(bool isUSB3);
     static int endPointWireOutSerialDigitalIn(bool isUSB3);
-    static int endPointWireOutBoardMode() { return (int)WireOutBoardMode; }
+    static int endPointWireOutBoardMode() { return (int) WireOutBoardMode; }
 
     int previousDelay;
 };
 
-#endif // RHXCONTROLLER_H
+#endif  // RHXCONTROLLER_H

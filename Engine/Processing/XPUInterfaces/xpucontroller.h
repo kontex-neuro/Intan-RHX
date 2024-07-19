@@ -47,6 +47,7 @@ public:
     void resetPrev();
     void processDataBlock(uint16_t* data, uint16_t* lowChunk, uint16_t* wideChunk,
                           uint16_t* highChunk, uint32_t* spikeChunk, uint8_t* spikeIDChunk);
+    // void updateNumStreams(int numStreams, bool dio32 = false);
     void updateNumStreams(int numStreams);
     void runDiagnostic();
 
