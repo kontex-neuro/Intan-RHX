@@ -32,8 +32,11 @@
 #include <fstream>
 #include <iomanip>
 #include <cstring>
+#include "rhxglobals.h"
 #include "rhxdatablock.h"
+#include <fmt/core.h>
 
+// RHXDataBlock::RHXDataBlock(ControllerType type_, int numDataStreams_, bool dio32) :
 RHXDataBlock::RHXDataBlock(ControllerType type_, int numDataStreams_) :
     type(type_),
     numDataStreams(numDataStreams_),
@@ -50,6 +53,7 @@ RHXDataBlock::RHXDataBlock(ControllerType type_, int numDataStreams_) :
     ampSettleInternal(nullptr),
     chargeRecovInternal(nullptr),
     boardDacDataInternal(nullptr)
+    // dio32(dio32)
 {
     allocateMemory();
 }
@@ -72,6 +76,7 @@ RHXDataBlock::~RHXDataBlock()
 }
 
 // Copy constructor
+// RHXDataBlock::RHXDataBlock(const RHXDataBlock &obj, bool dio32) : dio32(dio32)
 RHXDataBlock::RHXDataBlock(const RHXDataBlock &obj)
 {
     type = obj.type;
@@ -182,24 +187,22 @@ int RHXDataBlock::boardDacData(int channel, int t) const
     return boardDacDataInternal[(t * 8) + channel];
 }
 
-int RHXDataBlock::samplesPerDataBlock(ControllerType /* type_ */)
+int RHXDataBlock::samplesPerDataBlock(ControllerType type_)
 {
-//    switch (type_) {
-//    case ControllerRecordUSB2:
-//        // return 60;
-//    case ControllerStimRecord:
-//    case ControllerRecordUSB3:
-//        return 128;
-//    default:
-//        return 0;
-//    }
-    return 128;
+    switch (type_) {
+    case ControllerRecordUSB2:
+        // return 60;
+    case ControllerStimRecord:
+    case ControllerRecordUSB3:
+        return 128;
+    default:
+        return 0;
+    }
 }
 
 int RHXDataBlock::samplesPerDataBlock() const
 {
-//    return samplesPerDataBlock(type);
-    return 128;
+    return samplesPerDataBlock(type);
 }
 
 // Return the number of RHX data blocks that should be read over the USB interface each time for an approximate
@@ -268,12 +271,12 @@ unsigned int RHXDataBlock::dataBlockSizeInWords(ControllerType type_, int numDat
         return samplesPerDataBlock(type_) * (4 + 2 + numDataStreams_ * (channelsPerStream(type_) + numAuxChannels(type_) + 1) + 8 + 2);
         // 4 = magic number; 2 = time stamp; 36 = (32 amp channels + 3 aux commands + 1 filler word); 8 = ADCs; 2 = TTL in/out
     case ControllerRecordUSB3:
-        return samplesPerDataBlock(type_) * (4 + 2 + (numDataStreams_ * (channelsPerStream(type_) + numAuxChannels(type_))) + (numDataStreams_ % 4) + 8 + 2);
-        // 4 = magic number; 2 = time stamp; 35 = (32 amp channels + 3 aux commands); 0-3 filler words; 8 = ADCs; 2 = TTL in/out
+        return samplesPerDataBlock(type_) * (4 + 2 + (numDataStreams_ * (channelsPerStream(type_) + numAuxChannels(type_))) + ((numDataStreams_ + true * 2) % 4) + 8 + 2 + true * 2);
+        // 4 = magic number; 2 = time stamp; 35 = (32 amp channels + 3 aux commands); 0-3 filler words; 8 = ADCs; 4 = TTL in/out
     case ControllerStimRecord:
-        return samplesPerDataBlock(type_) * (4 + 2 + numDataStreams_ * (2 * (channelsPerStream(type_) + numAuxChannels(type_)) + 4) + 8 + 8 + 2);
+        return samplesPerDataBlock(type_) * (4 + 2 + numDataStreams_ * (2 * (channelsPerStream(type_) + numAuxChannels(type_)) + 4) + true * 2 + 8 + 8 + 2 + true * 2);
         // 4 = magic number; 2 = time stamp; 20 = (16 amp channels + 4 aux commands, each 32 bit results);
-        // 4 = stim control params; 8 = DACs; 8 = ADCs; 2 = TTL in/out
+        // 4 = stim control params; 8 = DACs; 8 = ADCs; 4 = TTL in/out
     default:
         return 0;
     }
@@ -302,14 +305,22 @@ bool RHXDataBlock::checkUsbHeader(const uint8_t* usbBuffer, int index, Controlle
 {
     uint64_t header = headerMagicNumber(type_);
 
-//    qDebug() << "Expected 0th byte: " << (uint8_t) (header & 0xffU) << " ... actual 0th byte: " << usbBuffer[index];
-//    qDebug() << "Expected 1st byte: " << (uint8_t) ((header & 0xff00U) >> 8) << " ... actual 1st byte: " << usbBuffer[index + 1];
-//    qDebug() << "Expected 2nd byte: " << (uint8_t) ((header & 0xff0000U) >> 16) << " ... actual 2nd byte: " << usbBuffer[index + 2];
-//    qDebug() << "Expected 3rd byte: " << (uint8_t) ((header & 0xff000000U) >> 24) << " ... actual 3rd byte: " << usbBuffer[index + 3];
-//    qDebug() << "Expected 4th byte: " << (uint8_t) ((header & 0xff00000000U) >> 32) << " ... actual 4th byte: " << usbBuffer[index + 4];
-//    qDebug() << "Expected 5th byte: " << (uint8_t) ((header & 0xff0000000000U) >> 40) << " ... actual 5th byte: " << usbBuffer[index + 5];
-//    qDebug() << "Expected 6th byte: " << (uint8_t) ((header & 0xff000000000000U) >> 48) << " ... actual 6th byte: " << usbBuffer[index + 6];
-//    qDebug() << "Expected 7th byte: " << (uint8_t) ((header & 0xff00000000000000U) >> 56) << " ... actual 7th byte: " << usbBuffer[index + 7];
+    // qDebug() << "Expected 0th byte: " << (uint8_t) (header & 0xffU) << " ... actual 0th byte: " << usbBuffer[index];
+    // qDebug() << "Expected 1st byte: " << (uint8_t) ((header & 0xff00U) >> 8) << " ... actual 1st byte: " << usbBuffer[index + 1];
+    // qDebug() << "Expected 2nd byte: " << (uint8_t) ((header & 0xff0000U) >> 16) << " ... actual 2nd byte: " << usbBuffer[index + 2];
+    // qDebug() << "Expected 3rd byte: " << (uint8_t) ((header & 0xff000000U) >> 24) << " ... actual 3rd byte: " << usbBuffer[index + 3];
+    // qDebug() << "Expected 4th byte: " << (uint8_t) ((header & 0xff00000000U) >> 32) << " ... actual 4th byte: " << usbBuffer[index + 4];
+    // qDebug() << "Expected 5th byte: " << (uint8_t) ((header & 0xff0000000000U) >> 40) << " ... actual 5th byte: " << usbBuffer[index + 5];
+    // qDebug() << "Expected 6th byte: " << (uint8_t) ((header & 0xff000000000000U) >> 48) << " ... actual 6th byte: " << usbBuffer[index + 6];
+    // qDebug() << "Expected 7th byte: " << (uint8_t) ((header & 0xff00000000000000U) >> 56) << " ... actual 7th byte: " << usbBuffer[index + 7];
+    // cout << "Expected 0th byte: " << (uint8_t) (header & 0xffU) << " ... actual 0th byte: " << usbBuffer[index] << endl;
+    // cout << "Expected 1st byte: " << (uint8_t) ((header & 0xff00U) >> 8) << " ... actual 1st byte: " << usbBuffer[index + 1] << endl;
+    // cout << "Expected 2nd byte: " << (uint8_t) ((header & 0xff0000U) >> 16) << " ... actual 2nd byte: " << usbBuffer[index + 2] << endl;
+    // cout << "Expected 3rd byte: " << (uint8_t) ((header & 0xff000000U) >> 24) << " ... actual 3rd byte: " << usbBuffer[index + 3] << endl;
+    // cout << "Expected 4th byte: " << (uint8_t) ((header & 0xff00000000U) >> 32) << " ... actual 4th byte: " << usbBuffer[index + 4] << endl;
+    // cout << "Expected 5th byte: " << (uint8_t) ((header & 0xff0000000000U) >> 40) << " ... actual 5th byte: " << usbBuffer[index + 5] << endl;
+    // cout << "Expected 6th byte: " << (uint8_t) ((header & 0xff000000000000U) >> 48) << " ... actual 6th byte: " << usbBuffer[index + 6] << endl;
+    // cout << "Expected 7th byte: " << (uint8_t) ((header & 0xff00000000000000U) >> 56) << " ... actual 7th byte: " << usbBuffer[index + 7] << endl;
 
     // Just check first byte initially to speed up cases where header doesn't match.
     if (usbBuffer[index] != (uint8_t) (header & 0xffU)) return false;
@@ -322,7 +333,6 @@ bool RHXDataBlock::checkUsbHeader(const uint8_t* usbBuffer, int index, Controlle
     uint64_t x6 = usbBuffer[index + 5];
     uint64_t x7 = usbBuffer[index + 6];
     uint64_t x8 = usbBuffer[index + 7];
-    //qDebug() << "x1: " << x1 << " x2: " << x2 << " x3: " << x3 << " x4: " << x4 << " x5: " << x5 << " x6: " << x6 << " x7: " << x7 << " x8: " << x8;
 
     uint64_t usbHeader = (x8 << 56) + (x7 << 48) + (x6 << 40) + (x5 << 32) + (x4 << 24) + (x3 << 16) + (x2 << 8) + (x1 << 0);
 
@@ -369,17 +379,39 @@ int RHXDataBlock::getChipID(int stream, int auxCmdSlot, int &register59Value) co
         // First, check ROM registers 251-253 to verify that they hold 'INTAN'.
         // This is just used to verify that we are getting good data over the SPI
         // communication channel.
-        intanChipPresent = ((char) ((auxiliaryData(stream, auxCmdSlot, 61) & 0xff00) >> 8) == 'I' &&
-                            (char) ((auxiliaryData(stream, auxCmdSlot, 61) & 0x00ff) >> 0) == 'N' &&
-                            (char) ((auxiliaryData(stream, auxCmdSlot, 60) & 0xff00) >> 8) == 'T' &&
-                            (char) ((auxiliaryData(stream, auxCmdSlot, 60) & 0x00ff) >> 0) == 'A' &&
-                            (char) ((auxiliaryData(stream, auxCmdSlot, 59) & 0xff00) >> 8) == 'N' &&
-                            (char) ((auxiliaryData(stream, auxCmdSlot, 59) & 0x00ff) >> 0) == 0);
+        // print(stream);
+
+        // cout << "AUX 61: " << (char) ((auxiliaryData(stream, auxCmdSlot, 61) & 0xff00) >> 8) << endl;
+        // cout << "AUX 61: " << (char) ((auxiliaryData(stream, auxCmdSlot, 61) & 0x00ff) >> 0) << endl;
+        // cout << "AUX 60: " << (char) ((auxiliaryData(stream, auxCmdSlot, 60) & 0xff00) >> 8) << endl;
+        // cout << "AUX 60: " << (char) ((auxiliaryData(stream, auxCmdSlot, 60) & 0x00ff) >> 0) << endl;
+        // cout << "AUX 59: " << (char) ((auxiliaryData(stream, auxCmdSlot, 59) & 0xff00) >> 8) << endl;
+        // cout << "AUX 59: " << ((char) ((auxiliaryData(stream, auxCmdSlot, 59) & 0x00ff) >> 0) == 0) << endl;
+        // cout << "AUX 60: " << (char) ((auxiliaryData(stream, auxCmdSlot, 60) & 0xff00) >> 8) << endl;
+        // cout << "AUX 60: " << (char) ((auxiliaryData(stream, auxCmdSlot, 60) & 0x00ff) >> 0) << endl;
+        // cout << "AUX 59: " << (char) ((auxiliaryData(stream, auxCmdSlot, 59) & 0xff00) >> 8) << endl;
+        // cout << "AUX 59: " << (char) ((auxiliaryData(stream, auxCmdSlot, 59) & 0x00ff) >> 0) << endl;
+        // cout << "AUX 58: " << (char) ((auxiliaryData(stream, auxCmdSlot, 58) & 0xff00) >> 8) << endl;
+        // cout << "AUX 58: " << ((char) ((auxiliaryData(stream, auxCmdSlot, 58) & 0x00ff) >> 0)) << endl;
+
+        // intanChipPresent = ((char) ((auxiliaryData(stream, auxCmdSlot, 61) & 0xff00) >> 8) == 'I' &&
+        //                     (char) ((auxiliaryData(stream, auxCmdSlot, 61) & 0x00ff) >> 0) == 'N' &&
+        //                     (char) ((auxiliaryData(stream, auxCmdSlot, 60) & 0xff00) >> 8) == 'T' &&
+        //                     (char) ((auxiliaryData(stream, auxCmdSlot, 60) & 0x00ff) >> 0) == 'A' &&
+        //                     (char) ((auxiliaryData(stream, auxCmdSlot, 59) & 0xff00) >> 8) == 'N' &&
+        //                     (char) ((auxiliaryData(stream, auxCmdSlot, 59) & 0x00ff) >> 0) == 0);
+        intanChipPresent = ((char) ((auxiliaryData(stream, auxCmdSlot, 60) & 0xff00) >> 8) == 'I' &&
+                            (char) ((auxiliaryData(stream, auxCmdSlot, 60) & 0x00ff) >> 0) == 'N' &&
+                            (char) ((auxiliaryData(stream, auxCmdSlot, 59) & 0xff00) >> 8) == 'T' &&
+                            (char) ((auxiliaryData(stream, auxCmdSlot, 59) & 0x00ff) >> 0) == 'A' &&
+                            (char) ((auxiliaryData(stream, auxCmdSlot, 58) & 0xff00) >> 8) == 'N' &&
+                            (char) ((auxiliaryData(stream, auxCmdSlot, 58) & 0x00ff) >> 0) == 0);
 
         if (!intanChipPresent) {
             return -1;
         } else {
-            return auxiliaryData(stream, auxCmdSlot, 57); // chip ID (Register 255)
+            // return auxiliaryData(stream, auxCmdSlot, 57); // chip ID (Register 255)
+            return auxiliaryData(stream, auxCmdSlot, 56); // chip ID (Register 255)
         }
     }
     return -1;
@@ -489,7 +521,11 @@ void RHXDataBlock::fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex)
         if (type == ControllerRecordUSB2) {
             index += 2 * numDataStreams;
         } else if (type == ControllerRecordUSB3) {
-            index += 2 * (numDataStreams % 4);
+            // index += 2 * ((numDataStreams + dio32 * 2) % 4);
+            index += 2 * ((numDataStreams + true * 2) % 4);
+        } else if (type == ControllerStimRecord) {
+            // index += 2 * dio32 * 2;
+            index += 2 * true * 2;
         }
 
         // Read from ADCs.
@@ -499,11 +535,20 @@ void RHXDataBlock::fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex)
         }
 
         // Read TTL input and output values.
-        ttlInInternal[t] = convertUsbWord(usbBuffer, index);
-        index += 2;
+        // if (dio32) {
+        if (true) {
+            ttlInInternal[t] = convertUsbTimeStamp(usbBuffer, index);
+            index += 4;
 
-        ttlOutInternal[t] = convertUsbWord(usbBuffer, index);
-        index += 2;
+            ttlOutInternal[t] = convertUsbTimeStamp(usbBuffer, index);
+            index += 4;
+        } else {
+            ttlInInternal[t] = convertUsbWord(usbBuffer, index);
+            index += 2;
+
+            ttlOutInternal[t] = convertUsbWord(usbBuffer, index);
+            index += 2;
+        };
     }
 }
 
@@ -644,18 +689,19 @@ void RHXDataBlock::print(int stream) const
         cout << setprecision(6);
         cout.unsetf(ios::floatfield);
         cout << endl;
-    }
-
-    else {
-        const int RomOffset = 57; // 56
-        const int RamOffset = 62; // 61
+    } else {
+        // const int RomOffset = 57; // 56
+        const int RomOffset = 56; // 56
+        // const int RamOffset = 62; // 61
+        const int RamOffset = 61; // 61
         const int auxSlot = 0;
 
-//        cout << endl;
-//        cout << "Raw RHS 2000 Data Block contents:" << endl;
-//        for (int i = 0; i < 128; i++) {
-//            cout << "  Data position " << i << ": " << auxiliaryData(stream, auxSlot, i) << endl;
-//        }
+        // cout << endl;
+        // cout << "Raw RHS 2000 Data Block contents:" << endl;
+        // for (int i = 0; i < 128; i++) {
+        //     cout << "  Data position " << i << ": " << auxiliaryData(stream, auxSlot, i) << endl;
+        // }
+        // return ;
 
         cout << endl;
         cout << "RHS 2000 Data Block contents:" << endl;

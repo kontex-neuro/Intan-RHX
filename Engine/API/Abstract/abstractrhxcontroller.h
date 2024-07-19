@@ -31,6 +31,7 @@
 #ifndef ABSTRACTRHXCONTROLLER_H
 #define ABSTRACTRHXCONTROLLER_H
 
+#include <xdaq/device_plugin.h>
 #include "rhxglobals.h"
 #include "rhxdatablock.h"
 #include <string>
@@ -219,6 +220,7 @@ public:
     int pipeReadError() const { return pipeReadErrorCode; }
     virtual void setVStimBus(int BusMode){};
 
+    xdaq::DevicePlugin::PluginOwnedDevice device;
 protected:
     ControllerType type;
     AmplifierSampleRate sampleRate;
