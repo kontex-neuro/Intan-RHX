@@ -50,13 +50,11 @@ using json = nlohmann::json;
 //   (3) an Opal Kelly XEM6010 USB2/FPGA interface board running the Intan RhythmStim interface Verilog code
 //       (e.g., an Intan Stim/Recording Controller with 128-channel capacity)
 
-RHXController::RHXController(ControllerType type_, AmplifierSampleRate sampleRate_, xdaq::Device *dev,bool is7310_)
-    : AbstractRHXController(type_, sampleRate_), is7310(is7310_), previousDelay(-1),dev(
-        reinterpret_cast<XDAQDeviceProxy*>(dev)
-    )
+RHXController::RHXController(ControllerType type_, AmplifierSampleRate sampleRate_, xdaq::DevicePlugin::PluginOwnedDevice dev, bool is7310_)
+    : AbstractRHXController(type_, sampleRate_), is7310(is7310_), previousDelay(-1), dev(reinterpret_cast<XDAQDeviceProxy*>(dev.get()))
 {
+    device = std::move(dev);
 }
-
 
 // Reset FPGA.  This clears all auxiliary command RAM banks, clears the USB FIFO, and resets the
 // per-channel sampling rate to 30.0 kS/s/ch.
@@ -152,12 +150,7 @@ bool RHXController::readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueu
 {
     lock_guard<mutex> lockOk(okMutex);
 
-    unsigned int numWordsToRead = numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
-
-    if (numWordsInFifo() < numWordsToRead)
-        return false;
-
-    unsigned int numBytesToRead = BytesPerWord * numWordsToRead;
+    unsigned int numBytesToRead = BytesPerWord * numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
 
     if (numBytesToRead > usbBufferSize) {
         cerr << "Error in RHXController::readDataBlocks: USB buffer size exceeded.  " <<
@@ -199,8 +192,6 @@ long RHXController::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
 
     unsigned int numWordsToRead = numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
 
-    if (numWordsInFifo() < numWordsToRead) return 0;
-
     long result;
     if (type == ControllerRecordUSB3 || type == ControllerStimRecord) {
         result = dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize, BytesPerWord * numWordsToRead, buffer);
@@ -208,10 +199,10 @@ long RHXController::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
         result = dev->ReadFromPipeOut(PipeOutData, BytesPerWord * numWordsToRead, buffer);
     }
 
-    //double readSizeMB = (double) (BytesPerWord * numWordsToRead) / (1024.0 * 1024.0);
-    //double readTimeS = (double) (readTimer.nsecsElapsed()) / 1e9;
-    //double MB_per_s = readSizeMB / readTimeS;
-    //cout << "Elapsed time: " << readTimeS << " seconds. Data read: " << readSizeMB << " MB. " << " data rate: " << MB_per_s << " MB/s\n";
+    // double readSizeMB = (double) (BytesPerWord * numWordsToRead) / (1024.0 * 1024.0);
+    // double readTimeS = (double) (readTimer.nsecsElapsed()) / 1e9;
+    // double MB_per_s = readSizeMB / readTimeS;
+    // cout << "Elapsed time: " << readTimeS << " seconds. Data read: " << readSizeMB << " MB. " << " data rate: " << MB_per_s << " MB/s\n";
 
     // If something went wrong, flag pipeReadErrorCode for the GUI thread to display an error message and exit the software
     if (result != BytesPerWord * numWordsToRead) {
@@ -1634,7 +1625,7 @@ int RHXController::findConnectedChips(vector<ChipType> &chipType, vector<int> &p
     }
 
     // Run the SPI interface for multiple command sequences (i.e., NRepeats data blocks).
-    const int NRepeats = 12;
+    const int NRepeats = 1;
     RHXDataBlock dataBlock(type, getNumEnabledDataStreams());
     setMaxTimeStep(NRepeats * dataBlock.samplesPerDataBlock());
     setContinuousRunMode(false);
@@ -1968,12 +1959,12 @@ int RHXController::getNumSPIPorts(XDAQDeviceProxy* dev_, bool isUSB3, bool& expa
         }
     }
 
-//    cout << "expanderBoardDetected: " << expanderBoardDetected << '\n';
-//    cout << "expanderBoardId: " << expanderBoardIdNumber << '\n';
-//    cout << "spiPortPresent: " << spiPortPresent[7] << spiPortPresent[6] << spiPortPresent[5] << spiPortPresent[4] << spiPortPresent[3] << spiPortPresent[2] << spiPortPresent[1] << spiPortPresent[0] << '\n';
-//    cout << "serialId: " << serialId[3] << serialId[2] << serialId[1] << serialId[0] << '\n';
-//    cout << "userId: " << userId[2] << userId[1] << userId[0] << '\n';
-//    cout << "digOutVoltageLevel: " << digOutVoltageLevel << '\n';
+    // cout << "expanderBoardDetected: " << expanderBoardDetected << '\n';
+    // cout << "expanderBoardId: " << expanderBoardIdNumber << '\n';
+    // cout << "spiPortPresent: " << spiPortPresent[7] << spiPortPresent[6] << spiPortPresent[5] << spiPortPresent[4] << spiPortPresent[3] << spiPortPresent[2] << spiPortPresent[1] << spiPortPresent[0] << '\n';
+    // cout << "serialId: " << serialId[3] << serialId[2] << serialId[1] << serialId[0] << '\n';
+    // cout << "userId: " << userId[2] << userId[1] << userId[0] << '\n';
+    // cout << "digOutVoltageLevel: " << digOutVoltageLevel << '\n';
     cout << "NUM SPI PORTS: " << numPorts << "\n";
 
     return numPorts;
