@@ -28,58 +28,65 @@
 //
 //------------------------------------------------------------------------------
 
-#include <QElapsedTimer>
-#include <iostream>
 #include "usbdatathread.h"
 
-USBDataThread::USBDataThread(AbstractRHXController* controller_, DataStreamFifo* usbFifo_, QObject *parent) :
-    QThread(parent),
-    errorChecking(controller_->acquisitionMode() != PlaybackMode),
-    controller(controller_),
-    usbFifo(usbFifo_),
-    keepGoing(false),
-    running(false),
-    stopThread(false),
-    numUsbBlocksToRead(1),
-    usbBufferIndex(0)
+#include <fmt/core.h>
+
+#include <QElapsedTimer>
+#include <cstdint>
+#include <iostream>
+
+
+USBDataThread::USBDataThread(
+    AbstractRHXController *controller_, DataStreamFifo *usbFifo_, QObject *parent
+)
+    : QThread(parent),
+      errorChecking(controller_->acquisitionMode() != PlaybackMode),
+      controller(controller_),
+      usbFifo(usbFifo_),
+      keepGoing(false),
+      running(false),
+      stopThread(false),
+      numUsbBlocksToRead(1),
+      usbBufferIndex(0)
 {
-    bufferSize = (BufferSizeInBlocks + 1) * BytesPerWord *
-            RHXDataBlock::dataBlockSizeInWords(controller->getType(), controller->maxNumDataStreams());
+    bufferSize =
+        (BufferSizeInBlocks + 1) * BytesPerWord *
+        RHXDataBlock::dataBlockSizeInWords(controller->getType(), controller->maxNumDataStreams());
     memoryNeededGB = sizeof(uint8_t) * bufferSize / (1024.0 * 1024.0 * 1024.0);
     cout << "USBDataThread: Allocating " << bufferSize / 1.0e6 << " MBytes for USB buffer." << '\n';
     usbBuffer = nullptr;
 
     memoryAllocated = true;
     try {
-        usbBuffer = new uint8_t [bufferSize];
-    } catch (std::bad_alloc&) {
+        usbBuffer = new uint8_t[bufferSize];
+    } catch (std::bad_alloc &) {
         memoryAllocated = false;
-        cerr << "Error: USBDataThread constructor could not allocate " << memoryNeededGB << " GB of memory." << '\n';
+        cerr << "Error: USBDataThread constructor could not allocate " << memoryNeededGB
+             << " GB of memory." << '\n';
     }
 
-//    cout << "Ideal thread count: " << QThread::idealThreadCount() << EndOfLine;
+    // cout << "Ideal thread count: " << QThread::idealThreadCount() << EndOfLine;
 }
 
-USBDataThread::~USBDataThread()
-{
-    delete [] usbBuffer;
-}
+USBDataThread::~USBDataThread() { delete[] usbBuffer; }
 
 void USBDataThread::run()
 {
     emit hardwareFifoReport(0.0);
     while (!stopThread) {
         QElapsedTimer fifoReportTimer;
-//        QElapsedTimer workTimer, loopTimer, reportTimer;
+        // QElapsedTimer workTimer, loopTimer, reportTimer;
         if (keepGoing) {
             emit hardwareFifoReport(0.0);
             running = true;
             int numBytesRead = 0;
             int bytesInBuffer = 0;
             ControllerType type = controller->getType();
-            int numBytesPerDataFrame = BytesPerWord *
-                    RHXDataBlock::dataBlockSizeInWords(type, controller->getNumEnabledDataStreams()) /
-                    RHXDataBlock::samplesPerDataBlock(type);
+            int numBytesPerDataFrame =
+                BytesPerWord *
+                RHXDataBlock::dataBlockSizeInWords(type, controller->getNumEnabledDataStreams()) /
+                RHXDataBlock::samplesPerDataBlock(type);
             int ledArray[8] = {1, 0, 0, 0, 0, 0, 0, 0};
             int ledIndex = 0;
             if (type == ControllerRecordUSB2) {
@@ -91,42 +98,50 @@ void USBDataThread::run()
             controller->setContinuousRunMode(true);
             controller->run();
             fifoReportTimer.start();
-//            loopTimer.start();
-//            workTimer.start();
-//            reportTimer.start();
-//            double usbDataPeriodNsec = 1.0e9 * ((double) numUsbBlocksToRead) * ((double) RHXDataBlock::samplesPerDataBlock(type)) / controller->getSampleRate();
-            while (keepGoing && !stopThread) {
-//                workTimer.restart();
-                // Performance note:  Executing the following command takes around 88% of the total time of this loop,
-                // with or without error checking enabled.
+            // loopTimer.start();
+            // workTimer.start();
+            // reportTimer.start();
+            // double usbDataPeriodNsec = 1.0e9 * ((double) numUsbBlocksToRead) *
+            //                            ((double) RHXDataBlock::samplesPerDataBlock(type)) /
+            //                            controller->getSampleRate();
 
-                numBytesRead = (int) controller->readDataBlocksRaw(numUsbBlocksToRead, &usbBuffer[usbBufferIndex]);
-                if (numBytesRead == -1) {
-                    break;
-                }
+            auto newStream =
+                controller->device->start_read_stream(0xa0, [&](auto rawData, std::size_t length) {
+                    std::copy(rawData.get(), rawData.get() + length, usbBuffer + usbBufferIndex);
+                    bytesInBuffer = usbBufferIndex + length;
 
-                bytesInBuffer = usbBufferIndex + numBytesRead;
-                if (numBytesRead > 0) {
                     if (!errorChecking) {
-                        // If not checking for USB data glitches, just write all the data to the FIFO buffer.
-                        if (!usbFifo->writeToBuffer(&usbBuffer[usbBufferIndex], (numBytesRead + usbBufferIndex) / BytesPerWord)) {
+                        // If not checking for USB data glitches, just write all the data to
+                        // the FIFO buffer.
+                        if (!usbFifo->writeToBuffer(
+                                &usbBuffer[usbBufferIndex], (length + usbBufferIndex) / BytesPerWord
+                            )) {
                             cerr << "USBDataThread: USB FIFO overrun (1)." << '\n';
                         }
                         usbBufferIndex = 0;
                     } else {
                         usbBufferIndex = 0;
-                        // Otherwise, check each USB data block for the correct header bytes before writing.
-                        while (usbBufferIndex <= bytesInBuffer - numBytesPerDataFrame - USBHeaderSizeInBytes) {
+                        // Otherwise, check each USB data block for the correct header bytes
+                        // before writing.
+                        while (usbBufferIndex <=
+                               bytesInBuffer - numBytesPerDataFrame - USBHeaderSizeInBytes) {
                             if (RHXDataBlock::checkUsbHeader(usbBuffer, usbBufferIndex, type) &&
-                                RHXDataBlock::checkUsbHeader(usbBuffer, usbBufferIndex + numBytesPerDataFrame, type)) {
-                                // If we find two correct headers, assume the data in between is a good data block,
-                                // and write it to the FIFO buffer.
-                                if (!usbFifo->writeToBuffer(&usbBuffer[usbBufferIndex], numBytesPerDataFrame / BytesPerWord)) {
+                                RHXDataBlock::checkUsbHeader(
+                                    usbBuffer, usbBufferIndex + numBytesPerDataFrame, type
+                                )) {
+                                // If we find two correct headers, assume the data in
+                                // between is a good data block, and write it to the FIFO
+                                // buffer.
+                                if (!usbFifo->writeToBuffer(
+                                        &usbBuffer[usbBufferIndex],
+                                        numBytesPerDataFrame / BytesPerWord
+                                    )) {
                                     cerr << "USBDataThread: USB FIFO overrun (2)." << '\n';
                                 }
                                 usbBufferIndex += numBytesPerDataFrame;
                             } else {
-                                // If headers are not found, advance word by word until we find them
+                                // If headers are not found, advance word by word until we
+                                // find them
                                 usbBufferIndex += 2;
                             }
                         }
@@ -138,7 +153,8 @@ void USBDataThread::run()
                             }
                             usbBufferIndex = j;
                         } else {
-                            // If usbBufferIndex == 0, we didn't have enough data to work with; append more.
+                            // If usbBufferIndex == 0, we didn't have enough data to work
+                            // with; append more.
                             usbBufferIndex = bytesInBuffer;
                         }
                         if (usbBufferIndex + numBytesRead >= bufferSize) {
@@ -152,7 +168,8 @@ void USBDataThread::run()
                         double fifoPercentageFull = 100.0 * wordsInFifo / FIFOCapacityInWords;
                         emit hardwareFifoReport(fifoPercentageFull);
                         fifoReportTimer.restart();
-//                        cout << "Opal Kelly FIFO is " << (int) fifoPercentageFull << "% full." << EndOfLine;
+                        // cout << "Opal Kelly FIFO is " << (int) fifoPercentageFull << "%
+                        // full." << EndOfLine;
                     }
 
                     if (type == ControllerRecordUSB2) {
@@ -164,21 +181,29 @@ void USBDataThread::run()
                         controller->setLedDisplay(ledArray);
                     }
 
-//                    double workTime = (double) workTimer.nsecsElapsed();
-//                    double loopTime = (double) loopTimer.nsecsElapsed();
-//                    workTimer.restart();
-//                    loopTimer.restart();
-//                    if (reportTimer.elapsed() >= 2000) {
-//                        double cpuUsage = 100.0 * workTime / loopTime;
-//                        cout << "                             UsbDataThread CPU usage: " << (int) cpuUsage << "%" << EndOfLine;
-//                        double relativeSpeed = 100.0 * workTime / usbDataPeriodNsec;
-//                        cout << "  UsbDataThread speed relative to USB data rate: " << (int) relativeSpeed << "%" << EndOfLine;
-//                        reportTimer.restart();
-//                    }
-                } else {
-                    usleep(100);  // wait 100 microseconds
-                }
+                    // double workTime = (double) workTimer.nsecsElapsed();
+                    // double loopTime = (double) loopTimer.nsecsElapsed();
+                    // workTimer.restart();
+                    // loopTimer.restart();
+                    // if (reportTimer.elapsed() >= 2000) {
+                    //     double cpuUsage = 100.0 * workTime / loopTime;
+                    //     cout << "UsbDataThread CPU usage: " << (int) cpuUsage << "%" <<
+                    //     std::endl; double relativeSpeed = 100.0 * workTime /
+                    //     usbDataPeriodNsec; cout << "UsbDataThread speed relative to USB
+                    //     data rate: " << (int) relativeSpeed << "%" << std::endl;
+                    //     reportTimer.restart();
+                    // }
+                });
+
+            while (keepGoing && !stopThread) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
+
+            if (!newStream) {
+                cerr << "Failed to start stream..." << endl;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+
             controller->setContinuousRunMode(false);
             controller->setStimCmdMode(false);
             controller->setMaxTimeStep(0);
@@ -198,15 +223,9 @@ void USBDataThread::run()
     }
 }
 
-void USBDataThread::startRunning()
-{
-    keepGoing = true;
-}
+void USBDataThread::startRunning() { keepGoing = true; }
 
-void USBDataThread::stopRunning()
-{
-    keepGoing = false;
-}
+void USBDataThread::stopRunning() { keepGoing = false; }
 
 void USBDataThread::close()
 {
@@ -214,21 +233,15 @@ void USBDataThread::close()
     stopThread = true;
 }
 
-bool USBDataThread::isActive() const
-{
-    return running;
-}
+bool USBDataThread::isActive() const { return running; }
 
 void USBDataThread::setNumUsbBlocksToRead(int numUsbBlocksToRead_)
 {
     if (numUsbBlocksToRead_ > BufferSizeInBlocks) {
-        cerr << "USBDataThread::setNumUsbBlocksToRead: Buffer is too small to read " << numUsbBlocksToRead_ <<
-                " blocks.  Increase BUFFER_SIZE_IN_BLOCKS." << '\n';
+        cerr << "USBDataThread::setNumUsbBlocksToRead: Buffer is too small to read "
+             << numUsbBlocksToRead_ << " blocks.  Increase BUFFER_SIZE_IN_BLOCKS." << '\n';
     }
     numUsbBlocksToRead = numUsbBlocksToRead_;
 }
 
-void USBDataThread::setErrorCheckingEnabled(bool enabled)
-{
-    errorChecking = enabled;
-}
+void USBDataThread::setErrorCheckingEnabled(bool enabled) { errorChecking = enabled; }
