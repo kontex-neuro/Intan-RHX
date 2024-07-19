@@ -27,7 +27,11 @@
 //  See <http://www.intantech.com> for documentation and product information.
 //
 //------------------------------------------------------------------------------
+#include <fmt/core.h>
 #include <fmt/format.h>
+#include <qcoreapplication.h>
+#include <qdebug.h>
+#include <qglobal.h>
 #include <qsettings.h>
 #include <xdaq/device_plugin.h>
 
@@ -35,7 +39,6 @@
 #include <filesystem>
 #include <memory>
 #include <nlohmann/json.hpp>
-#include <unordered_set>
 #include <vector>
 
 #include "Engine/API/Hardware/controller_info.h"
@@ -54,33 +57,43 @@ namespace fs = std::filesystem;
 auto get_plugins()
 {
 #ifdef _WIN32
-    const std::vector<fs::path> search_path = {
-        R"(C:\Program Files (x86)\libxdaq\bin)", R"(C:\Program Files\libxdaq\bin)", R"(.\plugins)"
-    };
-    constexpr auto extention = ".dll";
+    auto app_dir = fs::path(QCoreApplication::applicationDirPath().toStdString());
+    std::cout << "app_dir = " << app_dir << std::endl; 
+    constexpr auto extension = ".dll";
+    auto res = SetDllDirectoryA((app_dir / "plugin").generic_string().c_str());
+    if (res == 0) throw std::runtime_error("Failed to set DLL directory");
 #elif __APPLE__
     const std::vector<fs::path> search_path = {"/usr/local/lib/xdaq/plugins", "./plugins"};
-    constexpr auto extention = ".dylib";
+    constexpr auto extension = ".dylib";
 #elif __linux__
     const std::vector<fs::path> search_path = {"/usr/local/lib/xdaq/plugins", "./plugins"};
-    constexpr auto extention = ".so";
+    constexpr auto extension = ".so";
+#else
+    static_assert(false, "Unsupported platform");
 #endif
-    auto hash = [](const fs::path &p) { return std::hash<std::string>()(p.string()); };
-    std::unordered_set<fs::path, decltype(hash)> paths;
-    for (const auto &p : search_path) {
-        if (!fs::exists(p) || !fs::is_directory(p)) continue;
-        for (const auto &entry : fs::directory_iterator(p)) {
-            if (!fs::is_regular_file(entry.path()) && !fs::is_symlink(entry.path())) continue;
-            if (entry.path().extension() != extention) continue;
-            paths.insert(fs::canonical(entry.path()));
+    auto plugin_paths =
+        fs::directory_iterator((app_dir / "plugin")) |
+        std::views::filter([=](const fs::directory_entry &entry) {
+            fmt::print("Checking: {}\n", entry.path().generic_string());
+            if (fs::is_directory(entry)) return false;
+            if (!entry.path().filename().generic_string().contains("device_plugin")) return false;
+            return entry.path().extension() == extension;
+        }) |
+        std::views::transform([](auto ent) { return fs::canonical(fs::path(ent)); }) |
+        std::ranges::to<std::vector>();
+    std::ranges::sort(plugin_paths);
+    plugin_paths.erase(std::unique(plugin_paths.begin(), plugin_paths.end()), plugin_paths.end());
+
+    std::vector<std::shared_ptr<xdaq::DevicePlugin>> plugins;
+    
+    for (const auto &path : plugin_paths) {
+        try {
+            auto plugin = xdaq::get_plugin(path.generic_string());
+            plugins.emplace_back(plugin);
+        } catch (...) {
         }
     }
-    std::vector<xdaq::DevicePlugin> plugins;
-    for (const auto &path : paths) {
-        auto plugin = xdaq::load_device_plugin(path.string());
-        if (plugin.has_value()) plugins.emplace_back(std::move(plugin.value()));
-    }
-    return std::move(plugins);
+    return plugins;
 }
 
 struct RHXAPP {
@@ -302,33 +315,6 @@ auto startSoftware(
 
 int main(int argc, char *argv[])
 {
-    auto plugins = get_plugins();
-    std::vector<json> devices;
-    std::vector<XDAQInfo> controller_infos;
-
-    std::shared_ptr<xdaq::Device> opened_device;
-
-    for (auto &plugin : plugins) {
-        fmt::print("Plugin: {}\n", plugin.path);
-        auto device = plugin.list_devices();
-        fmt::print("Device: {}\n", device);
-        auto device_json = json::parse(device);
-        for (const auto &device : device_json) {
-            auto default_rhd = device;
-            default_rhd["mode"] = "rhd";
-            auto dev = plugin.create(default_rhd.dump());
-            auto info = read_xdaq_info(dev.get());
-            info.plugin = json::parse(plugin.info).at("name");
-            info.device_config = device.dump();
-            info.get_device = [&opened_device, &plugin](std::string device) {
-                opened_device = plugin.create(device);
-                opened_device->set_register_sync(0, 1 << 24, 1 << 24);
-                return opened_device.get();
-            };
-            controller_infos.push_back(info);
-        }
-    }
-
     QApplication app(argc, argv);
     // Information used by QSettings to save basic settings across sessions.
     QCoreApplication::setOrganizationName(OrganizationName);
@@ -339,11 +325,39 @@ int main(int argc, char *argv[])
     QSettings settings;
     std::cout << settings.fileName().toStdString() << '\n';
 
+    std::vector<XDAQInfo> controller_info;
+    std::vector<XDAQStatus> controller_status;
+    auto plugins = get_plugins();
+
+    for (auto &plugin : plugins) {
+        fmt::println("Plugin: {}", plugin->get_device_options());
+        auto devices = json::parse(plugin->list_devices());
+        fmt::println("Device: {}", plugin->list_devices());
+        
+        for (auto &device : devices) {
+            device["mode"] = "rhd";
+            auto dev = plugin->create_device(device.dump());
+            auto status = json::parse(*dev->get_status());
+            auto info = json::parse(*dev->get_info());
+
+            auto xdaq_status = parse_status(status);
+            auto xdaq_info = parse_info(info);
+            xdaq_info.plugin = json::parse(plugin->info()).at("name");
+            xdaq_info.device_config = device.dump();
+            xdaq_info.get_device = [&device, &plugin](const std::string &config) {
+                return plugin->create_device(config);
+            };
+
+            controller_info.push_back(xdaq_info);
+            controller_status.push_back(xdaq_status);
+        }
+    }
+
 #ifdef __APPLE__
     app.setStyle(QStyleFactory::create("Fusion"));
 #endif
 
-    BoardSelectDialog boardSelectDialog(nullptr, controller_infos);
+    BoardSelectDialog boardSelectDialog(nullptr, controller_info, controller_status);
     // print size of boardSelectDialog
     std::vector<RHXAPP> apps;
     boardSelectDialog.show();
