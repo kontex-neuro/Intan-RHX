@@ -73,6 +73,7 @@ void AbstractXPUInterface::updateMemory()
     }
 }
 
+// void AbstractXPUInterface::updateNumStreams(int numStreams_, bool dio32)
 void AbstractXPUInterface::updateNumStreams(int numStreams_)
 {
     // Set channels to the new value.
@@ -83,11 +84,11 @@ void AbstractXPUInterface::updateNumStreams(int numStreams_)
 
     // Recalculate all values related to numStreams from constructor.
     if (type == ControllerRecordUSB3) {
-        wordsPerFrame = ((35 * numStreams) + 16 + (numStreams % 4));
+        wordsPerFrame = (4 + 2 + (numStreams * (32 + 3)) + ((numStreams + true * 2) % 4) + 8 + 2 + true * 2);
     } else if (type == ControllerRecordUSB2) {
         wordsPerFrame = ((36 * numStreams) + 16);
     } else {
-        wordsPerFrame = ((44 * numStreams) + 24);
+        wordsPerFrame = (4 + 2 + numStreams * (2 * (16 + 4) + 4) + true * 2 + 8 + 8 + 2 + true * 2);
     }
 
     wordsPerBlock = wordsPerFrame * FramesPerBlock;

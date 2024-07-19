@@ -28,41 +28,43 @@
 //
 //------------------------------------------------------------------------------
 
-#include <iostream>
 #include "rhxdatareader.h"
+#include <iostream>
 
 using namespace std;
 
-RHXDataReader::RHXDataReader(ControllerType type_, int numDataStreams_, const uint16_t* start_, int numSamples_) :
-    type(type_),
-    numDataStreams(numDataStreams_),
-    start(start_),
-    numSamples(numSamples_)
+// RHXDataReader::RHXDataReader(
+//     ControllerType type_, int numDataStreams_, const uint16_t *start_, int numSamples_, bool dio32
+// )
+RHXDataReader::RHXDataReader(
+    ControllerType type_, int numDataStreams_, const uint16_t *start_, int numSamples_
+)
+    : type(type_), numDataStreams(numDataStreams_), start(start_), numSamples(numSamples_)
 {
     channelsPerStream = RHXDataBlock::channelsPerStream(type);
     numAuxChannels = RHXDataBlock::numAuxChannels(type);
     dataFrameSizeInWords = RHXDataBlock::dataBlockSizeInWords(type, numDataStreams) /
-            RHXDataBlock::samplesPerDataBlock(type);
+                           RHXDataBlock::samplesPerDataBlock(type);
     auxChFrameOffset = 1;
 }
 
 void RHXDataReader::setNumDataStreams(int numDataStreams_)
 {
     dataFrameSizeInWords = RHXDataBlock::dataBlockSizeInWords(type, numDataStreams_) /
-            RHXDataBlock::samplesPerDataBlock(type);
+                           RHXDataBlock::samplesPerDataBlock(type);
 }
 
-int RHXDataReader::readTimeStampData(uint32_t* buffer) const
+int RHXDataReader::readTimeStampData(uint32_t *buffer) const
 {
-    const uint16_t* pRead = start;
-    uint32_t* pWrite = buffer;
+    const uint16_t *pRead = start;
+    uint32_t *pWrite = buffer;
     uint32_t lastTimestamp = 0;
 
-    pRead += 4; // skip header
+    pRead += 4;  // skip header
     unsigned int w1, w2;
     for (int i = 0; i < numSamples; ++i) {
         w1 = (uint32_t) *pRead;
-        w2 = (uint32_t) *(pRead + 1);
+        w2 = (uint32_t) * (pRead + 1);
         lastTimestamp = (w2 << 16) | w1;
         *pWrite++ = lastTimestamp;
         pRead += dataFrameSizeInWords;
@@ -71,59 +73,64 @@ int RHXDataReader::readTimeStampData(uint32_t* buffer) const
 }
 
 // Read one amplifier waveform from raw USB data bytes, converting to microvolts.
-void RHXDataReader::readAmplifierData(float* buffer, int stream, int channel) const
+void RHXDataReader::readAmplifierData(float *buffer, int stream, int channel) const
 {
-    const uint16_t* pRead = start;
-    float* pWrite = buffer;
+    const uint16_t *pRead = start;
+    float *pWrite = buffer;
     int misoWordSize = ((type == ControllerStimRecord) ? 2 : 1);
 
-    pRead += 6; // Skip header and timestamp.
+    pRead += 4 + 2;                                // Skip header and timestamp.
     pRead += misoWordSize * (numDataStreams * 3);  // Skip auxillary channels.
-    pRead += misoWordSize * ((numDataStreams * channel) + stream);   // Align with selected stream and channel.
-    if (type == ControllerStimRecord) pRead++;  // Skip top 16 bits of 32-bit MISO word from RHS system.
+    pRead += misoWordSize *
+             ((numDataStreams * channel) + stream);  // Align with selected stream and channel.
+    if (type == ControllerStimRecord)
+        pRead++;  // Skip top 16 bits of 32-bit MISO word from RHS system.
     int adcValue;
     for (int i = 0; i < numSamples; ++i) {
         adcValue = (int) *pRead;
-        *pWrite = 0.195F * (float)(adcValue - 32768);     // Return value in microvolts.
+        *pWrite = 0.195F * (float) (adcValue - 32768);  // Return value in microvolts.
         pWrite++;
         pRead += dataFrameSizeInWords;
     }
 }
 
-// Read one DC amplifier waveform from raw USB data bytes, converting to volts (ControllerStimRecord only).
-void RHXDataReader::readDcAmplifierData(float* buffer, int stream, int channel) const
+// Read one DC amplifier waveform from raw USB data bytes, converting to volts (ControllerStimRecord
+// only).
+void RHXDataReader::readDcAmplifierData(float *buffer, int stream, int channel) const
 {
-    const uint16_t* pRead = start;
-    float* pWrite = buffer;
+    const uint16_t *pRead = start;
+    float *pWrite = buffer;
 
-    pRead += 6;    // Skip header and timestamp.
-    pRead += 2 * (numDataStreams * 3);  // Skip auxillary channels.
-    pRead += 2 * ((numDataStreams * channel) + stream);   // Align with selected stream and channel.
+    pRead += 4 + 2;                                      // Skip header and timestamp.
+    pRead += 2 * (numDataStreams * 3);                   // Skip auxillary channels.
+    pRead += 2 * ((numDataStreams * channel) + stream);  // Align with selected stream and channel.
     int adcValue;
     for (int i = 0; i < numSamples; ++i) {
         adcValue = (int) *pRead;
-        *pWrite = -0.01923F * (float)(adcValue - 512);     // Return value in volts.
+        *pWrite = -0.01923F * (float) (adcValue - 512);  // Return value in volts.
         pWrite++;
         pRead += dataFrameSizeInWords;
     }
 }
 
-// Read AuxIn1, 2, or 3 waveform from raw USB data bytes, converting to volts (ControllerRecordUSB2 and ControllerRecordUSB3 only).
-void RHXDataReader::readAuxInData(float* buffer, int stream, int auxChannel)
+// Read AuxIn1, 2, or 3 waveform from raw USB data bytes, converting to volts (ControllerRecordUSB2
+// and ControllerRecordUSB3 only).
+void RHXDataReader::readAuxInData(float *buffer, int stream, int auxChannel)
 {
-    const uint16_t* pRead = start;
-    float* pWrite = buffer;
+    const uint16_t *pRead = start;
+    float *pWrite = buffer;
 
-    pRead += 6;    // Skip header and timestamp.
-    pRead += (numDataStreams * 1) + stream;     // Align with selected stream and AuxIn data slot.
+    pRead += 4 + 2;                          // Skip header and timestamp.
+    pRead += (numDataStreams * 1) + stream;  // Align with selected stream and AuxIn data slot.
 
     // The command string generated by RHXRegisters::createCommandListRHDSampleAuxIns repeats four
-    // commands in this data slot: it samples AuxIn1, AuxIn2, AuxIn3, and then it read ROM Register 40,
-    // which will always return a value of 0x0049.  We can't count on the first sample always being
-    // AuxIn1, because the USB bus sometimes drops bytes and corrupted data frames are thrown away
-    // by USBDataThread.  So we need to check for the location of the ROM Register to maintain proper
-    // phase.  We remember the current phase in auxChFrameOffet, which maintains a value between 0-3.
-    const uint16_t* pReadSaved = pRead;
+    // commands in this data slot: it samples AuxIn1, AuxIn2, AuxIn3, and then it read ROM Register
+    // 40, which will always return a value of 0x0049.  We can't count on the first sample always
+    // being AuxIn1, because the USB bus sometimes drops bytes and corrupted data frames are thrown
+    // away by USBDataThread.  So we need to check for the location of the ROM Register to maintain
+    // proper phase.  We remember the current phase in auxChFrameOffet, which maintains a value
+    // between 0-3.
+    const uint16_t *pReadSaved = pRead;
     const int RomValue = 0x0049;
     bool phaseFound = false;
     int frames = 0;
@@ -203,8 +210,7 @@ void RHXDataReader::readAuxInData(float* buffer, int stream, int auxChannel)
                 }
             }
             break;
-        default:
-            auxChFrameOffset = 0;
+        default: auxChFrameOffset = 0;
         }
         frames += 4;
         if (frames >= numSamples) {
@@ -213,11 +219,11 @@ void RHXDataReader::readAuxInData(float* buffer, int stream, int auxChannel)
         }
     }
     int frameOffset = (auxChannel + auxChFrameOffset) % 4;
-    pRead = pReadSaved + frameOffset * dataFrameSizeInWords;   // align with data
+    pRead = pReadSaved + frameOffset * dataFrameSizeInWords;  // align with data
     float auxInValue;
     for (int i = 0; i < numSamples; i += 4) {
-        auxInValue = 0.0000374F * ((float) *pRead); // return value in volts
-        *pWrite = auxInValue;     // write same value four times since AuxIn is sampled at fs/4
+        auxInValue = 0.0000374F * ((float) *pRead);  // return value in volts
+        *pWrite = auxInValue;  // write same value four times since AuxIn is sampled at fs/4
         pWrite++;
         *pWrite = auxInValue;
         pWrite++;
@@ -229,28 +235,31 @@ void RHXDataReader::readAuxInData(float* buffer, int stream, int auxChannel)
     }
 }
 
-// Read one supply voltage waveform from raw USB data bytes, converting to volts (ControllerRecordUSB2 and ControllerRecordUSB3 only).
-void RHXDataReader::readSupplyVoltageData(float* buffer, int stream) const
+// Read one supply voltage waveform from raw USB data bytes, converting to volts
+// (ControllerRecordUSB2 and ControllerRecordUSB3 only).
+void RHXDataReader::readSupplyVoltageData(float *buffer, int stream) const
 {
-    const uint16_t* pRead = start;
-    float* pWrite = buffer;
+    const uint16_t *pRead = start;
+    float *pWrite = buffer;
 
-    pRead += 6; // Skip header and timestamp.
-    pRead += (numDataStreams * 1) + stream;     // Align with selected stream and AuxIn data slot.
-    pRead += dataFrameSizeInWords * 124;        // Align with "read from Vdd" command.
+    pRead += 4 + 2;                          // Skip header and timestamp.
+    pRead += (numDataStreams * 1) + stream;  // Align with selected stream and AuxIn data slot.
+    pRead += dataFrameSizeInWords * 124;     // Align with "read from Vdd" command.
     float vdd = 0.0000748F * ((float) *pRead);
-    for (int i = 0; i < RHXDataBlock::samplesPerDataBlock(type); ++i) { // Write same value 128 times since Vdd is sampled at fs/128.
+    for (int i = 0; i < RHXDataBlock::samplesPerDataBlock(type);
+         ++i) {  // Write same value 128 times since Vdd is sampled at fs/128.
         *pWrite = vdd;
         pWrite++;
     }
 }
 
-void RHXDataReader::readBoardAdcData(float* buffer, int channel) const
+void RHXDataReader::readBoardAdcData(float *buffer, int channel) const
 {
-    const uint16_t* pRead = start;
-    float* pWrite = buffer;
+    const uint16_t *pRead = start;
+    float *pWrite = buffer;
 
-    pRead += dataFrameSizeInWords - 10 + channel;
+    // pRead += dataFrameSizeInWords - 8 - 2 - dio32 * 2 + channel;
+    pRead += dataFrameSizeInWords - 8 - 2 - true * 2 + channel;
 
     int adcValue;
     if (type == ControllerRecordUSB2) {
@@ -270,12 +279,13 @@ void RHXDataReader::readBoardAdcData(float* buffer, int channel) const
     }
 }
 
-void RHXDataReader::readDigInData(uint16_t* buffer) const
+void RHXDataReader::readDigInData(uint16_t *buffer) const
 {
-    const uint16_t* pRead = start;
-    uint16_t* pWrite = buffer;
+    const uint16_t *pRead = start;
+    uint16_t *pWrite = buffer;
 
-    pRead += dataFrameSizeInWords - 2;
+    // pRead += dataFrameSizeInWords - 2 - dio32 * 2;
+    pRead += dataFrameSizeInWords - 2 - true * 2;
 
     for (int i = 0; i < numSamples; ++i) {
         *pWrite = *pRead;
@@ -284,13 +294,14 @@ void RHXDataReader::readDigInData(uint16_t* buffer) const
     }
 }
 
-void RHXDataReader::readDigInData(float* buffer, int channel) const
+void RHXDataReader::readDigInData(float *buffer, int channel) const
 {
-    const uint16_t* pRead = start;
-    float* pWrite = buffer;
+    const uint16_t *pRead = start;
+    float *pWrite = buffer;
     const uint16_t mask = 1U << channel;
 
-    pRead += dataFrameSizeInWords - 2;
+    // pRead += dataFrameSizeInWords - 2 - dio32 * 2;
+    pRead += dataFrameSizeInWords - 2 - true * 2;
 
     for (int i = 0; i < numSamples; ++i) {
         *pWrite = (*pRead & mask) ? 1.0F : 0.0F;
@@ -299,12 +310,13 @@ void RHXDataReader::readDigInData(float* buffer, int channel) const
     }
 }
 
-void RHXDataReader::readDigOutData(uint16_t* buffer) const
+void RHXDataReader::readDigOutData(uint16_t *buffer) const
 {
-    const uint16_t* pRead = start;
-    uint16_t* pWrite = buffer;
+    const uint16_t *pRead = start;
+    uint16_t *pWrite = buffer;
 
-    pRead += dataFrameSizeInWords - 1;
+    // pRead += dataFrameSizeInWords - 1 - dio32;
+    pRead += dataFrameSizeInWords - 1 - true;
 
     for (int i = 0; i < numSamples; ++i) {
         *pWrite = *pRead;
@@ -313,13 +325,14 @@ void RHXDataReader::readDigOutData(uint16_t* buffer) const
     }
 }
 
-void RHXDataReader::readDigOutData(float* buffer, int channel) const
+void RHXDataReader::readDigOutData(float *buffer, int channel) const
 {
-    const uint16_t* pRead = start;
-    float* pWrite = buffer;
+    const uint16_t *pRead = start;
+    float *pWrite = buffer;
     const uint16_t mask = 1U << channel;
 
-    pRead += dataFrameSizeInWords - 1;
+    // pRead += dataFrameSizeInWords - 1 - dio32;
+    pRead += dataFrameSizeInWords - 1 - true;
 
     for (int i = 0; i < numSamples; ++i) {
         *pWrite = (*pRead & mask) ? 1.0F : 0.0F;
@@ -328,55 +341,62 @@ void RHXDataReader::readDigOutData(float* buffer, int channel) const
     }
 }
 
-void RHXDataReader::readComplianceLimitData(uint16_t* buffer, int stream) const
+void RHXDataReader::readComplianceLimitData(uint16_t *buffer, int stream) const
 {
-    const uint16_t* pRead = start;
-    uint16_t* pWrite = buffer;
+    const uint16_t *pRead = start;
+    uint16_t *pWrite = buffer;
 
-    pRead += 6;    // Skip header and timestamp.
-    pRead += 2 * ((numDataStreams * 1) + stream);   // Align with selected stream.
+    pRead += 4 + 2;                                // Skip header and timestamp.
+    pRead += 2 * ((numDataStreams * 1) + stream);  // Align with selected stream.
 
-    // The top 16 bits will be either all 1's (results of a WRITE command) or all 0's (results of a READ command).
+    // The top 16 bits will be either all 1's (results of a WRITE command) or all 0's (results of a
+    // READ command).
     for (int i = 0; i < numSamples; ++i) {
-        if (*(pRead + 1) == 0) {    // The top 16 bits will be either all 1's (results of a WRITE command)
-                                    // or all 0's (results of a READ command).
-            *pWrite = *pRead; // Update compliance limit only if a 'read' command was executed, denoting a read from Register 40.
+        if (*(pRead + 1) == 0) {  // The top 16 bits will be either all 1's (results of a WRITE
+                                  // command) or all 0's (results of a READ command).
+            *pWrite = *pRead;     // Update compliance limit only if a 'read' command was executed,
+                                  // denoting a read from Register 40.
         } else {
-            *pWrite = 0;      // If Register 40 was not read, assume no compliance limit violations.
+            *pWrite = 0;  // If Register 40 was not read, assume no compliance limit violations.
         }
         pWrite++;
         pRead += dataFrameSizeInWords;
     }
 }
 
-void RHXDataReader::readComplianceLimitData(uint16_t* buffer, int stream, int channel) const
+void RHXDataReader::readComplianceLimitData(uint16_t *buffer, int stream, int channel) const
 {
-    const uint16_t* pRead = start;
-    uint16_t* pWrite = buffer;
+    const uint16_t *pRead = start;
+    uint16_t *pWrite = buffer;
     const uint16_t mask = 1U << channel;
 
-    pRead += 6;    // Skip header and timestamp.
-    pRead += 2 * ((numDataStreams * 1) + stream);   // Align with selected stream.
+    pRead += 4 + 2;                                // Skip header and timestamp.
+    pRead += 2 * ((numDataStreams * 1) + stream);  // Align with selected stream.
 
-    // The top 16 bits will be either all 1's (results of a WRITE command) or all 0's (results of a READ command).
+    // The top 16 bits will be either all 1's (results of a WRITE command) or all 0's (results of a
+    // READ command).
     for (int i = 0; i < numSamples; ++i) {
-        if (*(pRead + 1) == 0) {    // The top 16 bits will be either all 1's (results of a WRITE command)
-                                    // or all 0's (results of a READ command).
-            *pWrite = (*pRead & mask) ? 1 : 0; // Update compliance limit only if a 'read' command was executed, denoting a read from Register 40.
+        if (*(pRead + 1) == 0) {  // The top 16 bits will be either all 1's (results of a WRITE
+                                  // command) or all 0's (results of a READ command).
+            *pWrite = (*pRead & mask) ? 1 : 0;  // Update compliance limit only if a 'read' command
+                                                // was executed, denoting a read from Register 40.
         } else {
-            *pWrite = 0;      // If Register 40 was not read, assume no compliance limit violations.
+            *pWrite = 0;  // If Register 40 was not read, assume no compliance limit violations.
         }
         pWrite++;
         pRead += dataFrameSizeInWords;
     }
 }
 
-void RHXDataReader::readStimOnData(uint16_t* buffer, int stream) const
+void RHXDataReader::readStimOnData(uint16_t *buffer, int stream) const
 {
-    const uint16_t* pRead = start;
-    uint16_t* pWrite = buffer;
+    const uint16_t *pRead = start;
+    uint16_t *pWrite = buffer;
 
-    pRead += dataFrameSizeInWords - 18 - (numDataStreams * 4) + stream; // Align with selected stream.
+    // pRead +=
+    //     dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 4) + stream;  // Align with selected stream.
+    pRead +=
+        dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 4) + stream;  // Align with selected stream.
 
     for (int i = 0; i < numSamples; ++i) {
         *pWrite = *pRead;
@@ -385,13 +405,16 @@ void RHXDataReader::readStimOnData(uint16_t* buffer, int stream) const
     }
 }
 
-void RHXDataReader::readStimOnData(uint16_t* buffer, int stream, int channel) const
+void RHXDataReader::readStimOnData(uint16_t *buffer, int stream, int channel) const
 {
-    const uint16_t* pRead = start;
-    uint16_t* pWrite = buffer;
+    const uint16_t *pRead = start;
+    uint16_t *pWrite = buffer;
     const uint16_t mask = 1U << channel;
 
-    pRead += dataFrameSizeInWords - 18 - (numDataStreams * 4) + stream; // Align with selected stream.
+    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 4) +
+    //          stream;  // Align with selected stream.
+    pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 4) +
+             stream;  // Align with selected stream.
 
     for (int i = 0; i < numSamples; ++i) {
         *pWrite = (*pRead & mask) ? 1 : 0;
@@ -400,12 +423,15 @@ void RHXDataReader::readStimOnData(uint16_t* buffer, int stream, int channel) co
     }
 }
 
-void RHXDataReader::readStimPolData(uint16_t* buffer, int stream) const
+void RHXDataReader::readStimPolData(uint16_t *buffer, int stream) const
 {
-    const uint16_t* pRead = start;
-    uint16_t* pWrite = buffer;
+    const uint16_t *pRead = start;
+    uint16_t *pWrite = buffer;
 
-    pRead += dataFrameSizeInWords - 18 - (numDataStreams * 3) + stream; // Align with selected stream.
+    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 3) +
+    //          stream;  // Align with selected stream.
+    pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 3) +
+             stream;  // Align with selected stream.
 
     for (int i = 0; i < numSamples; ++i) {
         *pWrite = *pRead;
@@ -414,13 +440,16 @@ void RHXDataReader::readStimPolData(uint16_t* buffer, int stream) const
     }
 }
 
-void RHXDataReader::readStimPolData(uint16_t* buffer, int stream, int channel) const
+void RHXDataReader::readStimPolData(uint16_t *buffer, int stream, int channel) const
 {
-    const uint16_t* pRead = start;
-    uint16_t* pWrite = buffer;
+    const uint16_t *pRead = start;
+    uint16_t *pWrite = buffer;
     const uint16_t mask = 1U << channel;
 
-    pRead += dataFrameSizeInWords - 18 - (numDataStreams * 3) + stream; // Align with selected stream.
+    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 3) +
+    //          stream;  // Align with selected stream.
+    pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 3) +
+             stream;  // Align with selected stream.
 
     for (int i = 0; i < numSamples; ++i) {
         *pWrite = (*pRead & mask) ? 1 : 0;
@@ -429,12 +458,15 @@ void RHXDataReader::readStimPolData(uint16_t* buffer, int stream, int channel) c
     }
 }
 
-void RHXDataReader::readAmpSettleData(uint16_t* buffer, int stream) const
+void RHXDataReader::readAmpSettleData(uint16_t *buffer, int stream) const
 {
-    const uint16_t* pRead = start;
-    uint16_t* pWrite = buffer;
+    const uint16_t *pRead = start;
+    uint16_t *pWrite = buffer;
 
-    pRead += dataFrameSizeInWords - 18 - (numDataStreams * 2) + stream; // Align with selected stream.
+    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 2) +
+    //          stream;  // Align with selected stream.
+    pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 2) +
+             stream;  // Align with selected stream.
 
     for (int i = 0; i < numSamples; ++i) {
         *pWrite = *pRead;
@@ -443,13 +475,16 @@ void RHXDataReader::readAmpSettleData(uint16_t* buffer, int stream) const
     }
 }
 
-void RHXDataReader::readAmpSettleData(uint16_t* buffer, int stream, int channel) const
+void RHXDataReader::readAmpSettleData(uint16_t *buffer, int stream, int channel) const
 {
-    const uint16_t* pRead = start;
-    uint16_t* pWrite = buffer;
+    const uint16_t *pRead = start;
+    uint16_t *pWrite = buffer;
     const uint16_t mask = 1U << channel;
 
-    pRead += dataFrameSizeInWords - 18 - (numDataStreams * 2) + stream; // Align with selected stream.
+    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 2) +
+    //          stream;  // Align with selected stream.
+    pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 2) +
+             stream;  // Align with selected stream.
 
     for (int i = 0; i < numSamples; ++i) {
         *pWrite = (*pRead & mask) ? 1 : 0;
@@ -458,12 +493,15 @@ void RHXDataReader::readAmpSettleData(uint16_t* buffer, int stream, int channel)
     }
 }
 
-void RHXDataReader::readChargeRecovData(uint16_t* buffer, int stream) const
+void RHXDataReader::readChargeRecovData(uint16_t *buffer, int stream) const
 {
-    const uint16_t* pRead = start;
-    uint16_t* pWrite = buffer;
+    const uint16_t *pRead = start;
+    uint16_t *pWrite = buffer;
 
-    pRead += dataFrameSizeInWords - 18 - (numDataStreams * 1) + stream; // Align with selected stream.
+    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 1) +
+    //          stream;  // Align with selected stream.
+    pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 1) +
+             stream;  // Align with selected stream.
 
     for (int i = 0; i < numSamples; ++i) {
         *pWrite = *pRead;
@@ -472,13 +510,16 @@ void RHXDataReader::readChargeRecovData(uint16_t* buffer, int stream) const
     }
 }
 
-void RHXDataReader::readChargeRecovData(uint16_t* buffer, int stream, int channel) const
+void RHXDataReader::readChargeRecovData(uint16_t *buffer, int stream, int channel) const
 {
-    const uint16_t* pRead = start;
-    uint16_t* pWrite = buffer;
+    const uint16_t *pRead = start;
+    uint16_t *pWrite = buffer;
     const uint16_t mask = 1U << channel;
 
-    pRead += dataFrameSizeInWords - 18 - (numDataStreams * 1) + stream; // Align with selected stream.
+    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 1) +
+    //          stream;  // Align with selected stream.
+    pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 1) +
+             stream;  // Align with selected stream.
 
     for (int i = 0; i < numSamples; ++i) {
         *pWrite = (*pRead & mask) ? 1 : 0;
@@ -487,13 +528,10 @@ void RHXDataReader::readChargeRecovData(uint16_t* buffer, int stream, int channe
     }
 }
 
-// Read all five stimulation parameters for an individual RHS channel.  Data returned in uint16 array, where:
-// bit 15 (MSB) = compliance limit flag
-// bit 14 = charge recovery flag
-// bit 13 = amplifier settle flag
-// bit 8 = stimulation polarity flag
-// bit 0 = stimulation on flag
-void RHXDataReader::readStimParamData(uint16_t* buffer, int stream, int channel) const
+// Read all five stimulation parameters for an individual RHS channel.  Data returned in uint16
+// array, where: bit 15 (MSB) = compliance limit flag bit 14 = charge recovery flag bit 13 =
+// amplifier settle flag bit 8 = stimulation polarity flag bit 0 = stimulation on flag
+void RHXDataReader::readStimParamData(uint16_t *buffer, int stream, int channel) const
 {
     const uint16_t mask = 1U << channel;
     const uint16_t ComplianceFlag = 1U << 15;
@@ -504,27 +542,36 @@ void RHXDataReader::readStimParamData(uint16_t* buffer, int stream, int channel)
     uint16_t compliance;
 
     // First, read compliance limit data.
-    uint16_t* pWrite = buffer;
-    const uint16_t* pReadCompliance = start + 6;  // Skip header and timestamp.
+    uint16_t *pWrite = buffer;
+    const uint16_t *pReadCompliance = start + 4 + 2;         // Skip header and timestamp.
     pReadCompliance += 2 * ((numDataStreams * 1) + stream);  // Align with selected stream.
-    const uint16_t* pRead = start;
-    pRead += dataFrameSizeInWords - 18 - (numDataStreams * 4) + stream;  // Align with selected stream.
+    const uint16_t *pRead = start;
+    // Add 2 more TTL and padding.
+    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 4) + stream -
+    //          dio32 * 2;  // Align with selected stream.
+    pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 4) + stream -
+             true * 2;  // Align with selected stream.
 
-    // The top 16 bits will be either all 1's (results of a WRITE command) or all 0's (results of a READ command).
+    // The top 16 bits will be either all 1's (results of a WRITE command) or all 0's (results of a
+    // READ command).
     for (int i = 0; i < numSamples; ++i) {
-        if (*(pReadCompliance + 1) == 0) {  // The top 16 bits will be either all 1's (results of a WRITE command)
-                                            // or all 0's (results of a READ command).
-            compliance = (*pReadCompliance & mask) ? ComplianceFlag : 0;  // Update compliance limit only if a 'read' command
-                                                                          // was executed, denoting a read from Register 40.
+        if (*(pReadCompliance + 1) ==
+            0) {  // The top 16 bits will be either all 1's (results of a WRITE command)
+                  // or all 0's (results of a READ command).
+            compliance = (*pReadCompliance & mask)
+                             ? ComplianceFlag
+                             : 0;  // Update compliance limit only if a 'read' command
+                                   // was executed, denoting a read from Register 40.
         } else {
             compliance = 0;  // If Register 40 was not read, assume no compliance limit violations.
         }
-        // The RHS2116 datasheet specifies 0 for negative current and 1 for positive current, so when writing the stim polarity bit, switch it (using 0 : 1) to
-        // be consistent with the RHX code's convention of 1 for negative current and 0 for positive current.
-        *pWrite = compliance | ((*pRead & mask) ? StimOnFlag : 0)
-                             | (((*(pRead + 1 * numDataStreams)) & mask) ? 0 : StimPolFlag)
-                             | (((*(pRead + 2 * numDataStreams)) & mask) ? AmpSettleFlag : 0)
-                             | (((*(pRead + 3 * numDataStreams)) & mask) ? ChargeRecoveryFlag : 0);
+        // The RHS2116 datasheet specifies 0 for negative current and 1 for positive current, so
+        // when writing the stim polarity bit, switch it (using 0 : 1) to be consistent with the RHX
+        // code's convention of 1 for negative current and 0 for positive current.
+        *pWrite = compliance | ((*pRead & mask) ? StimOnFlag : 0) |
+                  (((*(pRead + 1 * numDataStreams)) & mask) ? 0 : StimPolFlag) |
+                  (((*(pRead + 2 * numDataStreams)) & mask) ? AmpSettleFlag : 0) |
+                  (((*(pRead + 3 * numDataStreams)) & mask) ? ChargeRecoveryFlag : 0);
         pWrite++;
         pReadCompliance += dataFrameSizeInWords;
         pRead += dataFrameSizeInWords;
@@ -532,12 +579,13 @@ void RHXDataReader::readStimParamData(uint16_t* buffer, int stream, int channel)
 }
 
 // ControllerStimRecord only
-void RHXDataReader::readBoardDacData(float* buffer, int channel) const
+void RHXDataReader::readBoardDacData(float *buffer, int channel) const
 {
-    const uint16_t* pRead = start;
-    float* pWrite = buffer;
+    const uint16_t *pRead = start;
+    float *pWrite = buffer;
 
-    pRead += dataFrameSizeInWords - 18 + channel;
+    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 + channel;
+    pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 + channel;
 
     int dacValue;
     for (int i = 0; i < numSamples; ++i) {
@@ -547,4 +595,3 @@ void RHXDataReader::readBoardDacData(float* buffer, int channel) const
         pRead += dataFrameSizeInWords;
     }
 }
-
