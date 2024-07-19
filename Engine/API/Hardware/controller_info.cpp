@@ -1,53 +1,58 @@
 #include "controller_info.h"
 
+#include <fmt/core.h>
 #include <fmt/format.h>
 
-#include <chrono>
-#include <thread>
+#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
+#include <ostream>
+#include <string>
 
-bool wait_xdaq(xdaq::Device *dev, int retry)
+
+using json = nlohmann::json;
+
+XDAQInfo parse_info(const json &device_info)
 {
-    using Clock = std::chrono::high_resolution_clock;
-    for (; retry >= 0; --retry) {
-        const auto start = Clock::now();
-        while (true) {
-            if ((*dev->get_register_sync(0x22) & 0x4) == 0) return true;
-            if ((Clock::now() - start) > std::chrono::seconds(3)) break;
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        if (retry == 0) return false;
-        dev->trigger(0x48, 3);
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    XDAQInfo info;
+
+    info.FPGA_vender = device_info["FPGA Vender"];
+    if (!info.FPGA_vender.contains("Opal Kelly")) {
+        info.flash_memory = device_info["Flash Memory"];
     }
-    return false;
+    info.serial = device_info["Serial Number"];
+    const auto model = device_info["XDAQ Model"].template get<std::string>();
+
+    if (model.contains("Core")) {
+        info.model = XDAQModel::Core;
+    } else if (model.contains("One")) {
+        info.model = XDAQModel::One;
+    } else {
+        info.model = XDAQModel::Unknown;
+    }
+
+    if (model.contains("1")) {
+        info.generation = 1;
+    } else if (model.contains("2")) {
+        info.generation = 2;
+    }
+
+    if (info.FPGA_vender.contains("Opal Kelly")) {
+        info.expander = device_info["Expander"];
+    }
+
+    info.max_rhd_channels = device_info["RHD"];
+    info.max_rhs_channels = device_info["RHS"];
+
+    return info;
 }
 
-XDAQInfo read_xdaq_info(xdaq::Device *dev)
-{
-    if (!wait_xdaq(dev, 1)) {
-        throw std::runtime_error("XDAQ is not ready, please restart the device and try again");
-    }
-    XDAQInfo info;
-    info.serial = fmt::format("{:08x}", *dev->get_register_sync(0x32));
-    const auto hdmi = *dev->get_register_sync(0x31);
-    switch ((hdmi & 0xFF)) {
-    case 0:
-        if (((hdmi & 0xFF00) >> 8) == 1)
-            info.model = XDAQModel::Core;
-        else if (((hdmi & 0xFF00) >> 8) == 3)
-            info.model = XDAQModel::One;
-        else
-            info.model = XDAQModel::Unknown;
-        break;
-    case 2: info.model = XDAQModel::Core; break;
-    case 4: info.model = XDAQModel::One; break;
-    default: info.model = XDAQModel::Unknown;
-    }
-    info.expander = (*dev->get_register_sync(0x35)) != 0;
-    info.max_rhs_channels = ((hdmi >> 16) & 0xFF) * 16;
-    info.max_rhd_channels = ((hdmi >> 24) & 0xFF) * 32;
-    if (info.model == XDAQModel::Core) {
-        info.max_rhd_channels /= 2;
-    }
-    return info;
+
+XDAQStatus parse_status(const json &device_status) {
+    XDAQStatus status;
+    
+    status.version = device_status.at("Version");
+    status.build = device_status.at("Build");
+    status.mode = device_status.at("Mode");
+    
+    return status;
 }
