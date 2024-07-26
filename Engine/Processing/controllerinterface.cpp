@@ -314,7 +314,6 @@ void ControllerInterface::rescanPorts(bool updateDisplay)
     }
 
     state->signalSources->autoColorAmplifierChannels(32, 1);
-    // xpuController->updateNumStreams(numDataStreams, dio32);
     xpuController->updateNumStreams(numDataStreams);
 
     if (updateDisplay) {

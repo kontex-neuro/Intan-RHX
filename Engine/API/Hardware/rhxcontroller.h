@@ -94,10 +94,6 @@ public:
     explicit RHXController(
         ControllerType type_, AmplifierSampleRate sampleRate_, bool is7310_ = false
     );
-    // explicit RHXController(
-    //     ControllerType type_, AmplifierSampleRate sampleRate_,
-    //     xdaq::DevicePlugin::PluginOwnedDevice dev, bool is7310_ = false, bool dio32 = false
-    // );
     explicit RHXController(
         ControllerType type_, AmplifierSampleRate sampleRate_,
         xdaq::DevicePlugin::PluginOwnedDevice dev, bool is7310_ = false
@@ -205,7 +201,6 @@ private:
     RHXController &operator=(const RHXController &);  // declaration only
 
     XDAQDeviceProxy *dev = nullptr;
-    bool dio32;
 
     bool is7310;
 

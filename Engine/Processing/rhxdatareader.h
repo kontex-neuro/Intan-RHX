@@ -37,7 +37,6 @@
 class RHXDataReader
 {
 public:
-    // RHXDataReader(ControllerType type_, int numDataStreams_, const uint16_t* start_, int numSamples_, bool dio32 = false);
     RHXDataReader(ControllerType type_, int numDataStreams_, const uint16_t* start_, int numSamples_);
 
     void setNumDataStreams(int numDataStreams_);
@@ -84,8 +83,6 @@ private:
     int channelsPerStream;
     int numAuxChannels;
     int auxChFrameOffset;
-
-    bool dio32; 
 };
 
 #endif // RHXDATAREADER_H

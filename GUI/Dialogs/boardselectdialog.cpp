@@ -351,8 +351,6 @@ auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info, const XD
     device_widget->setLayout(layout);
     device_widget->setDisabled(info.model == XDAQModel::Unknown);
 
-    // auto dio32 = info.FPGA_vender.contains("Opal Kelly") ? true : false;
-
     std::shared_ptr<json> launch_properties =
         std::shared_ptr<json>(new json{{"sample_rate", SampleRate30000Hz}, {"stim_step_size", 5}});
     auto launch_button_rhd = new QPushButton(parent->tr("Record (X3R/X6R)"));

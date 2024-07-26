@@ -45,10 +45,8 @@ const uint64_t HeaderStimRecordUSB2 = 0x8d542c8a49712f0bUL;
 class RHXDataBlock
 {
 public:
-    // RHXDataBlock(ControllerType type_, int numDataStreams_, bool dio32 = false);
     RHXDataBlock(ControllerType type_, int numDataStreams_);
     ~RHXDataBlock();
-    // RHXDataBlock(const RHXDataBlock &obj, bool dio32);  // copy constructor
     RHXDataBlock(const RHXDataBlock &obj);  // copy constructor
 
     uint32_t timeStamp(int t) const;
@@ -111,8 +109,6 @@ private:
     int* boardDacDataInternal;
 
     void allocateMemory();
-
-    bool dio32;
 
     inline uint32_t convertUsbTimeStamp(const uint8_t* usbBuffer, int index)
     {

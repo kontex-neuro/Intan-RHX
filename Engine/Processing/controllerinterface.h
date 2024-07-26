@@ -59,8 +59,6 @@ class ControllerInterface : public QObject
 {
     Q_OBJECT
 public:
-    // ControllerInterface(SystemState* state_, AbstractRHXController* rhxController_, const QString& boardSerialNumber, bool useOpenCL,
-    //                     DataFileReader* dataFileReader_ = nullptr, QObject* parent = nullptr, bool is7310_ = false, bool dio32 = false);
     ControllerInterface(SystemState* state_, AbstractRHXController* rhxController_, const QString& boardSerialNumber, bool useOpenCL,
                         DataFileReader* dataFileReader_ = nullptr, QObject* parent = nullptr, bool is7310_ = false);
     ~ControllerInterface();
@@ -214,8 +212,6 @@ private:
     vector<double> cpuLoadHistory;
 
     bool is7310;
-
-    bool dio32;
 
     void outOfMemoryError(double memRequiredGB);
 };

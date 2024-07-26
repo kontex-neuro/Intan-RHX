@@ -33,9 +33,6 @@
 
 using namespace std;
 
-// RHXDataReader::RHXDataReader(
-//     ControllerType type_, int numDataStreams_, const uint16_t *start_, int numSamples_, bool dio32
-// )
 RHXDataReader::RHXDataReader(
     ControllerType type_, int numDataStreams_, const uint16_t *start_, int numSamples_
 )
@@ -258,7 +255,6 @@ void RHXDataReader::readBoardAdcData(float *buffer, int channel) const
     const uint16_t *pRead = start;
     float *pWrite = buffer;
 
-    // pRead += dataFrameSizeInWords - 8 - 2 - dio32 * 2 + channel;
     pRead += dataFrameSizeInWords - 8 - 2 - true * 2 + channel;
 
     int adcValue;
@@ -284,7 +280,6 @@ void RHXDataReader::readDigInData(uint16_t *buffer) const
     const uint16_t *pRead = start;
     uint16_t *pWrite = buffer;
 
-    // pRead += dataFrameSizeInWords - 2 - dio32 * 2;
     pRead += dataFrameSizeInWords - 2 - true * 2;
 
     for (int i = 0; i < numSamples; ++i) {
@@ -300,7 +295,6 @@ void RHXDataReader::readDigInData(float *buffer, int channel) const
     float *pWrite = buffer;
     const uint16_t mask = 1U << channel;
 
-    // pRead += dataFrameSizeInWords - 2 - dio32 * 2;
     pRead += dataFrameSizeInWords - 2 - true * 2;
 
     for (int i = 0; i < numSamples; ++i) {
@@ -315,7 +309,6 @@ void RHXDataReader::readDigOutData(uint16_t *buffer) const
     const uint16_t *pRead = start;
     uint16_t *pWrite = buffer;
 
-    // pRead += dataFrameSizeInWords - 1 - dio32;
     pRead += dataFrameSizeInWords - 1 - true;
 
     for (int i = 0; i < numSamples; ++i) {
@@ -331,7 +324,6 @@ void RHXDataReader::readDigOutData(float *buffer, int channel) const
     float *pWrite = buffer;
     const uint16_t mask = 1U << channel;
 
-    // pRead += dataFrameSizeInWords - 1 - dio32;
     pRead += dataFrameSizeInWords - 1 - true;
 
     for (int i = 0; i < numSamples; ++i) {
@@ -393,8 +385,6 @@ void RHXDataReader::readStimOnData(uint16_t *buffer, int stream) const
     const uint16_t *pRead = start;
     uint16_t *pWrite = buffer;
 
-    // pRead +=
-    //     dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 4) + stream;  // Align with selected stream.
     pRead +=
         dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 4) + stream;  // Align with selected stream.
 
@@ -411,8 +401,6 @@ void RHXDataReader::readStimOnData(uint16_t *buffer, int stream, int channel) co
     uint16_t *pWrite = buffer;
     const uint16_t mask = 1U << channel;
 
-    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 4) +
-    //          stream;  // Align with selected stream.
     pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 4) +
              stream;  // Align with selected stream.
 
@@ -428,8 +416,6 @@ void RHXDataReader::readStimPolData(uint16_t *buffer, int stream) const
     const uint16_t *pRead = start;
     uint16_t *pWrite = buffer;
 
-    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 3) +
-    //          stream;  // Align with selected stream.
     pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 3) +
              stream;  // Align with selected stream.
 
@@ -446,8 +432,6 @@ void RHXDataReader::readStimPolData(uint16_t *buffer, int stream, int channel) c
     uint16_t *pWrite = buffer;
     const uint16_t mask = 1U << channel;
 
-    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 3) +
-    //          stream;  // Align with selected stream.
     pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 3) +
              stream;  // Align with selected stream.
 
@@ -463,8 +447,6 @@ void RHXDataReader::readAmpSettleData(uint16_t *buffer, int stream) const
     const uint16_t *pRead = start;
     uint16_t *pWrite = buffer;
 
-    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 2) +
-    //          stream;  // Align with selected stream.
     pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 2) +
              stream;  // Align with selected stream.
 
@@ -481,8 +463,6 @@ void RHXDataReader::readAmpSettleData(uint16_t *buffer, int stream, int channel)
     uint16_t *pWrite = buffer;
     const uint16_t mask = 1U << channel;
 
-    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 2) +
-    //          stream;  // Align with selected stream.
     pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 2) +
              stream;  // Align with selected stream.
 
@@ -498,8 +478,6 @@ void RHXDataReader::readChargeRecovData(uint16_t *buffer, int stream) const
     const uint16_t *pRead = start;
     uint16_t *pWrite = buffer;
 
-    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 1) +
-    //          stream;  // Align with selected stream.
     pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 1) +
              stream;  // Align with selected stream.
 
@@ -516,8 +494,6 @@ void RHXDataReader::readChargeRecovData(uint16_t *buffer, int stream, int channe
     uint16_t *pWrite = buffer;
     const uint16_t mask = 1U << channel;
 
-    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 1) +
-    //          stream;  // Align with selected stream.
     pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 1) +
              stream;  // Align with selected stream.
 
@@ -547,8 +523,6 @@ void RHXDataReader::readStimParamData(uint16_t *buffer, int stream, int channel)
     pReadCompliance += 2 * ((numDataStreams * 1) + stream);  // Align with selected stream.
     const uint16_t *pRead = start;
     // Add 2 more TTL and padding.
-    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 - (numDataStreams * 4) + stream -
-    //          dio32 * 2;  // Align with selected stream.
     pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 - (numDataStreams * 4) + stream -
              true * 2;  // Align with selected stream.
 
@@ -584,7 +558,6 @@ void RHXDataReader::readBoardDacData(float *buffer, int channel) const
     const uint16_t *pRead = start;
     float *pWrite = buffer;
 
-    // pRead += dataFrameSizeInWords - 8 - 8 - 2 - dio32 * 2 + channel;
     pRead += dataFrameSizeInWords - 8 - 8 - 2 - true * 2 + channel;
 
     int dacValue;

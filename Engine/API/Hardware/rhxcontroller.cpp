@@ -29,7 +29,9 @@
 //------------------------------------------------------------------------------
 
 #include <fmt/format.h>
+#include <cstdio>
 #include <nlohmann/json.hpp>
+#
 
 #include <algorithm>
 #include <chrono>
@@ -50,8 +52,6 @@ using json = nlohmann::json;
 //   (3) an Opal Kelly XEM6010 USB2/FPGA interface board running the Intan RhythmStim interface Verilog code
 //       (e.g., an Intan Stim/Recording Controller with 128-channel capacity)
 
-// RHXController::RHXController(ControllerType type_, AmplifierSampleRate sampleRate_, xdaq::DevicePlugin::PluginOwnedDevice dev, bool is7310_, bool dio32)
-//     : AbstractRHXController(type_, sampleRate_), is7310(is7310_), previousDelay(-1), dev(reinterpret_cast<XDAQDeviceProxy*>(dev.get())), dio32(dio32)
 RHXController::RHXController(ControllerType type_, AmplifierSampleRate sampleRate_, xdaq::DevicePlugin::PluginOwnedDevice dev, bool is7310_)
     : AbstractRHXController(type_, sampleRate_), is7310(is7310_), previousDelay(-1), dev(reinterpret_cast<XDAQDeviceProxy*>(dev.get()))
 {

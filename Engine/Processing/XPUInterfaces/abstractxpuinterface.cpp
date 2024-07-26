@@ -73,7 +73,6 @@ void AbstractXPUInterface::updateMemory()
     }
 }
 
-// void AbstractXPUInterface::updateNumStreams(int numStreams_, bool dio32)
 void AbstractXPUInterface::updateNumStreams(int numStreams_)
 {
     // Set channels to the new value.

@@ -36,7 +36,6 @@
 #include "rhxdatablock.h"
 #include <fmt/core.h>
 
-// RHXDataBlock::RHXDataBlock(ControllerType type_, int numDataStreams_, bool dio32) :
 RHXDataBlock::RHXDataBlock(ControllerType type_, int numDataStreams_) :
     type(type_),
     numDataStreams(numDataStreams_),
@@ -53,7 +52,6 @@ RHXDataBlock::RHXDataBlock(ControllerType type_, int numDataStreams_) :
     ampSettleInternal(nullptr),
     chargeRecovInternal(nullptr),
     boardDacDataInternal(nullptr)
-    // dio32(dio32)
 {
     allocateMemory();
 }
@@ -76,7 +74,6 @@ RHXDataBlock::~RHXDataBlock()
 }
 
 // Copy constructor
-// RHXDataBlock::RHXDataBlock(const RHXDataBlock &obj, bool dio32) : dio32(dio32)
 RHXDataBlock::RHXDataBlock(const RHXDataBlock &obj)
 {
     type = obj.type;
@@ -521,10 +518,8 @@ void RHXDataBlock::fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex)
         if (type == ControllerRecordUSB2) {
             index += 2 * numDataStreams;
         } else if (type == ControllerRecordUSB3) {
-            // index += 2 * ((numDataStreams + dio32 * 2) % 4);
             index += 2 * ((numDataStreams + true * 2) % 4);
         } else if (type == ControllerStimRecord) {
-            // index += 2 * dio32 * 2;
             index += 2 * true * 2;
         }
 
@@ -535,7 +530,6 @@ void RHXDataBlock::fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex)
         }
 
         // Read TTL input and output values.
-        // if (dio32) {
         if (true) {
             ttlInInternal[t] = convertUsbTimeStamp(usbBuffer, index);
             index += 4;
