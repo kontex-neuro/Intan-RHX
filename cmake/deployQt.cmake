@@ -6,7 +6,7 @@ if(APPLE)
     function(deployqt target)
         add_custom_command(TARGET ${target} POST_BUILD
             COMMAND "$<$<CONFIG:Release>:${MACDEPLOYQT_EXECUTABLE}>"
-                "$<$<CONFIG:Release>:$<TARGET_FILE_DIR:${target}>/../../>"
+                    "$<$<CONFIG:Release>:$<TARGET_FILE_DIR:${target}>/../../>"
             COMMENT "Deploying Qt..."
         )
     endfunction()
@@ -15,7 +15,8 @@ elseif(WIN32)
     function(deployqt target)
         add_custom_command(TARGET ${target} POST_BUILD
             COMMAND "$<$<CONFIG:Release>:${WINDEPLOYQT_EXECUTABLE}>"
-                "$<$<CONFIG:Release>:$<TARGET_FILE_DIR:${target}>>"
+                    "$<$<CONFIG:Release>:$<TARGET_FILE:${target}>>"
+                    --dir "${CMAKE_CURRENT_BINARY_DIR}/qtDeploy/"
             COMMENT "Deploying Qt..."
         )
     endfunction()

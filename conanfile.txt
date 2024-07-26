@@ -1,16 +1,10 @@
 [requires]
 boost/1.81.0
-fmt/[>=10.0.0 <=10.2.0]
+fmt/10.2.1
 json-schema-validator/2.2.0
 spdlog/1.12.0
-qt/5.15.12
 
 [generators]
 CMakeDeps
 CMakeToolchain
 VirtualRunEnv
-
-[options]
-qt/*:qtmultimedia=True
-qt/*:qttools=True
-qt/*:shared=True
