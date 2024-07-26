@@ -6,7 +6,7 @@
 .DS_Store
 
 # Build
-/build
+/build*
 /.venv
 /.cache
 /CMakeUserPresets.json

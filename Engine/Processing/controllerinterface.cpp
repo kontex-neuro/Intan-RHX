@@ -1104,6 +1104,7 @@ void ControllerInterface::runController()
     rhxController->setContinuousRunMode(false);
     rhxController->setStimCmdMode(false);
     rhxController->setMaxTimeStep(0);
+    rhxController->flush();
 
     dataStream.reset();
 
@@ -1147,6 +1148,12 @@ void ControllerInterface::runControllerSilently(double nSeconds, QProgressDialog
 
     int numSamples = 1000;
 
+
+    waveformProcessorThread->start();
+    waveformProcessorThread->startRunning(rhxController->getNumEnabledDataStreams());
+
+    waveformFifo->resetBuffer();  // Clear any memory in waveform FIFO from previous running.
+
     dataStream = {std::move(rhxController->device->start_read_stream(
         0xA0,
         [this](auto raw_data, auto length) {
@@ -1158,10 +1165,9 @@ void ControllerInterface::runControllerSilently(double nSeconds, QProgressDialog
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    waveformProcessorThread->start();
-    waveformProcessorThread->startRunning(rhxController->getNumEnabledDataStreams());
-
-    waveformFifo->resetBuffer();  // Clear any memory in waveform FIFO from previous running.
+    rhxController->setStimCmdMode(true);
+    rhxController->setContinuousRunMode(true);
+    rhxController->run();
 
     QElapsedTimer mainTimer, tickTimer;
     mainTimer.start();
@@ -1205,6 +1211,7 @@ void ControllerInterface::runControllerSilently(double nSeconds, QProgressDialog
     rhxController->setContinuousRunMode(false);
     rhxController->setStimCmdMode(false);
     rhxController->setMaxTimeStep(0);
+    rhxController->flush();
 
     dataStream.reset();
 
