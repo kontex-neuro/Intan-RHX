@@ -95,8 +95,6 @@ set(EngineSources
     Engine/Threads/savetodiskthread.h
     Engine/Threads/tcpdataoutputthread.cpp
     Engine/Threads/tcpdataoutputthread.h
-    Engine/Threads/usbdatathread.cpp
-    Engine/Threads/usbdatathread.h
     Engine/Threads/waveformprocessorthread.cpp
     Engine/Threads/waveformprocessorthread.h
     PARENT_SCOPE

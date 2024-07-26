@@ -31,13 +31,13 @@
 #ifndef CONTROLLERINTERFACE_H
 #define CONTROLLERINTERFACE_H
 
+#include <xdaq/device_plugin.h>
 #include <QObject>
 #include <QString>
 #include "rhxcontroller.h"
 #include "datafilereader.h"
 #include "rhxglobals.h"
 #include "datastreamfifo.h"
-#include "usbdatathread.h"
 #include "waveformprocessorthread.h"
 #include "rhxregisters.h"
 #include "rhxdatareader.h"
@@ -52,6 +52,7 @@
 #include "psthdialog.h"
 #include "spectrogramdialog.h"
 #include "spikesortingdialog.h"
+#include <optional>
 
 class AbstractPanel;
 
@@ -183,10 +184,11 @@ private:
     DataFileReader* dataFileReader;
     TCPDataOutputThread* tcpDataOutputThread;
 
+    std::optional<std::unique_ptr<xdaq::Device::DataStream>> dataStream;
+
     XPUController* xpuController;
 
     DataStreamFifo* usbStreamFifo;
-    USBDataThread* usbDataThread;
     WaveformFifo* waveformFifo;
     WaveformProcessorThread* waveformProcessorThread;
 

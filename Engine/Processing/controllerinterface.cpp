@@ -37,7 +37,7 @@
 
 #include "controlpanel.h"
 #include "impedancereader.h"
-
+#include "rhxglobals.h"
 
 using namespace std;
 
@@ -52,7 +52,6 @@ ControllerInterface::ControllerInterface(
       tcpDataOutputThread(nullptr),
       xpuController(nullptr),
       usbStreamFifo(nullptr),
-      usbDataThread(nullptr),
       waveformFifo(nullptr),
       waveformProcessorThread(nullptr),
       display(nullptr),
@@ -90,19 +89,6 @@ ControllerInterface::ControllerInterface(
 
     hardwareFifoPercentFull = 0.0;
     waveformProcessorCpuLoad = 0.0;
-
-    usbDataThread = new USBDataThread(rhxController, usbStreamFifo, this);
-    if (!usbDataThread->memoryWasAllocated(memoryRequired)) {
-        outOfMemoryError(memoryRequired);
-    }
-
-    usbDataThread->setNumUsbBlocksToRead(
-        state->playback->getValue() ? 1 : RHXDataBlock::blocksFor30Hz(state->getSampleRateEnum())
-    );
-    connect(usbDataThread, SIGNAL(finished()), usbDataThread, SLOT(deleteLater()));
-    connect(
-        usbDataThread, SIGNAL(hardwareFifoReport(double)), this, SLOT(updateHardwareFifo(double))
-    );
 
     initializeController();
 
@@ -192,9 +178,7 @@ ControllerInterface::~ControllerInterface()
     waveformProcessorThread->wait();
     delete waveformProcessorThread;
 
-    usbDataThread->close();
-    usbDataThread->wait();
-    delete usbDataThread;
+    dataStream.reset();
 
     if (audioThread) {
         audioThread->close();
@@ -882,12 +866,24 @@ void ControllerInterface::runController()
         );
         return;
     }
+    dataStream = {std::move(rhxController->device->start_read_stream(
+        0xA0,
+        [this](auto raw_data, auto length) {
+            usbStreamFifo->writeToBuffer(raw_data.get(), length / BytesPerWord);
+        }
+    ))};
+    if (!dataStream) {
+        cerr << "Failed to start stream..." << endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 
-    usbDataThread->start();
+    rhxController->setStimCmdMode(true);
+    rhxController->setContinuousRunMode(true);
+    rhxController->run();
+
     waveformProcessorThread->start();
     saveToDiskThread->start();
 
-    usbDataThread->startRunning();
     waveformProcessorThread->startRunning(rhxController->getNumEnabledDataStreams());
 
     saveToDiskThread->startRunning();
@@ -1105,11 +1101,12 @@ void ControllerInterface::runController()
         tcpDataOutputEnabled = false;
     }
 
-    usbDataThread->stopRunning();
-    while (usbDataThread->isActive()) {  // Important: Must wait for usbDataThread to fully stop
-                                         // before we reset usbStreamFifo buffer!
-        qApp->processEvents();           // Stay responsive to GUI events during this loop.
-    }
+    rhxController->setContinuousRunMode(false);
+    rhxController->setStimCmdMode(false);
+    rhxController->setMaxTimeStep(0);
+
+    dataStream.reset();
+
     QThread::usleep(1000);  // Pause briefly to make sure tail end of data gets through
                             // waveformProcessorThread before it is also destroyed
 
@@ -1150,10 +1147,18 @@ void ControllerInterface::runControllerSilently(double nSeconds, QProgressDialog
 
     int numSamples = 1000;
 
-    usbDataThread->start();
-    waveformProcessorThread->start();
+    dataStream = {std::move(rhxController->device->start_read_stream(
+        0xA0,
+        [this](auto raw_data, auto length) {
+            usbStreamFifo->writeToBuffer(raw_data.get(), length / BytesPerWord);
+        }
+    ))};
+    if (!dataStream) {
+        cerr << "Failed to start stream..." << endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 
-    usbDataThread->startRunning();
+    waveformProcessorThread->start();
     waveformProcessorThread->startRunning(rhxController->getNumEnabledDataStreams());
 
     waveformFifo->resetBuffer();  // Clear any memory in waveform FIFO from previous running.
@@ -1197,11 +1202,11 @@ void ControllerInterface::runControllerSilently(double nSeconds, QProgressDialog
         qApp->processEvents();
     }
 
-    usbDataThread->stopRunning();
-    while (usbDataThread->isActive()) {  // Important: Must wait for usbDataThread to fully stop
-                                         // before we reset usbStreamFifo buffer!
-        qApp->processEvents();           // Stay responsive to GUI events during this loop.
-    }
+    rhxController->setContinuousRunMode(false);
+    rhxController->setStimCmdMode(false);
+    rhxController->setMaxTimeStep(0);
+
+    dataStream.reset();
 
     waveformFifo->pauseBuffer();
     usbStreamFifo->resetBuffer();
