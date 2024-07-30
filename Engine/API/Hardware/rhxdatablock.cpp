@@ -73,10 +73,8 @@ RHXDataBlock::~RHXDataBlock()
     if (boardDacDataInternal) delete [] boardDacDataInternal;
 }
 
-// Copy constructor
-// RHXDataBlock::RHXDataBlock(const RHXDataBlock &obj, bool dio32) : dio32(dio32)
-RHXDataBlock::RHXDataBlock(const RHXDataBlock &obj)
-{
+RHXDataBlock& RHXDataBlock::operator=(const RHXDataBlock &obj){
+    if(this==&obj) return *this;
     type = obj.type;
     numDataStreams = obj.numDataStreams;
     allocateMemory();
@@ -189,7 +187,7 @@ int RHXDataBlock::samplesPerDataBlock(ControllerType type_)
 {
     switch (type_) {
     case ControllerRecordUSB2:
-        // return 60;
+        return 60;
     case ControllerStimRecord:
     case ControllerRecordUSB3:
         return 128;
@@ -446,6 +444,15 @@ void RHXDataBlock::fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex)
             }
         }
 
+        // Skip filler words in each data stream.
+        if (type == ControllerRecordUSB2) {
+            index += 2 * numDataStreams;
+        } else if (type == ControllerRecordUSB3) {
+            index += 2 * (numDataStreams % 4);
+        } else if (type == ControllerStimRecord) {
+            index += 0;
+        }
+
         if (type == ControllerStimRecord) {
             // Read auxiliary command 0 results (see above for auxiliary command 1-3 results).
             // See above for auxiliary command 1-3 results, and note that these will be associated
@@ -486,14 +493,6 @@ void RHXDataBlock::fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex)
             }
         }
 
-        // Skip filler words in each data stream.
-        if (type == ControllerRecordUSB2) {
-            index += 2 * numDataStreams;
-        } else if (type == ControllerRecordUSB3) {
-            index += 2 * ((numDataStreams + false * 2) % 4);
-        } else if (type == ControllerStimRecord) {
-            index += 2 * false * 2;
-        }
 
         // Read from ADCs.
         for (int i = 0; i < 8; ++i) {

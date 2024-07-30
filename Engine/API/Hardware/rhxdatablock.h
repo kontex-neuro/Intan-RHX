@@ -47,7 +47,8 @@ class RHXDataBlock
 public:
     RHXDataBlock(ControllerType type_, int numDataStreams_);
     ~RHXDataBlock();
-    RHXDataBlock(const RHXDataBlock &obj);  // copy constructor
+    RHXDataBlock(const RHXDataBlock &obj){ *this = obj; }
+    RHXDataBlock& operator=(const RHXDataBlock &obj);
 
     uint32_t timeStamp(int t) const;
     int amplifierData(int stream, int channel, int t) const;
