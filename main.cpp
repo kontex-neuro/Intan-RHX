@@ -57,10 +57,13 @@ namespace fs = std::filesystem;
 auto get_plugins()
 {
 #ifdef _WIN32
-    auto app_dir = fs::path(QCoreApplication::applicationDirPath().toStdString());
-    std::cout << "app_dir = " << app_dir << std::endl; 
+    const auto app_dir = fs::path(QCoreApplication::applicationDirPath().toStdString());
+    auto app_plugin_dir = app_dir / "plugin";
+    if (!fs::exists(app_plugin_dir)) {
+        app_plugin_dir = "C:/usr/local/bin/xdaq/plugin";
+    }
     constexpr auto extension = ".dll";
-    auto res = SetDllDirectoryA((app_dir / "plugin").generic_string().c_str());
+    auto res = SetDllDirectoryA(app_plugin_dir.generic_string().c_str());
     if (res == 0) throw std::runtime_error("Failed to set DLL directory");
 #elif __APPLE__
     const std::vector<fs::path> search_path = {"/usr/local/lib/xdaq/plugins", "./plugins"};
@@ -72,7 +75,7 @@ auto get_plugins()
     static_assert(false, "Unsupported platform");
 #endif
     auto plugin_paths =
-        fs::directory_iterator((app_dir / "plugin")) |
+        fs::directory_iterator(app_plugin_dir) |
         std::views::filter([=](const fs::directory_entry &entry) {
             fmt::print("Checking: {}\n", entry.path().generic_string());
             if (fs::is_directory(entry)) return false;
@@ -85,7 +88,7 @@ auto get_plugins()
     plugin_paths.erase(std::unique(plugin_paths.begin(), plugin_paths.end()), plugin_paths.end());
 
     std::vector<std::shared_ptr<xdaq::DevicePlugin>> plugins;
-    
+
     for (const auto &path : plugin_paths) {
         try {
             auto plugin = xdaq::get_plugin(path.generic_string());
@@ -333,7 +336,7 @@ int main(int argc, char *argv[])
         fmt::println("Plugin: {}", plugin->get_device_options());
         auto devices = json::parse(plugin->list_devices());
         fmt::println("Device: {}", plugin->list_devices());
-        
+
         for (auto &device : devices) {
             device["mode"] = "rhd";
             auto dev = plugin->create_device(device.dump());
