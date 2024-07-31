@@ -29,16 +29,18 @@
 //------------------------------------------------------------------------------
 
 #include <fmt/format.h>
+#include <atomic>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <thread>
 #include "rhxcontroller.h"
+#include "rhxdatablock.h"
+#include "rhxglobals.h"
 #include "rhxregisters.h"
 
 using json = nlohmann::json;
@@ -116,32 +118,21 @@ void RHXController::resetFpga()
 // Read data block from the USB interface, if one is available.  Return true if data block was available.
 bool RHXController::readDataBlock(RHXDataBlock *dataBlock)
 {
-    lock_guard<mutex> lockOk(okMutex);
-
-    unsigned int numBytesToRead = BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
-
-    if (numBytesToRead > usbBufferSize) {
-        cerr << "Error in RHXController::readDataBlock: USB buffer size exceeded.  " <<
-                "Increase value of MAX_NUM_BLOCKS.\n";
-        return false;
-    }
-    long result;
-    if (type == ControllerRecordUSB3 || type == ControllerStimRecord) {
-        result = dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize,
-                                                USB3BlockSize * max(numBytesToRead / USB3BlockSize, (unsigned int)1),
-                                                usbBuffer);
-    } else {
-        result = dev->ReadFromPipeOut(PipeOutData, numBytesToRead, usbBuffer);
-    }
-    dataBlock->fillFromUsbBuffer(usbBuffer, 0);
-
-    // If something went wrong, flag pipeReadErrorCode for the GUI thread to display an error message and exit the software
-    if (result != numBytesToRead) {
-        cerr << "CRITICAL (readDataBlock): Pipe read failure.  Check block and buffer sizes.\n";
-        pipeReadErrorCode = result;
-    }
-
+    deque<RHXDataBlock*> dataQueue;
+    bool dataAvailable = readDataBlocks(1, dataQueue);
+    if (!dataAvailable) return false;
+    *dataBlock = *dataQueue.front();
+    delete dataQueue.front();
     return true;
+}
+
+inline std::size_t get_xdaq_frame_size(ControllerType type, int streams){
+    std::size_t ws = 0;
+    if(type == ControllerRecordUSB3)
+        ws = 4 + 2 + (streams * 35) + ((streams + 2) % 4) + 8 + 2 + 2;
+    else if(type == ControllerStimRecord)
+        ws = 4 + 2 + streams * (2 * 20 + 4) + 2 + 8 + 8 + 2 + 2;
+    return ws * 2;
 }
 
 // Read a certain number of USB data blocks, if the specified number is available, and append them to queue.
@@ -149,8 +140,7 @@ bool RHXController::readDataBlock(RHXDataBlock *dataBlock)
 bool RHXController::readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue)
 {
     lock_guard<mutex> lockOk(okMutex);
-
-    unsigned int numBytesToRead = BytesPerWord * numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
+    const std::size_t numBytesToRead = BytesPerWord * numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
 
     if (numBytesToRead > usbBufferSize) {
         cerr << "Error in RHXController::readDataBlocks: USB buffer size exceeded.  " <<
@@ -158,27 +148,67 @@ bool RHXController::readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueu
         return false;
     }
 
-    long result;
-    if (type == ControllerRecordUSB3 || type == ControllerStimRecord) {
-        result = dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize, numBytesToRead, usbBuffer);
-
-        if (result <= 0) {
-            cerr << "CRITICAL (readDataBlocks): Timeout on pipe read.  Check block and buffer sizes.\n";
+    {
+        std::atomic_uint64_t read = 0;
+        const auto sample_size = get_xdaq_frame_size(type, numDataStreams);
+        const std::size_t sample_size_intan =
+            RHXDataBlock::dataBlockSizeInWords(type, numDataStreams) / 128 * 2;
+        std::vector<unsigned char> frame_buffer(sample_size);
+        int remaining = 0;
+        auto s = device->start_read_stream(
+            PipeOutData,
+            [&, streams = numDataStreams](auto buffer, auto length) {
+                auto copy_one_sample = [&](auto begin, auto dst) {
+                    if (type == ControllerRecordUSB3) {
+                        const auto dio_off = sample_size - 8;
+                        const auto io_off = dio_off - 16;
+                        const auto padding_off = io_off - ((streams + 2) % 4) * 2;
+                        const auto io_off_orig = sample_size_intan - (streams % 4) * 2 - 16 - 4;
+                        std::copy(begin, begin + padding_off, dst);
+                        begin[dio_off + 2] = begin[dio_off + 4];
+                        begin[dio_off + 3] = begin[dio_off + 5];
+                        std::copy(begin + io_off, begin + dio_off + 2, dst + io_off_orig);
+                    } else if (type == ControllerStimRecord) {
+                        const auto dio_off = sample_size - 8;
+                        const auto io_off = dio_off - 16 - 16;
+                        const auto padding_off = io_off - 4;
+                        const auto io_off_orig = sample_size_intan - 16 - 16 - 4;
+                        std::copy(begin, begin + padding_off, dst);
+                        begin[dio_off + 2] = begin[dio_off + 4];
+                        begin[dio_off + 3] = begin[dio_off + 5];
+                        std::copy(begin + io_off, begin + dio_off + 2, dst + io_off_orig);
+                    }
+                    return sample_size_intan;
+                };
+                auto begin = buffer.get();
+                if (remaining > 0) {
+                    std::copy(
+                        begin, begin + sample_size - remaining, frame_buffer.begin() + remaining
+                    );
+                    begin += sample_size - remaining;
+                    length -= sample_size - remaining;
+                    read += copy_one_sample(frame_buffer.begin(), usbBuffer + read);
+                    if (read >= numBytesToRead) return;
+                }
+                auto n_full_samples = length / sample_size;
+                for (auto i = 0; i < n_full_samples; i++) {
+                    read += copy_one_sample(begin, usbBuffer + read);
+                    begin += sample_size;
+                    if (read >= numBytesToRead) return;
+                }
+                std::copy(begin, begin + length % sample_size, frame_buffer.begin());
+                remaining = length % sample_size;
+            }
+        );
+        while (read < numBytesToRead) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-    } else {
-        result = dev->ReadFromPipeOut(PipeOutData, numBytesToRead, usbBuffer);
     }
 
     for (int i = 0; i < numBlocks; ++i) {
         RHXDataBlock* dataBlock = new RHXDataBlock(type, numDataStreams);
         dataBlock->fillFromUsbBuffer(usbBuffer, i);
         dataQueue.push_back(dataBlock);
-    }
-
-    // If something went wrong, flag pipeReadErrorCode for the GUI thread to display an error message and exit the software
-    if (result != numBytesToRead) {
-        cerr << "CRITICAL (readDataBlocks): Pipe read failure.  Check block and buffer sizes.\n";
-        pipeReadErrorCode = result;
     }
 
     return true;
@@ -188,6 +218,7 @@ bool RHXController::readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueu
 // Return total number of bytes read.
 long RHXController::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
 {
+    return 0;
     lock_guard<mutex> lockOk(okMutex);
 
     unsigned int numWordsToRead = numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);

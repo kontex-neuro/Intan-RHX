@@ -77,7 +77,6 @@ auto get_plugins()
     auto plugin_paths =
         fs::directory_iterator(app_plugin_dir) |
         std::views::filter([=](const fs::directory_entry &entry) {
-            fmt::print("Checking: {}\n", entry.path().generic_string());
             if (fs::is_directory(entry)) return false;
             if (!entry.path().filename().generic_string().contains("device_plugin")) return false;
             return entry.path().extension() == extension;
@@ -331,6 +330,7 @@ int main(int argc, char *argv[])
     std::vector<XDAQInfo> controller_info;
     std::vector<XDAQStatus> controller_status;
     auto plugins = get_plugins();
+    fmt::println("Found {} plugins", plugins.size());
 
     for (auto &plugin : plugins) {
         fmt::println("Plugin: {}", plugin->get_device_options());
@@ -338,7 +338,6 @@ int main(int argc, char *argv[])
         fmt::println("Device: {}", plugin->list_devices());
 
         for (auto &device : devices) {
-            device["mode"] = "rhd";
             auto dev = plugin->create_device(device.dump());
             auto status = json::parse(*dev->get_status());
             auto info = json::parse(*dev->get_info());
