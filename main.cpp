@@ -36,10 +36,9 @@
 #include <xdaq/device_manager.h>
 
 #include <QApplication>
-#include <filesystem>
 #include <memory>
 #include <nlohmann/json.hpp>
-#include <unordered_set>
+#include <ostream>
 #include <vector>
 
 #include "Engine/API/Hardware/controller_info.h"
@@ -54,31 +53,6 @@
 
 
 using json = nlohmann::json;
-namespace fs = std::filesystem;
-
-std::vector<std::shared_ptr<xdaq::DeviceManager>> get_device_managers()
-{
-    const auto app_dir = fs::path(QCoreApplication::applicationDirPath().toStdString());
-    auto app_manager_dir = app_dir / "managers";
-    if (!fs::exists(app_manager_dir)) {
-        return {};
-    }
-
-    std::unordered_set<fs::path> search_paths;
-    for (auto &path : fs::directory_iterator(app_manager_dir)) {
-        search_paths.insert(fs::canonical(fs::path(path)));
-    }
-
-    std::vector<std::shared_ptr<xdaq::DeviceManager>> device_managers;
-
-    for (const auto &path : search_paths) {
-        try {
-            device_managers.emplace_back(xdaq::get_device_manager(path));
-        } catch (...) {
-        }
-    }
-    return device_managers;
-}
 
 struct RHXAPP {
     // rhxController -> state (Q) -> controllerInterface (Q) -> parser (Q) -> controlWindow (Q: no
@@ -91,24 +65,23 @@ struct RHXAPP {
 
 auto startSoftware(
     ControllerType controllerType, StimStepSize stimStepSize, DataFileReader *dataFileReader,
-    AbstractRHXController *rhxController, QString defaultSettingsFile, bool useOpenCL, bool testMode
+    AbstractRHXController *rhxController, QString defaultSettingsFile, bool useOpenCL,
+    bool testMode, XDAQInfo info
 )
 {
     bool is7310 = false;
     RHXAPP app{.rhxController = std::unique_ptr<AbstractRHXController>(rhxController)};
-    XDAQInfo xdaqinfo;
-
     QSettings settings;
 
     app.state = std::make_unique<SystemState>(
         app.rhxController.get(),
         stimStepSize,
         controllerType == ControllerStimRecord ? 4 : 8,
-        xdaqinfo.expander,
+        info.expander,
         testMode,
         dataFileReader,
-        xdaqinfo.model == XDAQModel::One,
-        (xdaqinfo.model == XDAQModel::Core ? 1 : 2)
+        info.model == XDAQModel::One,
+        (info.model == XDAQModel::Core ? 1 : 2)
     );
 
     // app.state->highDPIScaleFactor =
@@ -307,57 +280,47 @@ int main(int argc, char *argv[])
     // Globally disable unused Context Help buttons from windows/dialogs
     QApplication::setAttribute(Qt::AA_DisableWindowContextHelpButton);
     QSettings settings;
-    std::cout << settings.fileName().toStdString() << '\n';
-
-    std::vector<XDAQInfo> controller_info;
-    std::vector<XDAQStatus> controller_status;
-    auto plugins = get_device_managers();
-    fmt::println("Found {} plugins", plugins.size());
-
-    for (auto &plugin : plugins) {
-        fmt::println("Plugin: {}", plugin->get_device_options());
-        auto devices = json::parse(plugin->list_devices());
-        fmt::println("Device: {}", plugin->list_devices());
-
-        for (auto &device : devices) {
-            auto dev = plugin->create_device(device.dump());
-            auto status = json::parse(*dev->get_status());
-            auto info = json::parse(*dev->get_info());
-
-            auto xdaq_status = parse_status(status);
-            auto xdaq_info = parse_info(info);
-            xdaq_info.plugin = json::parse(plugin->info()).at("name");
-            xdaq_info.device_config = device.dump();
-            xdaq_info.get_device = [&device, &plugin](const std::string &config) {
-                return plugin->create_device(config);
-            };
-
-            controller_info.push_back(xdaq_info);
-            controller_status.push_back(xdaq_status);
-        }
-    }
+    // fmt::println("settings = ", settings.fileName().toStdString());
 
 #ifdef __APPLE__
     app.setStyle(QStyleFactory::create("Fusion"));
 #endif
 
-    BoardSelectDialog boardSelectDialog(nullptr, controller_info, controller_status);
-    // print size of boardSelectDialog
-    std::vector<RHXAPP> apps;
+    BoardSelectDialog boardSelectDialog(nullptr);
+    // std::vector<RHXAPP> apps;
+    RHXAPP rhx_app;
     boardSelectDialog.show();
     QObject::connect(
         &boardSelectDialog,
         &BoardSelectDialog::launch,
-        [&apps, &boardSelectDialog](
+        [&rhx_app, &boardSelectDialog](
             AbstractRHXController *controller,
             StimStepSize step_size,
             DataFileReader *data_file,
             bool OpenCL,
-            bool test_mode
+            bool test_mode,
+            XDAQInfo info
         ) {
-            apps.push_back(std::move(startSoftware(
-                controller->getType(), step_size, data_file, controller, "", OpenCL, test_mode
-            )));
+            auto splash = new QSplashScreen(QPixmap(":images/RHX_splash.png"));
+            auto splashMessage = "Copyright " + CopyrightSymbol + " " + ApplicationCopyrightYear +
+                                 " Intan Technologies.  RHX version " + SoftwareVersion +
+                                 ".  Opening XDAQ ...";
+            auto splashMessageAlign = Qt::AlignCenter | Qt::AlignBottom;
+            auto splashMessageColor = Qt::white;
+
+            boardSelectDialog.hide();
+            splash->show();
+            splash->showMessage(splashMessage, splashMessageAlign, splashMessageColor);
+
+            // apps.push_back(startSoftware(
+            //     controller->getType(), step_size, data_file, controller, "", OpenCL, test_mode
+            // ));
+            rhx_app = startSoftware(
+                controller->getType(), step_size, data_file, controller, "", OpenCL, test_mode, info
+            );
+
+            // splash->finish(apps.pop_back().controlWindow);
+            splash->finish(rhx_app.controlWindow);
             boardSelectDialog.accept();
         }
     );
