@@ -35,7 +35,7 @@
 #include "rhxglobals.h"
 #include "rhxdatablock.h"
 #include <xdaq/device.h>
-#include <xdaq/device_plugin.h>
+#include <xdaq/device_manager.h>
 
 using namespace std;
 
@@ -84,7 +84,7 @@ struct XDAQDeviceProxy : private xdaq::Device{
 class RHXController : public AbstractRHXController
 {
 public:
-    explicit RHXController(ControllerType type_, AmplifierSampleRate sampleRate_, xdaq::DevicePlugin::PluginOwnedDevice dev, bool is7310_ = false);
+    explicit RHXController(ControllerType type_, AmplifierSampleRate sampleRate_, xdaq::DeviceManager::OwnedDevice dev, bool is7310_ = false);
     ~RHXController() = default;
 
     bool isSynthetic() const override { return false; }

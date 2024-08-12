@@ -1,7 +1,6 @@
 #pragma once
-// #include <xdaq/device.h>
 
-#include <xdaq/device_plugin.h>
+#include <xdaq/device_manager.h>
 
 #include <functional>
 #include <nlohmann/json_fwd.hpp>
@@ -25,7 +24,7 @@ struct XDAQInfo {
     int max_rhs_channels = 0;
     bool expander = false;
     std::string device_config = "N/A";
-    std::function<xdaq::DevicePlugin::PluginOwnedDevice(const std::string &)> get_device = nullptr;
+    std::function<xdaq::DeviceManager::OwnedDevice(const std::string &)> get_device = nullptr;
 };
 
 struct XDAQStatus {

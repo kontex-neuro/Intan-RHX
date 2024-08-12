@@ -33,12 +33,13 @@
 #include <qdebug.h>
 #include <qglobal.h>
 #include <qsettings.h>
-#include <xdaq/device_plugin.h>
+#include <xdaq/device_manager.h>
 
 #include <QApplication>
 #include <filesystem>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include <unordered_set>
 #include <vector>
 
 #include "Engine/API/Hardware/controller_info.h"
@@ -51,51 +52,32 @@
 #include "rhxglobals.h"
 #include "systemstate.h"
 
+
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
-auto get_plugins()
+std::vector<std::shared_ptr<xdaq::DeviceManager>> get_device_managers()
 {
-#ifdef _WIN32
     const auto app_dir = fs::path(QCoreApplication::applicationDirPath().toStdString());
-    auto app_plugin_dir = app_dir / "plugin";
-    if (!fs::exists(app_plugin_dir)) {
-        app_plugin_dir = "C:/usr/local/bin/xdaq/plugin";
+    auto app_manager_dir = app_dir / "managers";
+    if (!fs::exists(app_manager_dir)) {
+        return {};
     }
-    constexpr auto extension = ".dll";
-    auto res = SetDllDirectoryA(app_plugin_dir.generic_string().c_str());
-    if (res == 0) throw std::runtime_error("Failed to set DLL directory");
-#elif __APPLE__
-    const std::vector<fs::path> search_path = {"/usr/local/lib/xdaq/plugins", "./plugins"};
-    constexpr auto extension = ".dylib";
-#elif __linux__
-    const std::vector<fs::path> search_path = {"/usr/local/lib/xdaq/plugins", "./plugins"};
-    constexpr auto extension = ".so";
-#else
-    static_assert(false, "Unsupported platform");
-#endif
-    auto plugin_paths =
-        fs::directory_iterator(app_plugin_dir) |
-        std::views::filter([=](const fs::directory_entry &entry) {
-            if (fs::is_directory(entry)) return false;
-            if (!entry.path().filename().generic_string().contains("device_plugin")) return false;
-            return entry.path().extension() == extension;
-        }) |
-        std::views::transform([](auto ent) { return fs::canonical(fs::path(ent)); }) |
-        std::ranges::to<std::vector>();
-    std::ranges::sort(plugin_paths);
-    plugin_paths.erase(std::unique(plugin_paths.begin(), plugin_paths.end()), plugin_paths.end());
 
-    std::vector<std::shared_ptr<xdaq::DevicePlugin>> plugins;
+    std::unordered_set<fs::path> search_paths;
+    for (auto &path : fs::directory_iterator(app_manager_dir)) {
+        search_paths.insert(fs::canonical(fs::path(path)));
+    }
 
-    for (const auto &path : plugin_paths) {
+    std::vector<std::shared_ptr<xdaq::DeviceManager>> device_managers;
+
+    for (const auto &path : search_paths) {
         try {
-            auto plugin = xdaq::get_plugin(path.generic_string());
-            plugins.emplace_back(plugin);
+            device_managers.emplace_back(xdaq::get_device_manager(path));
         } catch (...) {
         }
     }
-    return plugins;
+    return device_managers;
 }
 
 struct RHXAPP {
@@ -329,7 +311,7 @@ int main(int argc, char *argv[])
 
     std::vector<XDAQInfo> controller_info;
     std::vector<XDAQStatus> controller_status;
-    auto plugins = get_plugins();
+    auto plugins = get_device_managers();
     fmt::println("Found {} plugins", plugins.size());
 
     for (auto &plugin : plugins) {
