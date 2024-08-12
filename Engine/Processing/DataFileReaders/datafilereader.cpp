@@ -216,10 +216,10 @@ DataFileReader::DataFileReader(const QString& fileName, bool& canReadFile, QStri
     canReadFile = readHeader(fileName, headerInfo, report);
     if (!canReadFile) return;
     //qDebug() << "Original header info:";
-    //printHeader(headerInfo);
+    printHeader(headerInfo);
     applyPlaybackPorts(headerInfo, report);
     //qDebug() << "After applying playback ports header info:";
-    //printHeader(headerInfo);
+    printHeader(headerInfo);
 
     dataBlockPeriodInNsec = 1.0e9 * ((double)RHXDataBlock::samplesPerDataBlock(headerInfo.controllerType)) /
             AbstractRHXController::getSampleRate(headerInfo.sampleRate);
@@ -627,10 +627,10 @@ bool DataFileReader::readHeader(const QString& fileName, IntanHeaderInfo& info, 
     info.bytesPerDataBlock += info.samplesPerDataBlock * 2 * info.numEnabledBoardDacChannels;  // analog outputs
     info.bytesPerDataBlock += 2 * info.numTempSensors;  // temperature sensors
     if (info.numEnabledDigitalInChannels > 0) {
-        info.bytesPerDataBlock += 2 * info.samplesPerDataBlock;  // digital inputs
+        info.bytesPerDataBlock += 2 * info.samplesPerDataBlock + false * 2;  // digital inputs
     }
     if (info.numEnabledDigitalOutChannels > 0) {
-        info.bytesPerDataBlock += 2 * info.samplesPerDataBlock;  // digital outputs
+        info.bytesPerDataBlock += 2 * info.samplesPerDataBlock + false * 2;  // digital outputs
     }
 
     info.numDataBlocksInFile = info.dataSizeInBytes / info.bytesPerDataBlock;

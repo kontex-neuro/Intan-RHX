@@ -30,7 +30,9 @@
 
 #include <iostream>
 #include "datafilereader.h"
+#include "rhxglobals.h"
 #include "datafilemanager.h"
+#include <fmt/core.h>
 
 
 DataFileManager::DataFileManager(const QString& fileName_, IntanHeaderInfo* info_, DataFileReader* parent) :
@@ -308,7 +310,9 @@ long DataFileManager::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
             if (type == ControllerRecordUSB2) {
                 numFillerWords = numDataStreams;
             } else if (type == ControllerRecordUSB3) {
-                numFillerWords = numDataStreams % 4;
+                numFillerWords = ((numDataStreams + true * 2) % 4);
+            } else if (type == ControllerStimRecord) {
+                numFillerWords = true * 2;
             }
             for (int i = 0; i < numFillerWords; ++i) {
                 pWrite[0] = 0;
@@ -390,13 +394,31 @@ long DataFileManager::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
             word = digitalInData;
             pWrite[0] = (word & 0x00ffU) >> 0;
             pWrite[1] = (word & 0xff00U) >> 8;
-            pWrite += 2;
+            // pWrite[0] = (word & 0x000000ffU) >> 0;
+            // pWrite[1] = (word & 0x0000ff00U) >> 8;
+            // pWrite += 2;
+            // pWrite[0] = (word & 0x000000ffU) >> 0;
+            // pWrite[1] = (word & 0x0000ff00U) >> 8;
+            // pWrite[2] = (word & 0x00ff0000U) >> 16;
+            // pWrite[2] = (0 & 0x00ff0000U) >> 16;
+            // pWrite[3] = (word & 0xff000000U) >> 24;
+            // pWrite[3] = (0 & 0xff000000U) >> 24;
+            pWrite += 4;
 
             // Write Digital Out data.
             word = digitalOutData;
             pWrite[0] = (word & 0x00ffU) >> 0;
             pWrite[1] = (word & 0xff00U) >> 8;
-            pWrite += 2;
+            // pWrite[0] = (word & 0x000000ffU) >> 0;
+            // pWrite[1] = (word & 0x0000ff00U) >> 8;
+            // pWrite += 2;
+            // pWrite[0] = (word & 0x000000ffU) >> 0;
+            // pWrite[1] = (word & 0x0000ff00U) >> 8;
+            // pWrite[2] = (word & 0x00ff0000U) >> 16;
+            // pWrite[2] = (0 & 0x00ff0000U) >> 16;
+            // pWrite[3] = (word & 0xff000000U) >> 24;
+            // pWrite[3] = (0 & 0xff000000U) >> 24;
+            pWrite += 4;
 
             readIndex++;
         }
