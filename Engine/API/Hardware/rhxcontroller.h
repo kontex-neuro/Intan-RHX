@@ -32,7 +32,7 @@
 #define RHXCONTROLLER_H
 
 #include <xdaq/device.h>
-#include <xdaq/device_plugin.h>
+#include <xdaq/device_manager.h>
 
 #include "abstractrhxcontroller.h"
 #include "rhxdatablock.h"
@@ -96,7 +96,7 @@ public:
     );
     explicit RHXController(
         ControllerType type_, AmplifierSampleRate sampleRate_,
-        xdaq::DevicePlugin::PluginOwnedDevice dev, bool is7310_ = false
+        xdaq::DeviceManager::OwnedDevice dev, bool is7310_ = false
     );
     ~RHXController() = default;
 
