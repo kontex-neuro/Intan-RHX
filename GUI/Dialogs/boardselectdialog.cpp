@@ -217,7 +217,7 @@ auto get_playback_board(QWidget *parent, auto launch)
                 nullptr,
                 parent->tr("Select Intan Data File"),
                 settings.value("playbackDirectory", ".").toString(),  // default directory
-                parent->tr("Intan Data Files (*.rhd *.grhs)")
+                parent->tr("Intan Data Files (*.rhd *.rhs)")
             );
             if (!playbackFileName.isEmpty()) {
                 settings.setValue(
