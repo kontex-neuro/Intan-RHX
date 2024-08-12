@@ -509,10 +509,10 @@ double FilePerSignalTypeSaveManager::bytesPerMinute() const
         bytes += 2.0 * saveList.boardDac.size();
     }
     if (!saveList.boardDigitalIn.empty()) {
-        bytes += 2.0;
+        bytes += 2.0 + false * 2.0;
     }
     if (!saveList.boardDigitalOut.empty()) {
-        bytes += 2.0;
+        bytes += 2.0 + false * 2.0;
     }
     double samplesPerMinute = 60.0 * state->sampleRate->getNumericValue();
     return bytes * samplesPerMinute;

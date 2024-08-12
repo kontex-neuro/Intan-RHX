@@ -159,36 +159,47 @@ void TraditionalIntanFileManager::loadNextDataBlock()
 {
     for (int i = 0; i < (int) timeStampBuffer.size(); ++i) {
         timeStampBuffer[i] = dataFile->readTimeStamp();
+        // fmt::println("{} timeStampBuffer[{}] = {}", __FUNCTION__, i, timeStampBuffer[i]);
     }
     for (int i = 0; i < (int) amplifierDataBuffer.size(); ++i) {
         amplifierDataBuffer[i] = dataFile->readWord();
+        // fmt::println("{} amplifierDataBuffer[{}] = {}", __FUNCTION__, i, amplifierDataBuffer[i]);
     }
     for (int i = 0; i < (int) dcAmplifierDataBuffer.size(); ++i) {
         dcAmplifierDataBuffer[i] = dataFile->readWord();
+        // fmt::println("{} dcAmplifierDataBuffer[{}] = {}", __FUNCTION__, i, dcAmplifierDataBuffer[i]);
     }
     for (int i = 0; i < (int) stimDataBuffer.size(); ++i) {
         stimDataBuffer[i] = dataFile->readWord();
+        // fmt::println("{} stimDataBuffer[{}] = {}", __FUNCTION__, i, stimDataBuffer[i]);
     }
     for (int i = 0; i < (int) auxInputDataBuffer.size(); ++i) {
         auxInputDataBuffer[i] = dataFile->readWord();
+        // fmt::println("{} auxInputDataBuffer[{}] = {}", __FUNCTION__, i, auxInputDataBuffer[i]);
     }
     for (int i = 0; i < (int) supplyVoltageDataBuffer.size(); ++i) {
         supplyVoltageDataBuffer[i] = dataFile->readWord();
+        // fmt::println("{} supplyVoltageDataBuffer[{}] = {}", __FUNCTION__, i, supplyVoltageDataBuffer[i]);
     }
     for (int i = 0; i < (int) tempSensorBuffer.size(); ++i) {
         tempSensorBuffer[i] = dataFile->readSignedWord();
+        // fmt::println("{} tempSensorBuffer[{}] = {}", __FUNCTION__, i, tempSensorBuffer[i]);
     }
     for (int i = 0; i < (int) analogInDataBuffer.size(); ++i) {
         analogInDataBuffer[i] = dataFile->readWord();
+        // fmt::println("{} analogInDataBuffer[{}] = {}", __FUNCTION__, i, analogInDataBuffer[i]);
     }
     for (int i = 0; i < (int) analogOutDataBuffer.size(); ++i) {
         analogOutDataBuffer[i] = dataFile->readWord();
+        // fmt::println("{} analogOutDataBuffer[{}] = {}", __FUNCTION__, i, analogOutDataBuffer[i]);
     }
     for (int i = 0; i < (int) digitalInDataBuffer.size(); ++i) {
         digitalInDataBuffer[i] = dataFile->readWord();
+        // fmt::println("{} digitalInDataBuffer[{}] = {}", __FUNCTION__, i, digitalInDataBuffer[i]);
     }
     for (int i = 0; i < (int) digitalOutDataBuffer.size(); ++i) {
         digitalOutDataBuffer[i] = dataFile->readWord();
+        // fmt::println("{} digitalOutDataBuffer[{}] = {}", __FUNCTION__, i, digitalOutDataBuffer[i]);
     }
 
     atEndOfCurrentFile = dataFile->atEnd();
@@ -208,6 +219,7 @@ void TraditionalIntanFileManager::loadDataFrame()
         for (int j = 0; j < channelsPerStream; ++j) {
             if (amplifierWasSaved[i][j]) {
                 amplifierData[i][j] = amplifierDataBuffer[index];
+                // fmt::println("{} amplifierData[stream = {}][channel = {}] = {}", __FUNCTION__, i, j, amplifierData[i][j]);
                 index += samplesPerDataBlock;
             } else {
                 amplifierData[i][j] = 32768U;

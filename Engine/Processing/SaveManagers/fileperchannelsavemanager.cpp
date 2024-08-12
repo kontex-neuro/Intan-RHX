@@ -551,9 +551,9 @@ double FilePerChannelSaveManager::bytesPerMinute() const
         bytes += 2.0 * count(saveList.stimEnabled.begin(), saveList.stimEnabled.end(), true);
         bytes += 2.0 * saveList.boardDac.size();
     }
-    bytes += 2.0 * saveList.boardDigitalIn.size();
+    bytes += 2.0 * saveList.boardDigitalIn.size() + false * 2.0;
     if (!saveList.boardDigitalOut.empty()) {
-        bytes += 2.0 * saveList.boardDigitalOut.size();
+        bytes += 2.0 * saveList.boardDigitalOut.size() + false * 2.0;
     }
     double samplesPerMinute = 60.0 * state->sampleRate->getNumericValue();
     return bytes * samplesPerMinute;

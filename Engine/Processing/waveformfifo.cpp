@@ -33,6 +33,7 @@
 #include "rhxglobals.h"
 #include "rhxdatablock.h"
 #include "waveformfifo.h"
+#include <fmt/core.h>
 
 WaveformFifo::WaveformFifo(SignalSources *signalSources_, int bufferSizeInDataBlocks_, int memorySizeInDataBlocks_, int maxWriteSizeInDataBlocks_, SystemState* state_) :
     signalSources(signalSources_),
@@ -62,6 +63,7 @@ WaveformFifo::WaveformFifo(SignalSources *signalSources_, int bufferSizeInDataBl
 
     int maxWriteSizeInSamples = maxWriteSizeInDataBlocks * samplesPerDataBlock;
     bufferAllocateSize = bufferSize + maxWriteSizeInSamples;
+    fmt::println("{} bufferAllocateSize = {}", __FUNCTION__, bufferAllocateSize);
     bufferAllocateSizeInBlocks = bufferSizeInDataBlocks + maxWriteSizeInDataBlocks;
 
     usedWordsNewData = new Semaphore [numReaders];

@@ -67,8 +67,8 @@ bool PlaybackRHXController::readDataBlocks(int numBlocks, deque<RHXDataBlock*> &
 
     unsigned int numWordsToRead = numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
 
-    if (numWordsInFifo() < numWordsToRead)
-        return false;
+    // if (numWordsInFifo() < numWordsToRead)
+    //     return false;
 
     unsigned int numBytesToRead = BytesPerWord * numWordsToRead;
 
