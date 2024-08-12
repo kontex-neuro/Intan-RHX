@@ -75,6 +75,8 @@ private:
 
     bool memoryAllocated;
     double memoryNeededGB;
+
+    AcquisitionMode acquisitionMode;
 };
 
 #endif // USBDATATHREAD_H
