@@ -1,23 +1,39 @@
-name: Build binaries
+name: Build Installer
 
-on: [push, workflow_dispatch]
+on:
+  workflow_dispatch:
 
 jobs:
   build:
     strategy:
       matrix:
-        os: [windows-2022, macos-13, ubuntu-22.04]
+        os_arch: [{ os: windows-2022, arch: x64 }]
 
-    name: ${{ matrix.os }}-build
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os_arch.os }}
+
+    env:
+      OS_ARCH: ${{ matrix.os_arch.os }}-${{ matrix.os_arch.arch }}
 
     steps:
-      - uses: lukka/get-cmake@latest
+      - name: Install conan
+        run: pip install conan ninja
 
-      - uses: ilammy/msvc-dev-cmd@v1
+      - name: conan cache
+        id: conan_cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2
+          key: ${{ env.OS_ARCH }}-conan
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Compiler (Windows)
+        uses: ilammy/msvc-dev-cmd@v1
+        if: matrix.os_arch.os == 'windows-2022'
 
       - name: Install OpenCL (Ubuntu)
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os_arch.os == 'ubuntu-22.04'
         run: |
           sudo apt-get install -y ocl-icd-opencl-dev
 
@@ -27,20 +43,28 @@ jobs:
           version: '5.15.2'
           cache: true
 
-      - uses: actions/checkout@v3
-
-      - name: Build and Install
+      - name: Conan setup
         run: |
-          cmake -S . -B build -G "Ninja Multi-Config"
-          cmake --build build --config Release
+          conan config install .github/conan_profiles/${{ env.OS_ARCH }} -tf profiles
 
-      - name: tar binaries to keep file permissions
-        working-directory: build
+      - name: Install libxdaq
         run: |
-          tar -cvf Release.tar Release
+          git submodule update --init --recursive
+          conan create libxdaq-dist --profile:all ${{ env.OS_ARCH }} -s build_type=Release --build=missing
+
+      - name: Build XDAQ-OE
+        run: |
+          conan install . --build=missing --profile:all ${{ env.OS_ARCH }} -s build_type=Release
+          cmake -S . -B build/Release --preset conan-release
+          cmake --build build/Release --preset conan-release
+          cmake --build build/Release --preset conan-release --target package
+
+      - name: Tar binaries to keep file permissions
+        run: |
+          tar -cvf build/package.tar build/Release/package
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: XDAQ-RHX ${{ matrix.os }}
-          path: build/Release.tar
+          name: ${{ env.OS_ARCH }}
+          path: build/package.tar
