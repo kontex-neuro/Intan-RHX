@@ -33,12 +33,12 @@
 #include <qdebug.h>
 #include <qglobal.h>
 #include <qsettings.h>
-#include <xdaq/device_plugin.h>
+#include <xdaq/device_manager.h>
 
 #include <QApplication>
-#include <filesystem>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include <ostream>
 #include <vector>
 
 #include "Engine/API/Hardware/controller_info.h"
@@ -52,49 +52,6 @@
 #include "systemstate.h"
 
 using json = nlohmann::json;
-namespace fs = std::filesystem;
-
-auto get_plugins()
-{
-#ifdef _WIN32
-    auto app_dir = fs::path(QCoreApplication::applicationDirPath().toStdString());
-    std::cout << "app_dir = " << app_dir << std::endl; 
-    constexpr auto extension = ".dll";
-    auto res = SetDllDirectoryA((app_dir / "plugin").generic_string().c_str());
-    if (res == 0) throw std::runtime_error("Failed to set DLL directory");
-#elif __APPLE__
-    const std::vector<fs::path> search_path = {"/usr/local/lib/xdaq/plugins", "./plugins"};
-    constexpr auto extension = ".dylib";
-#elif __linux__
-    const std::vector<fs::path> search_path = {"/usr/local/lib/xdaq/plugins", "./plugins"};
-    constexpr auto extension = ".so";
-#else
-    static_assert(false, "Unsupported platform");
-#endif
-    auto plugin_paths =
-        fs::directory_iterator((app_dir / "plugin")) |
-        std::views::filter([=](const fs::directory_entry &entry) {
-            fmt::print("Checking: {}\n", entry.path().generic_string());
-            if (fs::is_directory(entry)) return false;
-            if (!entry.path().filename().generic_string().contains("device_plugin")) return false;
-            return entry.path().extension() == extension;
-        }) |
-        std::views::transform([](auto ent) { return fs::canonical(fs::path(ent)); }) |
-        std::ranges::to<std::vector>();
-    std::ranges::sort(plugin_paths);
-    plugin_paths.erase(std::unique(plugin_paths.begin(), plugin_paths.end()), plugin_paths.end());
-
-    std::vector<std::shared_ptr<xdaq::DevicePlugin>> plugins;
-    
-    for (const auto &path : plugin_paths) {
-        try {
-            auto plugin = xdaq::get_plugin(path.generic_string());
-            plugins.emplace_back(plugin);
-        } catch (...) {
-        }
-    }
-    return plugins;
-}
 
 struct RHXAPP {
     // rhxController -> state (Q) -> controllerInterface (Q) -> parser (Q) -> controlWindow (Q: no
@@ -107,24 +64,23 @@ struct RHXAPP {
 
 auto startSoftware(
     ControllerType controllerType, StimStepSize stimStepSize, DataFileReader *dataFileReader,
-    AbstractRHXController *rhxController, QString defaultSettingsFile, bool useOpenCL, bool testMode
+    AbstractRHXController *rhxController, QString defaultSettingsFile, bool useOpenCL,
+    bool testMode, XDAQInfo info
 )
 {
     bool is7310 = false;
     RHXAPP app{.rhxController = std::unique_ptr<AbstractRHXController>(rhxController)};
-    XDAQInfo xdaqinfo;
-
     QSettings settings;
 
     app.state = std::make_unique<SystemState>(
         app.rhxController.get(),
         stimStepSize,
         controllerType == ControllerStimRecord ? 4 : 8,
-        xdaqinfo.expander,
+        info.expander,
         testMode,
         dataFileReader,
-        xdaqinfo.model == XDAQModel::One,
-        (xdaqinfo.model == XDAQModel::Core ? 1 : 2)
+        info.model == XDAQModel::One,
+        (info.model == XDAQModel::Core ? 1 : 2)
     );
 
     // app.state->highDPIScaleFactor =
@@ -323,57 +279,47 @@ int main(int argc, char *argv[])
     // Globally disable unused Context Help buttons from windows/dialogs
     QApplication::setAttribute(Qt::AA_DisableWindowContextHelpButton);
     QSettings settings;
-    std::cout << settings.fileName().toStdString() << '\n';
-
-    std::vector<XDAQInfo> controller_info;
-    std::vector<XDAQStatus> controller_status;
-    auto plugins = get_plugins();
-
-    for (auto &plugin : plugins) {
-        fmt::println("Plugin: {}", plugin->get_device_options());
-        auto devices = json::parse(plugin->list_devices());
-        fmt::println("Device: {}", plugin->list_devices());
-        
-        for (auto &device : devices) {
-            device["mode"] = "rhd";
-            auto dev = plugin->create_device(device.dump());
-            auto status = json::parse(*dev->get_status());
-            auto info = json::parse(*dev->get_info());
-
-            auto xdaq_status = parse_status(status);
-            auto xdaq_info = parse_info(info);
-            xdaq_info.plugin = json::parse(plugin->info()).at("name");
-            xdaq_info.device_config = device.dump();
-            xdaq_info.get_device = [&device, &plugin](const std::string &config) {
-                return plugin->create_device(config);
-            };
-
-            controller_info.push_back(xdaq_info);
-            controller_status.push_back(xdaq_status);
-        }
-    }
+    // fmt::println("settings = ", settings.fileName().toStdString());
 
 #ifdef __APPLE__
     app.setStyle(QStyleFactory::create("Fusion"));
 #endif
 
-    BoardSelectDialog boardSelectDialog(nullptr, controller_info, controller_status);
-    // print size of boardSelectDialog
-    std::vector<RHXAPP> apps;
+    BoardSelectDialog boardSelectDialog(nullptr);
+    // std::vector<RHXAPP> apps;
+    RHXAPP rhx_app;
     boardSelectDialog.show();
     QObject::connect(
         &boardSelectDialog,
         &BoardSelectDialog::launch,
-        [&apps, &boardSelectDialog](
+        [&rhx_app, &boardSelectDialog](
             AbstractRHXController *controller,
             StimStepSize step_size,
             DataFileReader *data_file,
             bool OpenCL,
-            bool test_mode
+            bool test_mode,
+            XDAQInfo info
         ) {
-            apps.push_back(std::move(startSoftware(
-                controller->getType(), step_size, data_file, controller, "", OpenCL, test_mode
-            )));
+            auto splash = new QSplashScreen(QPixmap(":images/RHX_splash.png"));
+            auto splashMessage = "Copyright " + CopyrightSymbol + " " + ApplicationCopyrightYear +
+                                 " Intan Technologies.  RHX version " + SoftwareVersion +
+                                 ".  Opening XDAQ ...";
+            auto splashMessageAlign = Qt::AlignCenter | Qt::AlignBottom;
+            auto splashMessageColor = Qt::white;
+
+            boardSelectDialog.hide();
+            splash->show();
+            splash->showMessage(splashMessage, splashMessageAlign, splashMessageColor);
+
+            // apps.push_back(startSoftware(
+            //     controller->getType(), step_size, data_file, controller, "", OpenCL, test_mode
+            // ));
+            rhx_app = startSoftware(
+                controller->getType(), step_size, data_file, controller, "", OpenCL, test_mode, info
+            );
+
+            // splash->finish(apps.pop_back().controlWindow);
+            splash->finish(rhx_app.controlWindow);
             boardSelectDialog.accept();
         }
     );
