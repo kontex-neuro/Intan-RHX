@@ -36,39 +36,45 @@
 #include "rhxdatablock.h"
 #include <xdaq/device.h>
 #include <xdaq/device_manager.h>
+#include <memory>
 
 using namespace std;
 
 const int USB3BlockSize	= 1024;
 const int RAMBurstSize = 32;
 
-struct XDAQDeviceProxy : private xdaq::Device{
+struct XDAQDeviceProxy {
+    xdaq::Device& dev;
+
+    XDAQDeviceProxy(xdaq::Device& dev) : dev(dev) {
+    }
+
     int SetWireInValue(int ep, std::uint32_t value, std::uint32_t mask=xdaq::Device::value_mask){
-        return this->set_register(ep, value, mask) == xdaq::BasicDeviceStatus::Success ? 0 : -1;
+        return dev.set_register(ep, value, mask) == xdaq::BasicDeviceStatus::Success ? 0 : -1;
     }
 
     int UpdateWireIns(){
-        return this->send_registers() == xdaq::BasicDeviceStatus::Success ? 0 : -1;
+        return dev.send_registers() == xdaq::BasicDeviceStatus::Success ? 0 : -1;
     }
 
     xdaq::Device::value_t GetWireOutValue(int ep){
-        return this->get_register(ep);
+        return dev.get_register(ep);
     }
 
     int UpdateWireOuts(){
-        return this->read_registers() == xdaq::BasicDeviceStatus::Success ? 0 : -1;
+        return dev.read_registers() == xdaq::BasicDeviceStatus::Success ? 0 : -1;
     }
 
     int ActivateTriggerIn(int ep, int bit){
-        return this->trigger(ep, bit) == xdaq::BasicDeviceStatus::Success ? 0 : -1;
+        return dev.trigger(ep, bit) == xdaq::BasicDeviceStatus::Success ? 0 : -1;
     }
 
 	long ReadFromBlockPipeOut(int epAddr, int blockSize, long length, unsigned char *data){
-        return this->read(epAddr, length, data);
+        return dev.read(epAddr, length, data);
     }
 
 	long WriteToBlockPipeIn(int epAddr, int blockSize, long length, unsigned char *data){
-        return this->write(epAddr, length, data);
+        return dev.write(epAddr, length, data);
     }
 
 	long WriteToPipeIn(int epAddr, long length, unsigned char *data){
@@ -78,9 +84,8 @@ struct XDAQDeviceProxy : private xdaq::Device{
 	long ReadFromPipeOut(int epAddr, long length, unsigned char *data){
         throw std::runtime_error("Not implemented");
     }
-
 };
-
+    
 class RHXController : public AbstractRHXController
 {
 public:
@@ -171,7 +176,7 @@ private:
     RHXController(const RHXController&);            // declaration only
     RHXController& operator=(const RHXController&); // declaration only
 
-    XDAQDeviceProxy* dev = nullptr;
+    std::unique_ptr<XDAQDeviceProxy> dev;
     
     bool is7310;
 

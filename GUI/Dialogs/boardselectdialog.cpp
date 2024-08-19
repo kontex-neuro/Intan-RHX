@@ -45,7 +45,9 @@
 #include <qtablewidget.h>
 #include <qwidget.h>
 #include <qwindowdefs.h>
+#ifdef _WIN32
 #include <synchapi.h>
+#endif
 #include <xdaq/device_manager.h>
 
 #include <QApplication>
@@ -522,7 +524,6 @@ std::vector<std::shared_ptr<xdaq::DeviceManager>> get_device_managers()
     return device_managers;
 }
 
-// void BoardSelectDialog::ScanDevice()
 auto ScanDevice()
 {
     std::vector<XDAQInfo> controllers_info;
@@ -561,8 +562,6 @@ auto ScanDevice()
     return std::make_tuple(controllers_info, controllers_status);
 }
 
-// auto insert_board(StackedWidget *launch_panel, QTableWidget *boardTable,
-// std::vector<std::shared_ptr<json>> board_launch_properties, auto &&board)
 auto insert_board(StackedWidget *launch_panel, QTableWidget *boardTable, auto &&board)
 {
     auto [app_icon, device_widget, launch_button_widget, launch_properties] = board;
@@ -570,33 +569,10 @@ auto insert_board(StackedWidget *launch_panel, QTableWidget *boardTable, auto &&
     boardTable->insertRow(row);
     boardTable->setItem(row, 0, app_icon);
     boardTable->setCellWidget(row, 1, device_widget);
-    // Refresh table contents
-    boardTable->resizeColumnsToContents();
-    boardTable->resizeRowsToContents();
-
     launch_button_widget->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
     launch_panel->addWidget(launch_button_widget);
     // board_launch_properties.emplace_back(launch_properties);
-    
 }
-
-// void RemoveBoard(StackedWidget *launch_panel, QTableWidget *boardTable,
-//     std::vector<std::shared_ptr<json>> &board_launch_properties)
-// {
-//     // for (int i = 0; i < boardTable->rowCount(); ++i) {
-//     //     // board_launch_properties.erase(board_launch_properties.begin() + i);
-//     //     boardTable->removeCellWidget(i, 1);
-//     //     boardTable->removeRow(i);
-//     // }
-//     // boardTable->model()->removeRows(0, boardTable->rowCount());
-//     boardTable->setRowCount(0);
-
-//     board_launch_properties.clear();
-
-//     // Reset before scanning devices
-//     controller_info.clear();
-//     controller_status.clear();
-// }
 
 void InsertBoard(
     BoardSelectDialog *parent, StackedWidget *launch_panel, QTableWidget *boardTable,
@@ -606,7 +582,6 @@ void InsertBoard(
     insert_board(
         launch_panel,
         boardTable,
-        // board_launch_properties,
         get_playback_board(
             parent,
             [parent](AbstractRHXController *controller, DataFileReader *data_file) {
@@ -621,7 +596,6 @@ void InsertBoard(
         )
     );
 
-    // ScanDevice();
     auto [controllers_info, controllers_status] = ScanDevice();
     for (auto info_status : std::ranges::views::zip(controllers_info, controllers_status)) {
         auto info = std::get<0>(info_status);
@@ -630,7 +604,6 @@ void InsertBoard(
         insert_board(
             launch_panel,
             boardTable,
-            // board_launch_properties,
             get_xdaq_board(
                 parent,
                 [parent, info](AbstractRHXController *controller, StimStepSize step_size) {
@@ -649,7 +622,6 @@ void InsertBoard(
     insert_board(
         launch_panel,
         boardTable,
-        // board_launch_properties,
         get_demo_board(
             parent,
             [parent](AbstractRHXController *controller, StimStepSize step_size) {
@@ -684,7 +656,7 @@ BoardSelectDialog::BoardSelectDialog(QWidget *parent) : QDialog(parent)
     boardTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     boardTable->setSelectionMode(QAbstractItemView::SingleSelection);
 
-    launch_panel->addWidget(new QLabel(tr("Select a board to launch")));    
+    launch_panel->addWidget(new QLabel(tr("Select a board to launch")));
     launch_panel->setCurrentIndex(launch_panel->count() - 1);
     connect(boardTable, &QTableWidget::currentCellChanged, [this, launch_panel, boardTable]() {
         auto current_row = boardTable->currentRow();
@@ -714,34 +686,17 @@ BoardSelectDialog::BoardSelectDialog(QWidget *parent) : QDialog(parent)
     auto rescanDeviceButton = new QPushButton(tr("Rescan Devices"), this);
     rescanDeviceButton->setFixedWidth(rescanDeviceButton->sizeHint().width() + 10);
     connect(rescanDeviceButton, &QPushButton::clicked, this, [this, launch_panel, boardTable]() {
-        // RemoveBoard(launch_panel, boardTable, board_launch_properties, this);
-        
-        // launch_panel->removeWidget(launch_panel);
-        // launch_panel->removeWidget(launch_panel->currentWidget());
-        for(int i = launch_panel->count(); i >= 0; i--)
-        {
-            QWidget* widget = launch_panel->widget(i);
+        while (auto widget = launch_panel->widget(0)) {
             launch_panel->removeWidget(widget);
-            widget->deleteLater();
+            // delete widget;
         }
-        
-        // boardTable->clearSelection();
-        // boardTable->disconnect();
-        // boardTable->clearContents();
         boardTable->setRowCount(0);
-
-        // board_launch_properties.clear();
-
-        // Reset before scanning devices
-        // controllers_info.clear();
-        // controllers_status.clear();
-
-
         InsertBoard(this, launch_panel, boardTable, board_launch_properties);
-
-        // QTime dieTime = QTime::currentTime().addSecs(1);
-        // while (QTime::currentTime() < dieTime)
-        //     QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+        launch_panel->resize(launch_panel->currentWidget()->sizeHint());
+        boardTable->resizeColumnsToContents();
+        boardTable->resizeRowsToContents();
+        boardTable->setMinimumSize(calculateTableSize(boardTable));
+        this->resize(this->sizeHint());
     });
 
     auto mainLayout = new QVBoxLayout;

@@ -53,7 +53,7 @@ using json = nlohmann::json;
 //       (e.g., an Intan Stim/Recording Controller with 128-channel capacity)
 
 RHXController::RHXController(ControllerType type_, AmplifierSampleRate sampleRate_, xdaq::DeviceManager::OwnedDevice dev, bool is7310_)
-    : AbstractRHXController(type_, sampleRate_), is7310(is7310_), previousDelay(-1), dev(reinterpret_cast<XDAQDeviceProxy*>(dev.get()))
+    : AbstractRHXController(type_, sampleRate_), is7310(is7310_), previousDelay(-1), dev(std::make_unique<XDAQDeviceProxy>(*dev))
 {
     device = std::move(dev);
 }
@@ -1435,7 +1435,7 @@ void RHXController::selectAuxCommandBank(BoardPort port, AuxCmdSlot auxCommandSl
 int RHXController::getBoardMode()
 {
     lock_guard<mutex> lockOk(okMutex);
-    return getBoardMode(dev);
+    return getBoardMode(dev.get());
 }
 
 // Return number of SPI ports and if I/O expander board is present.
@@ -1446,7 +1446,7 @@ int RHXController::getNumSPIPorts(bool& expanderBoardDetected)
         return 4;
     }
     lock_guard<mutex> lockOk(okMutex);
-    return getNumSPIPorts(dev, type == ControllerRecordUSB3, expanderBoardDetected);
+    return getNumSPIPorts(dev.get(), type == ControllerRecordUSB3, expanderBoardDetected);
 }
 
 // Set all 16 bits of the digital TTL output lines on the FPGA to zero.  Not used with ControllerStimRecord.

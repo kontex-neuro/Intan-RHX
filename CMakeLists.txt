@@ -68,7 +68,11 @@ target_include_directories(XDAQ-RHX PRIVATE
 target_compile_features(XDAQ-RHX PRIVATE cxx_std_23)
 target_compile_options(XDAQ-RHX PRIVATE $<$<CXX_COMPILER_ID:Clang,GNU>:-Wno-deprecated>)
 target_compile_definitions(XDAQ-RHX PUBLIC $<$<CONFIG:Debug>:DEBUG>)
-
+option(Sanitize "Enable sanitizers" OFF)
+if(Sanitize)
+    target_compile_options(XDAQ-RHX PRIVATE -fsanitize=address,undefined)
+    target_link_options(XDAQ-RHX PRIVATE -fsanitize=address,undefined)
+endif()
 
 target_link_libraries(XDAQ-RHX PRIVATE
     Qt5::Core

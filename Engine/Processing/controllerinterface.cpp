@@ -60,7 +60,6 @@ ControllerInterface::ControllerInterface(SystemState* state_, AbstractRHXControl
     saveToDiskThread(nullptr),
     is7310(is7310_)
 {
-    connect(state, SIGNAL(stateChanged()), this, SLOT(updateFromState()));
     openController(boardSerialNumber);
 
     const int NumSeconds = 10;  // Size of RAM buffer, in seconds.
@@ -129,6 +128,10 @@ ControllerInterface::ControllerInterface(SystemState* state_, AbstractRHXControl
     currentSweepPosition = 0;
     audioEnabled = false;
     tcpDataOutputEnabled = false;
+
+    // updateFromState() read tcpDataOutputEnabled and audioEnabled
+    // thus, these two variable must initialize before being called.
+    connect(state, SIGNAL(stateChanged()), this, SLOT(updateFromState()));
 
     cpuLoadHistory.resize(20, 0.0);
 }

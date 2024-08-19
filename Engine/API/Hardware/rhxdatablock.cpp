@@ -97,6 +97,7 @@ RHXDataBlock& RHXDataBlock::operator=(const RHXDataBlock &obj){
         std::memcpy(chargeRecovInternal, obj.chargeRecovInternal, sizeof(int) * numDataStreams * samplesPerDataBlock());
         std::memcpy(boardDacDataInternal, obj.boardDacDataInternal, sizeof(int) * 8 * samplesPerDataBlock());
     }
+    return *this;
 }
 
 void RHXDataBlock::allocateMemory()
