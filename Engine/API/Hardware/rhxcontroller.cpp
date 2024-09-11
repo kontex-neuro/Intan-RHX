@@ -1554,8 +1554,8 @@ void RHXController::uploadCommandList(const vector<unsigned int> &commandList, A
          }
         int cmdSize = commandList.size();
         if (commandList.size() % 16 != 0){
-            cmdSize = (int)std::ceil(commandList.size() / 16) * 16;
-            unsigned int numOfDummy = cmdSize - commandList.size();
+            cmdSize = (int)std::ceil(commandList.size() / 16.0) * 16;
+            auto numOfDummy = cmdSize - commandList.size();
             for (int j = 0; j < numOfDummy; j++) {
                 commandBuffer[4 * (i  + j) + 0 ] = (unsigned char)(0x00000000);
                 commandBuffer[4 * (i  + j) + 1 ] = (unsigned char)(0x00000000);
