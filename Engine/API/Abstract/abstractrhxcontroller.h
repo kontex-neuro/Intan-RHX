@@ -38,6 +38,7 @@
 #include <vector>
 #include <deque>
 #include <mutex>
+#include <optional>
 
 using namespace std;
 
@@ -220,7 +221,14 @@ public:
     int pipeReadError() const { return pipeReadErrorCode; }
     virtual void setVStimBus(int BusMode){};
 
-    xdaq::DeviceManager::OwnedDevice device;
+    using DataStream = xdaq::Device::DataStream;
+
+    virtual std::optional<std::unique_ptr<DataStream>> start_read_stream(
+        std::uint32_t addr, typename DataStream::receive_event_t receive_event
+    )
+    {
+        return std::nullopt;
+    }
 
 protected:
     ControllerType type;

@@ -53,9 +53,8 @@ using json = nlohmann::json;
 //       (e.g., an Intan Stim/Recording Controller with 128-channel capacity)
 
 RHXController::RHXController(ControllerType type_, AmplifierSampleRate sampleRate_, xdaq::DeviceManager::OwnedDevice dev, bool is7310_)
-    : AbstractRHXController(type_, sampleRate_), is7310(is7310_), previousDelay(-1), dev(std::make_unique<XDAQDeviceProxy>(*dev))
+    : AbstractRHXController(type_, sampleRate_), is7310(is7310_), previousDelay(-1), dev(new XDAQDeviceProxy{std::move(dev)})
 {
-    device = std::move(dev);
 }
 
 // Reset FPGA.  This clears all auxiliary command RAM banks, clears the USB FIFO, and resets the
@@ -121,7 +120,8 @@ bool RHXController::readDataBlock(RHXDataBlock *dataBlock)
     deque<RHXDataBlock*> dataQueue;
     bool dataAvailable = readDataBlocks(1, dataQueue);
     if (!dataAvailable) return false;
-    *dataBlock = *dataQueue.front();
+    if (dataBlock != nullptr)
+        *dataBlock = *dataQueue.front();
     delete dataQueue.front();
     return true;
 }
@@ -133,6 +133,11 @@ inline std::size_t get_xdaq_frame_size(ControllerType type, int streams){
     else if(type == ControllerStimRecord)
         ws = 4 + 2 + streams * (2 * 20 + 4) + 2 + 8 + 8 + 2 + 2;
     return ws * 2;
+}
+
+std::optional<std::unique_ptr<RHXController::DataStream>> RHXController::start_read_stream(
+    std::uint32_t addr, typename DataStream::receive_event_t receive_event) {
+    return dev->dev->start_read_stream(addr, std::move(receive_event));
 }
 
 // Read a certain number of USB data blocks, if the specified number is available, and append them to queue.
@@ -155,7 +160,7 @@ bool RHXController::readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueu
             RHXDataBlock::dataBlockSizeInWords(type, numDataStreams) / 128 * 2;
         std::vector<unsigned char> frame_buffer(sample_size);
         int remaining = 0;
-        auto s = device->start_read_stream(
+        auto s = dev->dev->start_read_stream(
             PipeOutData,
             [&, streams = numDataStreams](auto buffer, auto length) {
                 auto copy_one_sample = [&](auto begin, auto dst) {

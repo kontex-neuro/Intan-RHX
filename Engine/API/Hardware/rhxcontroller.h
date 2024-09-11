@@ -44,37 +44,37 @@ const int USB3BlockSize	= 1024;
 const int RAMBurstSize = 32;
 
 struct XDAQDeviceProxy {
-    xdaq::Device& dev;
+    xdaq::DeviceManager::OwnedDevice dev;
 
-    XDAQDeviceProxy(xdaq::Device& dev) : dev(dev) {
+    XDAQDeviceProxy(xdaq::DeviceManager::OwnedDevice&& dev) : dev(std::move(dev)) {
     }
 
     int SetWireInValue(int ep, std::uint32_t value, std::uint32_t mask=xdaq::Device::value_mask){
-        return dev.set_register(ep, value, mask) == xdaq::BasicDeviceStatus::Success ? 0 : -1;
+        return dev->set_register(ep, value, mask) == xdaq::BasicDeviceStatus::Success ? 0 : -1;
     }
 
     int UpdateWireIns(){
-        return dev.send_registers() == xdaq::BasicDeviceStatus::Success ? 0 : -1;
+        return dev->send_registers() == xdaq::BasicDeviceStatus::Success ? 0 : -1;
     }
 
     xdaq::Device::value_t GetWireOutValue(int ep){
-        return dev.get_register(ep);
+        return dev->get_register(ep);
     }
 
     int UpdateWireOuts(){
-        return dev.read_registers() == xdaq::BasicDeviceStatus::Success ? 0 : -1;
+        return dev->read_registers() == xdaq::BasicDeviceStatus::Success ? 0 : -1;
     }
 
     int ActivateTriggerIn(int ep, int bit){
-        return dev.trigger(ep, bit) == xdaq::BasicDeviceStatus::Success ? 0 : -1;
+        return dev->trigger(ep, bit) == xdaq::BasicDeviceStatus::Success ? 0 : -1;
     }
 
 	long ReadFromBlockPipeOut(int epAddr, int blockSize, long length, unsigned char *data){
-        return dev.read(epAddr, length, data);
+        return dev->read(epAddr, length, data);
     }
 
 	long WriteToBlockPipeIn(int epAddr, int blockSize, long length, unsigned char *data){
-        return dev.write(epAddr, length, data);
+        return dev->write(epAddr, length, data);
     }
 
 	long WriteToPipeIn(int epAddr, long length, unsigned char *data){
@@ -170,6 +170,9 @@ public:
     static int getBoardMode(XDAQDeviceProxy* dev_);
     static int getNumSPIPorts(XDAQDeviceProxy* dev_, bool isUSB3, bool& expanderBoardDetected, bool isRHS7310 = false);
     void setVStimBus(int BusMode) override;
+
+    std::optional<std::unique_ptr<DataStream>> start_read_stream(
+        std::uint32_t addr, typename DataStream::receive_event_t receive_event) override;
 
 private:
     // Objects of this class should not be copied.  Disable copy and assignment operators.

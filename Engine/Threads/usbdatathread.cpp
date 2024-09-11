@@ -122,7 +122,7 @@ void USBDataThread::run()
             const auto streams = controller->getNumEnabledDataStreams();
 
             auto newStream =
-                controller->device->start_read_stream(0xa0, [&](auto rawData, std::size_t length) {
+                controller->start_read_stream(0xa0, [&](auto rawData, std::size_t length) {
                     std::copy(rawData.get(), rawData.get() + length, usbBuffer + usbBufferIndex);
                     bytesInBuffer = usbBufferIndex + length;
 

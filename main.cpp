@@ -38,10 +38,7 @@
 #include <QApplication>
 #include <memory>
 #include <nlohmann/json.hpp>
-#include <ostream>
-#include <vector>
 
-#include "Engine/API/Hardware/controller_info.h"
 #include "abstractrhxcontroller.h"
 #include "boardselectdialog.h"
 #include "commandparser.h"
@@ -50,6 +47,7 @@
 #include "datafilereader.h"
 #include "rhxglobals.h"
 #include "systemstate.h"
+
 
 
 using json = nlohmann::json;
@@ -66,7 +64,7 @@ struct RHXAPP {
 auto startSoftware(
     ControllerType controllerType, StimStepSize stimStepSize, DataFileReader *dataFileReader,
     AbstractRHXController *rhxController, QString defaultSettingsFile, bool useOpenCL,
-    bool testMode, XDAQInfo info
+    bool test_mode, bool with_expander, bool enable_vstim_control, int on_board_analog_io
 )
 {
     bool is7310 = false;
@@ -77,11 +75,11 @@ auto startSoftware(
         app.rhxController.get(),
         stimStepSize,
         controllerType == ControllerStimRecord ? 4 : 8,
-        info.expander,
-        testMode,
+        with_expander,
+        test_mode,
         dataFileReader,
-        info.model == XDAQModel::One,
-        (info.model == XDAQModel::Core ? 1 : 2)
+        enable_vstim_control,
+        on_board_analog_io
     );
 
     // app.state->highDPIScaleFactor =
@@ -287,19 +285,19 @@ int main(int argc, char *argv[])
 #endif
 
     BoardSelectDialog boardSelectDialog(nullptr);
-    // std::vector<RHXAPP> apps;
     RHXAPP rhx_app;
-    boardSelectDialog.show();
     QObject::connect(
         &boardSelectDialog,
         &BoardSelectDialog::launch,
         [&rhx_app, &boardSelectDialog](
-            AbstractRHXController *controller,
+            std::function<AbstractRHXController *()> open_controller,
             StimStepSize step_size,
             DataFileReader *data_file,
             bool OpenCL,
             bool test_mode,
-            XDAQInfo info
+            bool with_expander,
+            bool enable_vstim_control,
+            int on_board_analog_io
         ) {
             auto splash = new QSplashScreen(QPixmap(":images/RHX_splash.png"));
             auto splashMessage = "Copyright " + CopyrightSymbol + " " + ApplicationCopyrightYear +
@@ -311,19 +309,26 @@ int main(int argc, char *argv[])
             boardSelectDialog.hide();
             splash->show();
             splash->showMessage(splashMessage, splashMessageAlign, splashMessageColor);
+            auto controller = open_controller();
 
-            // apps.push_back(startSoftware(
-            //     controller->getType(), step_size, data_file, controller, "", OpenCL, test_mode
-            // ));
             rhx_app = startSoftware(
-                controller->getType(), step_size, data_file, controller, "", OpenCL, test_mode, info
+                controller->getType(),
+                step_size,
+                data_file,
+                controller,
+                "",
+                OpenCL,
+                test_mode,
+                with_expander,
+                enable_vstim_control,
+                on_board_analog_io
             );
 
-            // splash->finish(apps.pop_back().controlWindow);
             splash->finish(rhx_app.controlWindow);
             boardSelectDialog.accept();
         }
     );
+    boardSelectDialog.show();
 
     return app.exec();
 }

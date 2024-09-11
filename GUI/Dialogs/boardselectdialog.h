@@ -30,32 +30,20 @@
 
 #pragma once
 
-#include <qobject.h>
-#include <qsplashscreen.h>
-#include <qstackedwidget.h>
-#include <qtablewidget.h>
-#include <qwidget.h>
 #include <QDialog>
+#include <QStackedWidget>
 #include <QWidget>
+#include <functional>
 
-// #include "../../Engine/API/Hardware/controller_info.h"
 #include "abstractrhxcontroller.h"
-#include "controller_info.h"
-#include "controlwindow.h"
 #include "datafilereader.h"
 
-// #include <memory>
-#include <nlohmann/json.hpp>
-#include <unordered_set>
-// #include <nlohmann/json_fwd.hpp>
-// #include <vector>
 
-using json = nlohmann::json;
 
 class StackedWidget : public QStackedWidget
 {
 public:
-    StackedWidget(QWidget *parent): QStackedWidget(parent) {};
+    StackedWidget(QWidget *parent) : QStackedWidget(parent){};
     QSize sizeHint() const override { return currentWidget()->sizeHint(); }
 };
 
@@ -63,23 +51,14 @@ class BoardSelectDialog : public QDialog
 {
     Q_OBJECT
 public:
-    BoardSelectDialog(QWidget *parent);    
+    BoardSelectDialog(QWidget *parent);
 signals:
     void launch(
-        AbstractRHXController *controller,  // Physical or simulated controller
-        StimStepSize step_size,             // Pass to Controller for AUX commands
-        DataFileReader *data_file,          // For the seek events
-        bool OpenCL, bool test_mode,
-        XDAQInfo info
+        std::function<AbstractRHXController *()>
+            open_controller,        // Physical or simulated controller
+        StimStepSize step_size,     // Pass to Controller for AUX commands
+        DataFileReader *data_file,  // For the seek events
+        bool OpenCL, bool test_mode, bool with_expander, bool enable_vstim_control,
+        int on_board_analog_io
     );
-    
-private:
-    // StackedWidget *launch_panel;
-    // QTableWidget *boardTable;
-    std::vector<std::shared_ptr<json>> board_launch_properties;
-    // std::vector<XDAQInfo> controller_info;
-    // std::vector<XDAQStatus> controller_status;
-
-    // void ScanDevice();
-    // void InsertBoard();
 };

@@ -27,7 +27,6 @@
 //  See <http://www.intantech.com> for documentation and product information.
 //
 //------------------------------------------------------------------------------
-
 #include <QApplication>
 #include <QtGlobal>
 #include <QElapsedTimer>
@@ -1365,10 +1364,6 @@ void ControllerInterface::setStimSequenceParameters(Channel* ampChannel)
     while (rhxController->isRunning() ) {
         qApp->processEvents();
     }
-
-    RHXDataBlock dataBlock(rhxController->getType(), rhxController->getNumEnabledDataStreams());
-    rhxController->readDataBlock(&dataBlock);
-    rhxController->readDataBlock(&dataBlock);
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, true);
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter

@@ -1,11 +1,8 @@
 #include "controller_info.h"
 
-#include <fmt/core.h>
 #include <fmt/format.h>
 
 #include <nlohmann/json.hpp>
-#include <nlohmann/json_fwd.hpp>
-#include <ostream>
 #include <string>
 
 
@@ -25,6 +22,8 @@ XDAQInfo parse_info(const json &device_info)
     if (model.contains("Core")) {
         info.model = XDAQModel::Core;
     } else if (model.contains("One")) {
+        info.model = XDAQModel::One;
+    } else if (model.contains("AIO")) {
         info.model = XDAQModel::One;
     } else {
         info.model = XDAQModel::Unknown;
@@ -47,12 +46,13 @@ XDAQInfo parse_info(const json &device_info)
 }
 
 
-XDAQStatus parse_status(const json &device_status) {
+XDAQStatus parse_status(const json &device_status)
+{
     XDAQStatus status;
-    
+
     status.version = device_status.at("Version");
     status.build = device_status.at("Build");
     status.mode = device_status.at("Mode");
-    
+
     return status;
 }
