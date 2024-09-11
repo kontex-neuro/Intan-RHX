@@ -38,7 +38,12 @@
 SignalGroup::SignalGroup(const QString &name_, const QString &prefix_, SystemState* state_, bool enabled_) :
     manualDelayEnabled(nullptr),
     manualDelay(nullptr),
+    auxDigOutEnabled(nullptr),
+    auxDigOutChannel(nullptr),
     prefix(nullptr),
+    numAmpChannels(nullptr),
+    numAuxChannels(nullptr),
+    numVddChannels(nullptr),
     state(state_),
     name(name_),
     enabled(enabled_)
@@ -126,9 +131,9 @@ void SignalGroup::removeAllChannels()
         if (signalChannels[i]) delete signalChannels[i];
     }
     signalChannels.clear();
-    numAmpChannels->setValue(0);
-    numAuxChannels->setValue(0);
-    numVddChannels->setValue(0);
+    if(numAmpChannels != nullptr) numAmpChannels->setValue(0);
+    if(numAuxChannels != nullptr) numAuxChannels->setValue(0);
+    if(numVddChannels != nullptr) numVddChannels->setValue(0);
 }
 
 Channel* SignalGroup::channelByCustomName(const QString& customName) const
