@@ -4,7 +4,7 @@ ninja/[>=1.12.0]
 
 [requires]
 fmt/10.2.1
-libxdaq/0.1.0
+libxdaq/0.2.1
 nlohmann_json/3.11.3
 spdlog/1.13.0
 

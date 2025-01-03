@@ -53,28 +53,28 @@
 using json = nlohmann::json;
 
 struct RHXAPP {
-    // rhxController -> state (Q) -> controllerInterface (Q) -> parser (Q) -> controlWindow (Q: no
-    // parent)
+    // rhxController (unmanaged) ->
+    //     state (Qt, unmanaged)   ->
+    //       controllerInterface (Qt, owned by state) ->
+    //           parser (Qt, owned by controllerInterface) ->
+    //               controlWindow (Qt)
     std::unique_ptr<AbstractRHXController> rhxController;
     std::unique_ptr<SystemState> state;  // Keep the order of destruction
-    // std::unique_ptr<ControlWindow> controlWindow;
     ControlWindow *controlWindow;
 };
 
 auto startSoftware(
-    ControllerType controllerType, StimStepSize stimStepSize, DataFileReader *dataFileReader,
-    AbstractRHXController *rhxController, QString defaultSettingsFile, bool useOpenCL,
-    bool test_mode, bool with_expander, bool enable_vstim_control, int on_board_analog_io
+    StimStepSize stimStepSize, DataFileReader *dataFileReader, AbstractRHXController *rhxController,
+    QString defaultSettingsFile, bool useOpenCL, bool test_mode, bool with_expander,
+    bool enable_vstim_control, int on_board_analog_io
 )
 {
-    bool is7310 = false;
     RHXAPP app{.rhxController = std::unique_ptr<AbstractRHXController>(rhxController)};
-    QSettings settings;
 
     app.state = std::make_unique<SystemState>(
         app.rhxController.get(),
         stimStepSize,
-        controllerType == ControllerStimRecord ? 4 : 8,
+        rhxController->getType() == ControllerStimRecord ? 4 : 8,
         with_expander,
         test_mode,
         dataFileReader,
@@ -92,14 +92,13 @@ auto startSoftware(
         useOpenCL,
         dataFileReader,
         app.state.get(),
-        is7310
+        false
     );
     app.state->setupGlobalSettingsLoadSave(controllerInterface);
     auto parser = new CommandParser(app.state.get(), controllerInterface, controllerInterface);
     app.controlWindow =
         new ControlWindow(app.state.get(), parser, controllerInterface, app.rhxController.get());
-    // auto controlWindow = app.controlWindow.get();  // Keep weak pointer for easy access
-    auto controlWindow = app.controlWindow;  // Keep weak pointer for easy access
+    auto controlWindow = app.controlWindow;
     parser->controlWindow = controlWindow;
 
     QObject::connect(
@@ -278,7 +277,7 @@ int main(int argc, char *argv[])
     // Globally disable unused Context Help buttons from windows/dialogs
     QApplication::setAttribute(Qt::AA_DisableWindowContextHelpButton);
     QSettings settings;
-    // fmt::println("settings = ", settings.fileName().toStdString());
+    fmt::println("Using settings : {}", settings.fileName().toStdString());
 
 #ifdef __APPLE__
     app.setStyle(QStyleFactory::create("Fusion"));
@@ -309,13 +308,11 @@ int main(int argc, char *argv[])
             boardSelectDialog.hide();
             splash->show();
             splash->showMessage(splashMessage, splashMessageAlign, splashMessageColor);
-            auto controller = open_controller();
 
             rhx_app = startSoftware(
-                controller->getType(),
                 step_size,
                 data_file,
-                controller,
+                open_controller(),
                 "",
                 OpenCL,
                 test_mode,

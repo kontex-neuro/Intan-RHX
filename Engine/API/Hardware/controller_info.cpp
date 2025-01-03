@@ -12,12 +12,10 @@ XDAQInfo parse_info(const json &device_info)
 {
     XDAQInfo info;
 
-    info.FPGA_vender = device_info["FPGA Vender"];
-    if (!info.FPGA_vender.contains("Opal Kelly")) {
-        info.flash_memory = device_info["Flash Memory"];
-    }
+    info.FPGA_vender =
+        device_info.contains("FPGA Vender") ? device_info["FPGA Vender"].get<std::string>() : "";
     info.serial = device_info["Serial Number"];
-    const auto model = device_info["XDAQ Model"].template get<std::string>();
+    const auto model = device_info["XDAQ Model"].get<std::string>();
 
     if (model.contains("Core")) {
         info.model = XDAQModel::Core;
@@ -39,8 +37,8 @@ XDAQInfo parse_info(const json &device_info)
         info.expander = device_info["Expander"];
     }
 
-    info.max_rhd_channels = device_info["RHD"];
-    info.max_rhs_channels = device_info["RHS"];
+    info.max_rhd_channels = device_info.contains("RHD") ? device_info["RHD"].get<int>() : 0;
+    info.max_rhs_channels = device_info.contains("RHS") ? device_info["RHS"].get<int>() : 0;
 
     return info;
 }

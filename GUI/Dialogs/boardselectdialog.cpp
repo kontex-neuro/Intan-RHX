@@ -345,10 +345,15 @@ auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info, const XD
         // Show device current mode
         auto mode_layout = new QHBoxLayout;
         mode_layout->addWidget(new QLabel(parent->tr("Current Mode")));
-        mode_layout->addWidget(
-            status.mode.find("rhd") != string::npos ? new QLabel(QString::fromStdString("X3R/X6R"))
-                                                    : new QLabel(QString::fromStdString("X3SR"))
-        );
+        if (status.mode == "rhd")
+            mode_layout->addWidget(new QLabel(QString::fromStdString("X3R/X6R")));
+        else if (status.mode == "rhs")
+            mode_layout->addWidget(new QLabel(QString::fromStdString("X3SR")));
+        else if (status.mode == "np")
+            mode_layout->addWidget(new QLabel(QString::fromStdString("NeuroPixel")));
+        else if (status.mode == "bootloader")
+            mode_layout->addWidget(new QLabel(QString::fromStdString("Bootloader")));
+
         main_layout->addLayout(mode_layout);
     }
 

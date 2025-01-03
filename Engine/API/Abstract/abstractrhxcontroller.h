@@ -224,7 +224,7 @@ public:
     using DataStream = xdaq::Device::DataStream;
 
     virtual std::optional<std::unique_ptr<DataStream>> start_read_stream(
-        std::uint32_t addr, typename DataStream::receive_event_t receive_event
+        std::uint32_t addr, typename xdaq::DataStream::receive_callback&& receive_event
     )
     {
         return std::nullopt;

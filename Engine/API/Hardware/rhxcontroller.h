@@ -172,7 +172,7 @@ public:
     void setVStimBus(int BusMode) override;
 
     std::optional<std::unique_ptr<DataStream>> start_read_stream(
-        std::uint32_t addr, typename DataStream::receive_event_t receive_event) override;
+        std::uint32_t addr, typename xdaq::DataStream::receive_callback&& receive_event) override;
 
 private:
     // Objects of this class should not be copied.  Disable copy and assignment operators.

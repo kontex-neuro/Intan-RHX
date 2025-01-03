@@ -29,6 +29,7 @@
 //------------------------------------------------------------------------------
 
 #include <fmt/format.h>
+#include <xdaq/device.h>
 #include <atomic>
 #include <nlohmann/json.hpp>
 
@@ -38,6 +39,7 @@
 #include <iostream>
 #include <memory>
 #include <thread>
+#include <variant>
 #include "rhxcontroller.h"
 #include "rhxdatablock.h"
 #include "rhxglobals.h"
@@ -136,7 +138,7 @@ inline std::size_t get_xdaq_frame_size(ControllerType type, int streams){
 }
 
 std::optional<std::unique_ptr<RHXController::DataStream>> RHXController::start_read_stream(
-    std::uint32_t addr, typename DataStream::receive_event_t receive_event) {
+    std::uint32_t addr, typename xdaq::DataStream::receive_callback&& receive_event) {
     return dev->dev->start_read_stream(addr, std::move(receive_event));
 }
 
@@ -162,7 +164,11 @@ bool RHXController::readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueu
         int remaining = 0;
         auto s = dev->dev->start_read_stream(
             PipeOutData,
-            [&, streams = numDataStreams](auto buffer, auto length) {
+            [&, streams = numDataStreams](auto&& event) {
+                if(!std::holds_alternative<xdaq::DataStream::Events::OwnedData>(event)) return;
+                auto&& data = std::get<xdaq::DataStream::Events::OwnedData>(event);
+                auto&& buffer = data.buffer;
+                auto&& length = data.length;
                 auto copy_one_sample = [&](auto begin, auto dst) {
                     if (type == ControllerRecordUSB3) {
                         const auto dio_off = sample_size - 8;
@@ -1713,6 +1719,8 @@ int RHXController::findConnectedChips(vector<ChipType> &chipType, vector<int> &p
                         goodDelays[stream][delay] = goodDelays[stream][delay] + 1;
                         chipTypeOld[stream] = (ChipType)id;
                     }
+                    // goodDelays[stream][delay] = goodDelays[stream][delay] + 1;
+                    // chipTypeOld[stream] = (ChipType)RHD2164Chip;
                 }
             }
         }

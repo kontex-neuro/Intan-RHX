@@ -122,7 +122,11 @@ void USBDataThread::run()
             const auto streams = controller->getNumEnabledDataStreams();
 
             auto newStream =
-                controller->start_read_stream(0xa0, [&](auto rawData, std::size_t length) {
+                controller->start_read_stream(0xa0, [&](auto&& event) {
+                if(!std::holds_alternative<xdaq::DataStream::Events::OwnedData>(event)) return;
+                auto&& data = std::get<xdaq::DataStream::Events::OwnedData>(event);
+                auto&& rawData = data.buffer;
+                auto&& length = data.length;
                     std::copy(rawData.get(), rawData.get() + length, usbBuffer + usbBufferIndex);
                     bytesInBuffer = usbBufferIndex + length;
 
