@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 
-set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum OS X deployment version")
+# set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum OS X deployment version")
+if(APPLE)
+    set(CMAKE_OSX_ARCHITECTURES "x86_64")
+endif()
 
 project(XDAQ-RHX VERSION 1.2.0 LANGUAGES CXX)
 
@@ -100,11 +103,12 @@ endif()
 # Install
 include(deployQt)
 
-install(DIRECTORY ${XDAQ_DEVICE_MANAGER_DIR} DESTINATION .)
-install(DIRECTORY ${XDAQ_RESOURCES_DIR} DESTINATION .)
+
+install(TARGETS XDAQ-RHX DESTINATION .)
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-    install(TARGETS XDAQ-RHX DESTINATION .)
+    install(DIRECTORY ${XDAQ_DEVICE_MANAGER_DIR} DESTINATION .)
+    install(DIRECTORY ${XDAQ_RESOURCES_DIR} DESTINATION .)
     install(FILES
         ${PROJECT_SOURCE_DIR}/kernel.cl
         "$<TARGET_FILE:OpenCL::OpenCL>"
@@ -113,12 +117,17 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 
     deployqt($<TARGET_FILE_NAME:XDAQ-RHX>)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+    set_target_properties(XDAQ-RHX PROPERTIES 
+        INSTALL_RPATH "@executable_path/../Frameworks"
+    )
+    install(DIRECTORY ${XDAQ_DEVICE_MANAGER_DIR} DESTINATION "$<TARGET_FILE_NAME:XDAQ-RHX>.app/Contents/PlugIns")
+    install(DIRECTORY ${XDAQ_RESOURCES_DIR} DESTINATION "$<TARGET_FILE_NAME:XDAQ-RHX>.app/Contents/PlugIns")
     set_source_files_properties(${ICON_PATH} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
     set_target_properties(XDAQ-RHX PROPERTIES
         BUNDLE True
         MACOSX_BUNDLE_ICONFILE ${ICON_NAME}
     )
-    deployqt($<TARGET_FILE_NAME:XDAQ-RHX>)
+    deployqt("$<TARGET_FILE_NAME:XDAQ-RHX>.app")
 endif()
 
 
@@ -141,5 +150,8 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     set(CPACK_NSIS_INSTALLED_ICON_NAME "XDAQ-RHX.exe")
     set(CPACK_NSIS_MENU_LINKS "XDAQ-RHX.exe" "XDAQ-RHX")
 
+    include(CPack)
+elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+    set(CPACK_GENERATOR "DragNDrop")
     include(CPack)
 endif()

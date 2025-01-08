@@ -536,7 +536,11 @@ auto get_demo_board(QWidget *parent, auto launch)
 std::vector<std::shared_ptr<xdaq::DeviceManager>> get_device_managers()
 {
     auto app_dir = fs::path(QCoreApplication::applicationDirPath().toStdString());
+#ifdef __APPLE__
+    auto app_manager_dir = app_dir / ".." / "PlugIns" / "managers";
+#else
     auto app_manager_dir = app_dir / "managers";
+#endif
     if (!fs::exists(app_manager_dir)) {
         return {};
     }
