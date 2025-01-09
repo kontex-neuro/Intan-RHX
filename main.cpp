@@ -275,7 +275,7 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationDomain(OrganizationDomain);
     QCoreApplication::setApplicationName(ApplicationName);
     // Globally disable unused Context Help buttons from windows/dialogs
-    QApplication::setAttribute(Qt::AA_DisableWindowContextHelpButton);
+    // QApplication::setAttribute(Qt::AA_DisableWindowContextHelpButton);
     QSettings settings;
     fmt::println("Using settings : {}", settings.fileName().toStdString());
 

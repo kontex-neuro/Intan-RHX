@@ -22,7 +22,7 @@ set(CMAKE_AUTORCC ON)
 find_package(fmt REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(OpenCL REQUIRED)
-find_package(Qt5 REQUIRED COMPONENTS Core Gui Multimedia Network Widgets Xml)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Multimedia Network Widgets Xml)
 find_package(xdaq REQUIRED)
 
 
@@ -78,12 +78,12 @@ if(Sanitize)
 endif()
 
 target_link_libraries(XDAQ-RHX PRIVATE
-    Qt5::Core
-    Qt5::Gui
-    Qt5::Multimedia
-    Qt5::Network
-    Qt5::Widgets
-    Qt5::Xml
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Multimedia
+    Qt6::Network
+    Qt6::Widgets
+    Qt6::Xml
     OpenCL::OpenCL
     nlohmann_json::nlohmann_json
     fmt::fmt

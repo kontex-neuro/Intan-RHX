@@ -539,7 +539,12 @@ bool GPUInterface::createKernel(int devIndex)
     state->writeToLog("Completed clCreateContext()");
 
     state->writeToLog("About to call clCreateCommandQueue");
+    // cl_queue_properties properties[] = {
+    //     CL_QUEUE_PROPERTIES,
+    //     0 // Terminates the list
+    // };
     // Create command queue.
+    // commandQueue = clCreateCommandQueueWithProperties(context, id, properties, &ret);
     commandQueue = clCreateCommandQueue(context, id, 0, &ret);
     if (ret != CL_SUCCESS) {
         state->writeToLog("Failure creating OpenCL commandqueue. Ret: " + QString::number(ret));
