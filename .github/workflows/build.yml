@@ -7,7 +7,12 @@ jobs:
   build:
     strategy:
       matrix:
-        os_arch: [{ os: windows-2022, arch: x64 }]
+        os_arch:
+          [
+            { os: windows-2022, arch: x64 },
+            { os: macos-15, arch: arm64 },
+            { os: macos-15, arch: x64 }
+          ]
 
     runs-on: ${{ matrix.os_arch.os }}
 
@@ -15,7 +20,14 @@ jobs:
       OS_ARCH: ${{ matrix.os_arch.os }}-${{ matrix.os_arch.arch }}
 
     steps:
-      - name: Install conan
+      - name: Install build system (ubuntu)
+        if: matrix.os_arch.os == 'ubuntu-24.04'
+        run: |
+          sudo apt-get install -y pipx
+          pipx install conan ninja
+
+      - name: Install build system (windows-2022, macos-15)
+        if: matrix.os_arch.os == 'windows-2022' || matrix.os_arch.os == 'macos-15'
         run: pip install conan ninja
 
       - name: conan cache
@@ -32,15 +44,22 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         if: matrix.os_arch.os == 'windows-2022'
 
+      - name: Setup Compiler (MacOS)
+        if: matrix.os_arch.os == 'macos-15'
+        run: |
+          echo "CC=$(brew --prefix llvm@18)/bin/clang" >> $GITHUB_ENV
+          echo "CXX=$(brew --prefix llvm@18)/bin/clang++" >> $GITHUB_ENV
+
       - name: Install OpenCL (Ubuntu)
-        if: matrix.os_arch.os == 'ubuntu-22.04'
+        if: matrix.os_arch.os == 'ubuntu-24.04'
         run: |
           sudo apt-get install -y ocl-icd-opencl-dev
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v3
+        uses: jurplel/install-qt-action@v4
         with:
-          version: '5.15.2'
+          version: '6.8.*'
+          modules: 'qtmultimedia'
           cache: true
 
       - name: Conan setup
@@ -52,7 +71,7 @@ jobs:
           git submodule update --init --recursive
           conan create libxdaq-dist --profile:all ${{ env.OS_ARCH }} -s build_type=Release --build=missing
 
-      - name: Build XDAQ-OE
+      - name: Build XDAQ-RHX
         run: |
           conan install . --build=missing --profile:all ${{ env.OS_ARCH }} -s build_type=Release
           cmake -S . -B build/Release --preset conan-release
@@ -60,8 +79,9 @@ jobs:
           cmake --build build/Release --preset conan-release --target package
 
       - name: Tar binaries to keep file permissions
+        shell: bash
         run: |
-          tar -cvf build/package.tar build/Release/package
+          tar -cvf build/package.tar -C build/Release/package $(ls build/Release/package | grep XDAQ-RHX)
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
