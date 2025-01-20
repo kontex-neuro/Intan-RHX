@@ -28,8 +28,12 @@
 //
 //------------------------------------------------------------------------------
 
-#include <iostream>
 #include "playbackrhxcontroller.h"
+
+#include <fmt/format.h>
+
+#include <iostream>
+#include <thread>
 
 PlaybackRHXController::PlaybackRHXController(ControllerType type_, AmplifierSampleRate sampleRate_, DataFileReader* dataFileReader_) :
     AbstractRHXController(type_, sampleRate_),
@@ -94,6 +98,60 @@ long PlaybackRHXController::readDataBlocksRaw(int numBlocks, uint8_t *buffer)
     lock_guard<mutex> lockOk(okMutex);
 
     return dataFileReader->readPlaybackDataBlocksRaw(numBlocks, buffer);
+}
+
+
+struct PlaybackDataStream final : public PlaybackRHXController::DataStream {
+    PlaybackDataStream(
+        receive_callback &&recv_event,
+        std::size_t chunk_size,
+        PlaybackRHXController& dev
+    ) : dev(dev), xdaq::Device::DataStream(std::move(recv_event))
+    {
+        thread = std::thread([this, chunk_size]() {
+            while (running) {
+                auto const read_buffer = new unsigned char[chunk_size];
+                const auto read = this->dev.readDataBlocksRaw(1, read_buffer);
+                if (read < 0)
+                    on_receive(
+                        xdaq::DataStream::Events::Error{.error = fmt::format("Read error {}", read)}
+                    );
+                else if (read > 0)
+                    on_receive(xdaq::DataStream::Events::OwnedData{
+                        .buffer = std::unique_ptr<unsigned char[], void (*)(unsigned char[])>(
+                            read_buffer, [](unsigned char d[]) { delete[] d; }
+                        ),
+                        .length = (std::size_t) read
+                    });
+                else std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            this->on_receive(xdaq::DataStream::Events::Stop{});
+        });
+    }
+
+    ~PlaybackDataStream() override { stop(); }
+
+    void stop() override
+    {
+        running = false;
+        if (thread.joinable()) thread.join();
+        on_receive = nullptr;
+    }
+
+    std::thread thread;
+    std::atomic_bool running = true;
+    PlaybackRHXController& dev;
+};
+
+std::optional<std::unique_ptr<PlaybackRHXController::DataStream>>
+PlaybackRHXController::start_read_stream(
+    std::uint32_t addr, typename xdaq::DataStream::receive_callback &&receive_event
+)
+{
+    unsigned int data_block_size =
+        BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
+    return {std::make_unique<PlaybackDataStream>(std::move(receive_event), data_block_size, *this)
+    };
 }
 
 // Set the delay for sampling the MISO line on a particular SPI port (PortA - PortH), in integer clock steps, where each

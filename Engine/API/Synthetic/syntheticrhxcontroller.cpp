@@ -28,9 +28,16 @@
 //
 //------------------------------------------------------------------------------
 
-#include <iostream>
-#include <QDebug>
 #include "syntheticrhxcontroller.h"
+
+#include <fmt/format.h>
+
+#include <QDebug>
+#include <chrono>
+#include <iostream>
+#include <thread>
+
+#include "synthdatablockgenerator.h"
 
 SyntheticRHXController::SyntheticRHXController(ControllerType type_, AmplifierSampleRate sampleRate_) :
     AbstractRHXController(type_, sampleRate_)
@@ -96,6 +103,59 @@ long SyntheticRHXController::readDataBlocksRaw(int numBlocks, uint8_t *buffer)
     lock_guard<mutex> lockOk(okMutex);
 
     return dataGenerator->readSynthDataBlocksRaw(numBlocks, buffer, numDataStreams);
+}
+
+struct SyntheticDataStream final : public SyntheticRHXController::DataStream {
+    SyntheticDataStream(
+        receive_callback &&recv_event,
+        std::size_t chunk_size,
+        SyntheticRHXController& dev
+    ) : dev(dev), xdaq::Device::DataStream(std::move(recv_event))
+    {
+        thread = std::thread([this, chunk_size]() {
+            while (running) {
+                auto const read_buffer = new unsigned char[chunk_size];
+                const auto read = this->dev.readDataBlocksRaw(1, read_buffer);
+                if (read < 0)
+                    on_receive(
+                        xdaq::DataStream::Events::Error{.error = fmt::format("Read error {}", read)}
+                    );
+                else if (read > 0)
+                    on_receive(xdaq::DataStream::Events::OwnedData{
+                        .buffer = std::unique_ptr<unsigned char[], void (*)(unsigned char[])>(
+                            read_buffer, [](unsigned char d[]) { delete[] d; }
+                        ),
+                        .length = (std::size_t) read
+                    });
+                else std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            this->on_receive(xdaq::DataStream::Events::Stop{});
+        });
+    }
+
+    ~SyntheticDataStream() override { stop(); }
+
+    void stop() override
+    {
+        running = false;
+        if (thread.joinable()) thread.join();
+        on_receive = nullptr;
+    }
+
+    std::thread thread;
+    std::atomic_bool running = true;
+    SyntheticRHXController& dev;
+};
+
+std::optional<std::unique_ptr<SyntheticRHXController::DataStream>>
+SyntheticRHXController::start_read_stream(
+    std::uint32_t addr, typename xdaq::DataStream::receive_callback &&receive_event
+)
+{
+    unsigned int data_block_size =
+        BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
+    return {std::make_unique<SyntheticDataStream>(std::move(receive_event), data_block_size, *this)
+    };
 }
 
 // Set the delay for sampling the MISO line on a particular SPI port (PortA - PortH), in integer clock steps, where each

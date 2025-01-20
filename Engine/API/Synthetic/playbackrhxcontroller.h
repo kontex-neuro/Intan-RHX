@@ -110,6 +110,8 @@ public:
                            vector<int> &numChannelsOnPort, bool synthMaxChannels = false, bool returnToFastSettle = false,
                            bool usePreviousDelay = false, int selectedPort = 0, int lastDetectedChip = -1, int lastDetectedNumStreams = -1) override;
 
+    std::optional<std::unique_ptr<DataStream>> start_read_stream(
+        std::uint32_t addr, typename xdaq::DataStream::receive_callback&& receive_event) override;
 private:
     unsigned int numWordsInFifo() override;
     bool isDcmProgDone() const override { return true; }
