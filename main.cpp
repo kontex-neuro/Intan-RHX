@@ -54,12 +54,13 @@ using json = nlohmann::json;
 
 struct RHXAPP {
     // rhxController (unmanaged) ->
-    //     state (Qt, unmanaged)   ->
-    //       controllerInterface (Qt, owned by state) ->
-    //           parser (Qt, owned by controllerInterface) ->
-    //               controlWindow (Qt)
+    //   state (Qt, unmanaged) ->
+    //     controllerInterface (Qt, unmanaged) ->
+    //       parser (Qt, owned by controllerInterface) ->
+    //         controlWindow (Qt)
     std::unique_ptr<AbstractRHXController> rhxController;
-    std::unique_ptr<SystemState> state;  // Keep the order of destruction
+    std::unique_ptr<SystemState> state;
+    std::unique_ptr<ControllerInterface> controllerInterface;
     ControlWindow *controlWindow;
 };
 
@@ -69,10 +70,11 @@ auto startSoftware(
     bool enable_vstim_control, int on_board_analog_io
 )
 {
-    RHXAPP app{.rhxController = std::unique_ptr<AbstractRHXController>(rhxController)};
+    auto app = std::make_unique<RHXAPP>();
+    app->rhxController = std::unique_ptr<AbstractRHXController>(rhxController);
 
-    app.state = std::make_unique<SystemState>(
-        app.rhxController.get(),
+    app->state = std::make_unique<SystemState>(
+        app->rhxController.get(),
         stimStepSize,
         rhxController->getType() == ControllerStimRecord ? 4 : 8,
         with_expander,
@@ -84,21 +86,16 @@ auto startSoftware(
 
     // app.state->highDPIScaleFactor =
     //     main->devicePixelRatio();  // Use this to adjust graphics for high-DPI monitors.
-    app.state->availableScreenResolution = QGuiApplication::primaryScreen()->geometry();
-    auto controllerInterface = new ControllerInterface(
-        app.state.get(),
-        app.rhxController.get(),
-        "",
-        useOpenCL,
-        dataFileReader,
-        app.state.get(),
-        false
+    app->state->availableScreenResolution = QGuiApplication::primaryScreen()->geometry();
+    app->controllerInterface = std::make_unique<ControllerInterface>(
+        app->state.get(), app->rhxController.get(), "", useOpenCL, dataFileReader, nullptr, false
     );
-    app.state->setupGlobalSettingsLoadSave(controllerInterface);
-    auto parser = new CommandParser(app.state.get(), controllerInterface, controllerInterface);
-    app.controlWindow =
-        new ControlWindow(app.state.get(), parser, controllerInterface, app.rhxController.get());
-    auto controlWindow = app.controlWindow;
+    auto controllerInterface = app->controllerInterface.get();
+    app->state->setupGlobalSettingsLoadSave(controllerInterface);
+    auto parser = new CommandParser(app->state.get(), controllerInterface, controllerInterface);
+    app->controlWindow =
+        new ControlWindow(app->state.get(), parser, controllerInterface, app->rhxController.get());
+    auto controlWindow = app->controlWindow;
     parser->controlWindow = controlWindow;
 
     QObject::connect(
@@ -284,7 +281,7 @@ int main(int argc, char *argv[])
 #endif
 
     BoardSelectDialog boardSelectDialog(nullptr);
-    RHXAPP rhx_app;
+    std::unique_ptr<RHXAPP> rhx_app;
     QObject::connect(
         &boardSelectDialog,
         &BoardSelectDialog::launch,
@@ -321,11 +318,13 @@ int main(int argc, char *argv[])
                 on_board_analog_io
             );
 
-            splash->finish(rhx_app.controlWindow);
+            splash->finish(rhx_app->controlWindow);
             boardSelectDialog.accept();
         }
     );
     boardSelectDialog.show();
 
-    return app.exec();
+    auto res = app.exec();
+    rhx_app.reset();
+    return res;
 }
