@@ -93,21 +93,21 @@ private:
     ControllerType type;
     int numDataStreams;
 
-    uint32_t* timeStampInternal;
-    int* amplifierDataInternal;
-    int* auxiliaryDataInternal;
-    int* boardAdcDataInternal;
-    int* ttlInInternal;
-    int* ttlOutInternal;
+    uint32_t* timeStampInternal = nullptr;
+    int* amplifierDataInternal = nullptr;
+    int* auxiliaryDataInternal = nullptr;
+    int* boardAdcDataInternal = nullptr;
+    int* ttlInInternal = nullptr;
+    int* ttlOutInternal = nullptr;
 
     // Stim/Record Controller only:
-    int* dcAmplifierDataInternal;
-    int* complianceLimitInternal;
-    int* stimOnInternal;
-    int* stimPolInternal;
-    int* ampSettleInternal;
-    int* chargeRecovInternal;
-    int* boardDacDataInternal;
+    int* dcAmplifierDataInternal = nullptr;
+    int* complianceLimitInternal = nullptr;
+    int* stimOnInternal = nullptr;
+    int* stimPolInternal = nullptr;
+    int* ampSettleInternal = nullptr;
+    int* chargeRecovInternal = nullptr;
+    int* boardDacDataInternal = nullptr;
 
     void allocateMemory();
 

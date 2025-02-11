@@ -36,22 +36,8 @@
 #include "rhxdatablock.h"
 #include <fmt/core.h>
 
-RHXDataBlock::RHXDataBlock(ControllerType type_, int numDataStreams_) :
-    type(type_),
-    numDataStreams(numDataStreams_),
-    timeStampInternal(nullptr),
-    amplifierDataInternal(nullptr),
-    auxiliaryDataInternal(nullptr),
-    boardAdcDataInternal(nullptr),
-    ttlInInternal(nullptr),
-    ttlOutInternal(nullptr),
-    dcAmplifierDataInternal(nullptr),
-    complianceLimitInternal(nullptr),
-    stimOnInternal(nullptr),
-    stimPolInternal(nullptr),
-    ampSettleInternal(nullptr),
-    chargeRecovInternal(nullptr),
-    boardDacDataInternal(nullptr)
+RHXDataBlock::RHXDataBlock(ControllerType type_, int numDataStreams_)
+    : type(type_), numDataStreams(numDataStreams_)
 {
     allocateMemory();
 }
