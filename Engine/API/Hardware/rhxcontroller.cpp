@@ -28,23 +28,26 @@
 //
 //------------------------------------------------------------------------------
 
+#include "rhxcontroller.h"
+
 #include <fmt/format.h>
+#include <xdaq/data_streams.h>
 #include <xdaq/device.h>
-#include <atomic>
-#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <future>
 #include <iostream>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <thread>
 #include <variant>
-#include "rhxcontroller.h"
+
 #include "rhxdatablock.h"
 #include "rhxglobals.h"
-#include "rhxregisters.h"
 
+using namespace std::chrono_literals;
 using json = nlohmann::json;
 // This class provides access to and control of one of the following:
 //   (1) an Opal Kelly XEM6010 USB2/FPGA interface board running the Intan Rhythm interface Verilog code
@@ -117,16 +120,16 @@ void RHXController::resetFpga()
 }
 
 // Read data block from the USB interface, if one is available.  Return true if data block was available.
-bool RHXController::readDataBlock(RHXDataBlock *dataBlock)
-{
-    deque<RHXDataBlock*> dataQueue;
-    bool dataAvailable = readDataBlocks(1, dataQueue);
-    if (!dataAvailable) return false;
-    if (dataBlock != nullptr)
-        *dataBlock = *dataQueue.front();
-    delete dataQueue.front();
-    return true;
-}
+// bool RHXController::readDataBlock(RHXDataBlock *dataBlock)
+// {
+//     deque<RHXDataBlock*> dataQueue;
+//     bool dataAvailable = readDataBlocks(1, dataQueue);
+//     if (!dataAvailable) return false;
+//     if (dataBlock != nullptr)
+//         *dataBlock = *dataQueue.front();
+//     delete dataQueue.front();
+//     return true;
+// }
 
 inline std::size_t get_xdaq_frame_size(ControllerType type, int streams){
     std::size_t ws = 0;
@@ -138,137 +141,142 @@ inline std::size_t get_xdaq_frame_size(ControllerType type, int streams){
 }
 
 std::optional<std::unique_ptr<RHXController::DataStream>> RHXController::start_read_stream(
-    std::uint32_t addr, typename xdaq::DataStream::receive_callback&& receive_event) {
-    return dev->dev->start_read_stream(addr, std::move(receive_event));
+    std::uint32_t addr, typename xdaq::DataStream::receive_callback &&receive_event,
+    std::size_t chunk_size
+)
+{
+    return dev->dev->start_read_stream(addr, std::move(receive_event), chunk_size);
 }
 
-// Read a certain number of USB data blocks, if the specified number is available, and append them to queue.
-// Return true if data blocks were available.
-bool RHXController::readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue)
+std::expected<std::vector<RHXDataBlock>, std::string> RHXController::runAndReadDataBlocks(
+    int numBlocks
+)
 {
-    lock_guard<mutex> lockOk(okMutex);
-    const std::size_t numBytesToRead = BytesPerWord * numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
+    const int intan_frame_size = BytesPerWord *
+                                 RHXDataBlock::dataBlockSizeInWords(type, numDataStreams) /
+                                 RHXDataBlock::samplesPerDataBlock(type);
+    const auto xdaq_frame_size = get_xdaq_frame_size(type, numDataStreams);
 
-    if (numBytesToRead > usbBufferSize) {
-        cerr << "Error in RHXController::readDataBlocks: USB buffer size exceeded.  " <<
-                "Increase value of MaxNumBlocksToRead.\n";
-        return false;
-    }
+    constexpr int hw_events_per_sec = 100;
+    const auto expected_data_rate = xdaq_frame_size * getSampleRate();
+    const int chunk_size = expected_data_rate / hw_events_per_sec;
 
-    {
-        std::atomic_uint64_t read = 0;
-        const auto sample_size = get_xdaq_frame_size(type, numDataStreams);
-        const std::size_t sample_size_intan =
-            RHXDataBlock::dataBlockSizeInWords(type, numDataStreams) / 128 * 2;
-        std::vector<unsigned char> frame_buffer(sample_size);
-        int remaining = 0;
-        auto s = dev->dev->start_read_stream(
-            PipeOutData,
-            [&, streams = numDataStreams](auto&& event) {
-                if(!std::holds_alternative<xdaq::DataStream::Events::OwnedData>(event)) return;
-                auto&& data = std::get<xdaq::DataStream::Events::OwnedData>(event);
-                auto&& buffer = data.buffer;
-                auto&& length = data.length;
-                auto copy_one_sample = [&](auto begin, auto dst) {
-                    if (type == ControllerRecordUSB3) {
-                        const auto dio_off = sample_size - 8;
-                        const auto io_off = dio_off - 16;
-                        const auto padding_off = io_off - ((streams + 2) % 4) * 2;
-                        const auto io_off_orig = sample_size_intan - (streams % 4) * 2 - 16 - 4;
-                        std::copy(begin, begin + padding_off, dst);
-                        begin[dio_off + 2] = begin[dio_off + 4];
-                        begin[dio_off + 3] = begin[dio_off + 5];
-                        std::copy(begin + io_off, begin + dio_off + 2, dst + io_off_orig);
-                    } else if (type == ControllerStimRecord) {
-                        const auto dio_off = sample_size - 8;
-                        const auto io_off = dio_off - 16 - 16;
-                        const auto padding_off = io_off - 4;
-                        const auto io_off_orig = sample_size_intan - 16 - 16 - 4;
-                        std::copy(begin, begin + padding_off, dst);
-                        begin[dio_off + 2] = begin[dio_off + 4];
-                        begin[dio_off + 3] = begin[dio_off + 5];
-                        std::copy(begin + io_off, begin + dio_off + 2, dst + io_off_orig);
-                    }
-                    return sample_size_intan;
-                };
-                auto begin = buffer.get();
-                if (remaining > 0) {
-                    std::copy(
-                        begin, begin + sample_size - remaining, frame_buffer.begin() + remaining
+    std::promise<std::expected<std::vector<RHXDataBlock>, std::string>> result_promise;
+    auto result = result_promise.get_future();
+
+    auto s = dev->dev->start_read_stream(
+        PipeOutData,
+        xdaq::queue<xdaq::Device>(
+            xdaq::aligned_read_stream<xdaq::Device>(
+                [this,
+                 xdaq_frame_size,
+                 intan_frame_size,
+                 numBlocks,
+                 result_promise = std::make_optional(std::move(result_promise)),
+                 data_blocks = std::vector<RHXDataBlock>(),
+                 type = this->type,
+                 streams = numDataStreams,
+                 block_buffer = std::vector<unsigned char>(
+                     intan_frame_size * RHXDataBlock::samplesPerDataBlock(type)
+                 ),
+                 frames_filled = 0,
+                 block_samples = RHXDataBlock::samplesPerDataBlock(type)](auto &&event) mutable {
+                    auto copy_one_sample = [&](const auto begin, auto dst) {
+                        if (type == ControllerRecordUSB3) {
+                            const auto dio_off = xdaq_frame_size - 8;
+                            const auto io_off = dio_off - 16;
+                            const auto pad_off = io_off - ((streams + 2) % 4) * 2;
+                            dst = std::copy(begin, begin + (pad_off - 0 + (streams % 4) * 2), dst);
+                            dst = std::copy(begin + io_off, begin + dio_off + 2, dst);
+                            dst[0] = begin[dio_off + 4];
+                            dst[1] = begin[dio_off + 5];
+                        } else if (type == ControllerStimRecord) {
+                            const auto dio_off = xdaq_frame_size - 8;
+                            const auto io_off = dio_off - 16 - 16;
+                            const auto pad_off = io_off - 4;
+                            dst = std::copy(begin, begin + (pad_off - 0), dst);
+                            dst = std::copy(begin + io_off, begin + dio_off + 2, dst);
+                            dst[0] = begin[dio_off + 4];
+                            dst[1] = begin[dio_off + 5];
+                        }
+                    };
+                    if (!result_promise.has_value()) return;
+                    std::visit(
+                        [&](auto &&event) {
+                            using T = std::decay_t<decltype(event)>;
+                            using namespace xdaq::DataStream::Events;
+                            if constexpr (std::is_same_v<T, Stop>) {
+                            } else if constexpr (std::is_same_v<T, Error>) {
+                                this->setContinuousRunMode(false);
+                                this->setMaxTimeStep(0);
+                                result_promise->set_value(
+                                    std::unexpected(fmt::format("Datastream Error {}", event.error))
+                                );
+                                result_promise.reset();
+                            } else if constexpr (std::is_same_v<T, DataView>) {
+                                if (event.data.size() % xdaq_frame_size != 0) {
+                                    this->setContinuousRunMode(false);
+                                    this->setMaxTimeStep(0);
+                                    result_promise->set_value(std::unexpected(fmt::format(
+                                        "Unexpected data size {} % {} != 0",
+                                        event.data.size(),
+                                        xdaq_frame_size
+                                    )));
+                                    result_promise.reset();
+                                    return;
+                                }
+                                for (int i = 0; i < event.data.size(); i += xdaq_frame_size) {
+                                    copy_one_sample(
+                                        event.data.begin() + i,
+                                        block_buffer.data() + frames_filled * intan_frame_size
+                                    );
+                                    ++frames_filled;
+                                    if (frames_filled == block_samples) {
+                                        data_blocks.emplace_back(type, streams);
+                                        data_blocks.back().fillFromUsbBuffer(
+                                            block_buffer.data(), 0
+                                        );
+                                        frames_filled = 0;
+                                        if (data_blocks.size() == numBlocks) {
+                                            this->setContinuousRunMode(false);
+                                            this->setMaxTimeStep(0);
+                                            result_promise->set_value(std::move(data_blocks));
+                                            result_promise.reset();
+                                            return;
+                                        }
+                                    }
+                                }
+                            } else if constexpr (std::is_same_v<T, OwnedData>) {
+                            } else {
+                                static_assert(xdaq::always_false_v<T>, "non-exhaustive visitor");
+                            }
+                        },
+                        std::move(event)
                     );
-                    begin += sample_size - remaining;
-                    length -= sample_size - remaining;
-                    read += copy_one_sample(frame_buffer.begin(), usbBuffer + read);
-                    if (read >= numBytesToRead) return;
-                }
-                auto n_full_samples = length / sample_size;
-                for (auto i = 0; i < n_full_samples; i++) {
-                    read += copy_one_sample(begin, usbBuffer + read);
-                    begin += sample_size;
-                    if (read >= numBytesToRead) return;
-                }
-                std::copy(begin, begin + length % sample_size, frame_buffer.begin());
-                remaining = length % sample_size;
-            }
-        );
-        while (read < numBytesToRead) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-    }
+                },
+                xdaq_frame_size
+            ),
+            32,
+            std::chrono::nanoseconds{0}
+        ),
+        chunk_size
+    );
+    setContinuousRunMode(true);
+    run();
+    const auto expected_sample_time = std::chrono::milliseconds{
+        (int) (1000 * numBlocks * RHXDataBlock::samplesPerDataBlock(type) / getSampleRate())
+    };
+    auto wait_result = result.wait_for(expected_sample_time + 1s);
+    s->reset();
+    while (isRunning()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    flush();
 
-    for (int i = 0; i < numBlocks; ++i) {
-        RHXDataBlock* dataBlock = new RHXDataBlock(type, numDataStreams);
-        dataBlock->fillFromUsbBuffer(usbBuffer, i);
-        dataQueue.push_back(dataBlock);
-    }
-
-    return true;
+    if (wait_result == std::future_status::timeout)
+        return std::unexpected("Read Timeout");
+    else
+        return result.get();
 }
 
-// Read a certain number of USB data blocks, if the specified number is available, and write the raw bytes to a buffer.
-// Return total number of bytes read.
-long RHXController::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
-{
-    return 0;
-    lock_guard<mutex> lockOk(okMutex);
-
-    unsigned int numWordsToRead = numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
-
-    long result;
-    if (type == ControllerRecordUSB3 || type == ControllerStimRecord) {
-        result = dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize, BytesPerWord * numWordsToRead, buffer);
-    } else {
-        result = dev->ReadFromPipeOut(PipeOutData, BytesPerWord * numWordsToRead, buffer);
-    }
-
-    // double readSizeMB = (double) (BytesPerWord * numWordsToRead) / (1024.0 * 1024.0);
-    // double readTimeS = (double) (readTimer.nsecsElapsed()) / 1e9;
-    // double MB_per_s = readSizeMB / readTimeS;
-    // cout << "Elapsed time: " << readTimeS << " seconds. Data read: " << readSizeMB << " MB. " << " data rate: " << MB_per_s << " MB/s\n";
-
-    // If something went wrong, flag pipeReadErrorCode for the GUI thread to display an error message and exit the software
-    if (result != BytesPerWord * numWordsToRead) {
-        cerr << "CRITICAL (readDataBlocksRaw): Pipe read failure.  Check block and buffer sizes.\n";
-        pipeReadErrorCode = result;
-    }
-
-    return result;
-}
-
-// Writes the contents of a data block queue (dataQueue) to a binary output stream (saveOut).
-// Returns the number of data blocks written.
-int RHXController::queueToFile(deque<RHXDataBlock*> &dataQueue, ofstream &saveOut)
-{
-    int count = 0;
-
-    while (!dataQueue.empty()) {
-        dataQueue.front()->write(saveOut, getNumEnabledDataStreams());
-        dataQueue.pop_front();
-        ++count;
-    }
-
-    return count;
-}
 
 // Set the FPGA to run continuously once started (if continuousMode == true) or to run until maxTimeStep is reached
 // (if continuousMode == false).
@@ -1698,22 +1706,22 @@ int RHXController::findConnectedChips(vector<ChipType> &chipType, vector<int> &p
                 setCableDelay(PortG, delay);
                 setCableDelay(PortH, delay);
             }
-            run();
 
-            // Wait for the run to complete.
-            while (isRunning()) {
-                std::this_thread::sleep_for(std::chrono::microseconds(100));
+            auto data_blocks = runAndReadDataBlocks(NRepeats);
+            if (!data_blocks.has_value()) {
+                cerr << "Error in RHXController::findConnectedChips: runAndReadDataBlocks failed "
+                        "with an error \""
+                     << data_blocks.error() << "\"\n";
+                return -1;
             }
-
             for (int i = 0; i < NRepeats; ++i) {
                 // Read one data block from the USB interface.
-                readDataBlock(&dataBlock);
 
                 // Read the Intan chip ID number from each RHD or RHS chip found.
                 // Record delay settings that yield good communication with the chip.
                 int register59Value;
                 for (int stream = 0; stream < maxMISOLines; stream++) {
-                    int id = dataBlock.getChipID(stream, auxCmdSlot, register59Value);
+                    int id = data_blocks.value()[i].getChipID(stream, auxCmdSlot, register59Value);
                     if (id == (int)RHD2132Chip || id == (int)RHD2216Chip || id == (int)RHS2116Chip ||
                         (id == (int)RHD2164Chip && register59Value == Register59MISOA)) {
                         goodDelays[stream][delay] = goodDelays[stream][delay] + 1;

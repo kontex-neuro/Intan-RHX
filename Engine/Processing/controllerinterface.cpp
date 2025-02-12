@@ -599,17 +599,12 @@ void ControllerInterface::initializeController()
     rhxController->setMaxTimeStep(RHXDataBlock::samplesPerDataBlock(state->getControllerTypeEnum()));
     rhxController->setContinuousRunMode(false);
 
-    // Start SPI interface.
-    rhxController->run();
-
-    // Wait for the N-sample run to complete.
-    while (rhxController->isRunning()) {
+    // Read the resulting single data block from the USB interface.
+    qApp->processEvents();
+    if (!state->synthetic->getValue() && !state->playback->getValue()){
+        auto discard = rhxController->runAndReadDataBlocks(1);
         qApp->processEvents();
     }
-
-    // Read the resulting single data block from the USB interface.
-    RHXDataBlock dataBlock(state->getControllerTypeEnum(), rhxController->getNumEnabledDataStreams());
-    if (!state->synthetic->getValue() && !state->playback->getValue()) rhxController->readDataBlock(&dataBlock);
 
     if (state->getControllerTypeEnum() != ControllerStimRecord) {
         // Now that ADC calibration has been performed, we switch to the command sequence that does not execute
@@ -1588,10 +1583,9 @@ void ControllerInterface::setChargeRecoveryParameters(bool mode, RHXRegisters::C
     rhxController->setContinuousRunMode(false);
     rhxController->setStimCmdMode(false);
 
-    rhxController->run();
-    while (rhxController->isRunning() ) {
-        qApp->processEvents();
-    }
+    qApp->processEvents();
+    auto discard0 = rhxController->runAndReadDataBlocks(1);
+    qApp->processEvents();
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterRead(commandList);
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);
@@ -1601,9 +1595,9 @@ void ControllerInterface::setChargeRecoveryParameters(bool mode, RHXRegisters::C
         qApp->processEvents();
     }
 
-    RHXDataBlock dataBlock(state->getControllerTypeEnum(), rhxController->getNumEnabledDataStreams());
-    rhxController->readDataBlock(&dataBlock);
-    rhxController->readDataBlock(&dataBlock);
+    qApp->processEvents();
+    auto discard1 = rhxController->runAndReadDataBlocks(1);
+    qApp->processEvents();
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, true);
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);
@@ -1866,22 +1860,17 @@ void ControllerInterface::uploadAutoStimParameters(int stream)
     rhxController->setStimCmdMode(false);
     rhxController->enableAuxCommandsOnOneStream(stream);
 
-    rhxController->run();
-    while (rhxController->isRunning() ) {
-        qApp->processEvents();
-    }
+    qApp->processEvents();
+    auto discard0 = rhxController->runAndReadDataBlocks(1);
+    qApp->processEvents();
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterRead(commandList);
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter
     rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
-    rhxController->run();
-    while (rhxController->isRunning() ) {
-        qApp->processEvents();
-    }
 
-    RHXDataBlock dataBlock(rhxController->getType(), rhxController->getNumEnabledDataStreams());
-    rhxController->readDataBlock(&dataBlock);
-    rhxController->readDataBlock(&dataBlock);
+    qApp->processEvents();
+    auto discard1 = rhxController->runAndReadDataBlocks(1);
+    qApp->processEvents();
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, true);
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter
@@ -1922,22 +1911,17 @@ void ControllerInterface::clearStimParameters(int stream)
     rhxController->setStimCmdMode(false);
     rhxController->enableAuxCommandsOnOneStream(stream);
 
-    rhxController->run();
-    while (rhxController->isRunning() ) {
-        qApp->processEvents();
-    }
+    qApp->processEvents();
+    auto discard0 = rhxController->runAndReadDataBlocks(1);
+    qApp->processEvents();
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterRead(commandList);
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter
     rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
-    rhxController->run();
-    while (rhxController->isRunning() ) {
-        qApp->processEvents();
-    }
 
-    RHXDataBlock dataBlock(rhxController->getType(), rhxController->getNumEnabledDataStreams());
-    rhxController->readDataBlock(&dataBlock);
-    rhxController->readDataBlock(&dataBlock);
+    qApp->processEvents();
+    auto discard1 = rhxController->runAndReadDataBlocks(1);
+    qApp->processEvents();
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, true);
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter

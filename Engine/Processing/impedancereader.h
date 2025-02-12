@@ -57,7 +57,7 @@ private:
 
     static double approximateSaturationVoltage(double actualZFreq, double highCutoff);
     static ComplexPolar factorOutParallelCapacitance(ComplexPolar impedance, double frequency, double parasiticCapacitance);
-    ComplexPolar measureComplexAmplitude(const deque<RHXDataBlock*> &dataQueue, int stream, int chipChannel,
+    ComplexPolar measureComplexAmplitude(const vector<RHXDataBlock> &data, int stream, int chipChannel,
                                          double sampleRate, double frequency, int numPeriods, QDataStream *outStream = nullptr) const;
     void applyNotchFilter(vector<double> &waveform, double fNotch, double bandwidth, double sampleRate) const;
     static ComplexPolar amplitudeOfFreqComponent(const vector<double> &waveform, int startIndex, int endIndex,

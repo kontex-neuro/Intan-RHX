@@ -52,9 +52,11 @@ public:
     void flush() override {}
     void resetFpga() override {}
 
-    bool readDataBlock(RHXDataBlock *dataBlock) override;
-    bool readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue) override;
-    long readDataBlocksRaw(int numBlocks, uint8_t *buffer) override;
+    std::expected<std::vector<RHXDataBlock>, std::string> runAndReadDataBlocks(int numBlocks
+    ) override;
+    // bool readDataBlock(RHXDataBlock *dataBlock) override;
+    // bool readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue) override;
+    long readDataBlocksRaw(int numBlocks, uint8_t *buffer);
 
     void setContinuousRunMode(bool) override {}
     void setMaxTimeStep(unsigned int) override {}
@@ -111,7 +113,7 @@ public:
                            bool usePreviousDelay = false, int selectedPort = 0, int lastDetectedChip = -1, int lastDetectedNumStreams = -1) override;
 
     std::optional<std::unique_ptr<DataStream>> start_read_stream(
-        std::uint32_t addr, typename xdaq::DataStream::receive_callback&& receive_event) override;
+        std::uint32_t addr, typename xdaq::DataStream::receive_callback&& receive_event, std::size_t chunk_size) override;
 private:
     unsigned int numWordsInFifo() override;
     bool isDcmProgDone() const override { return true; }

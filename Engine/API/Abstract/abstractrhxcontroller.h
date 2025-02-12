@@ -32,13 +32,15 @@
 #define ABSTRACTRHXCONTROLLER_H
 
 #include <xdaq/device_manager.h>
-#include "rhxglobals.h"
-#include "rhxdatablock.h"
-#include <string>
-#include <vector>
-#include <deque>
+
+#include <expected>
 #include <mutex>
 #include <optional>
+#include <string>
+#include <vector>
+
+#include "rhxdatablock.h"
+#include "rhxglobals.h"
 
 using namespace std;
 
@@ -159,9 +161,11 @@ public:
     virtual void flush() = 0;
     virtual void resetFpga() = 0;
 
-    virtual bool readDataBlock(RHXDataBlock *dataBlock) = 0;
-    virtual bool readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue) = 0;
-    virtual long readDataBlocksRaw(int numBlocks, uint8_t* buffer) = 0;
+    virtual std::expected<std::vector<RHXDataBlock>, std::string> runAndReadDataBlocks(int numBlocks
+    ) = 0;
+    // virtual bool readDataBlock(RHXDataBlock *dataBlock) = 0;
+    // virtual bool readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue) = 0;
+    // virtual long readDataBlocksRaw(int numBlocks, uint8_t* buffer) = 0;
 
     virtual void setContinuousRunMode(bool continuousMode) = 0;
     virtual void setMaxTimeStep(unsigned int maxTimeStep) = 0;
@@ -224,7 +228,8 @@ public:
     using DataStream = xdaq::Device::DataStream;
 
     virtual std::optional<std::unique_ptr<DataStream>> start_read_stream(
-        std::uint32_t addr, typename xdaq::DataStream::receive_callback&& receive_event
+        std::uint32_t addr, typename xdaq::DataStream::receive_callback &&receive_event,
+        std::size_t chunk_size
     )
     {
         return std::nullopt;

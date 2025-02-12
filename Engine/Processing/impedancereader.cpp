@@ -28,16 +28,19 @@
 //
 //------------------------------------------------------------------------------
 
-#include <QProgressDialog>
-#include <QMessageBox>
-#include <QString>
-#include <QFile>
-#include <QTextStream>
-#include <cmath>
-#include <deque>
-#include <iostream>
-#include "signalsources.h"
 #include "impedancereader.h"
+
+#include <QFile>
+#include <QMessageBox>
+#include <QProgressDialog>
+#include <QString>
+#include <QTextStream>
+#include <chrono>
+#include <cmath>
+#include <future>
+#include <iostream>
+
+#include "signalsources.h"
 
 ImpedanceReader::ImpedanceReader(SystemState* state_, AbstractRHXController* rhxController_) :
     state(state_),
@@ -205,12 +208,15 @@ bool ImpedanceReader::measureImpedances()
             // Upload version with no ADC calibration to AuxCmd3 RAM bank
             rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd3, 3);
 
-            rhxController->run();
-            while (rhxController->isRunning()) {
+            auto future =
+                std::async(&AbstractRHXController::runAndReadDataBlocks, rhxController, numBlocks);
+            while (future.wait_for(std::chrono::milliseconds(1)) == std::future_status::timeout)
                 qApp->processEvents();
+            auto data = future.get();
+            if(!data.has_value()){
+                std::cerr << "Error reading data blocks";
+                return false;
             }
-            deque<RHXDataBlock*> dataQueue;
-            rhxController->readDataBlocks(numBlocks, dataQueue);
 
             for (int stream = 0; stream < rhxController->getNumEnabledDataStreams(); ++stream) {
                 if (state->chipType[stream] != RHD2164MISOBChip) {
@@ -238,13 +244,9 @@ bool ImpedanceReader::measureImpedances()
 //                                                    state->actualImpedanceFreq->getValue(), numPeriods);
 //                    }
                     measuredImpedance[stream][channel][capRange] =
-                            measureComplexAmplitude(dataQueue, stream, channel, state->sampleRate->getNumericValue(),
+                            measureComplexAmplitude(data.value(), stream, channel, state->sampleRate->getNumericValue(),
                                                     state->actualImpedanceFreq->getValue(), numPeriods);
                 }
-            }
-            while (!dataQueue.empty()) {
-                delete dataQueue.back();
-                dataQueue.pop_back();
             }
 
             // If an RHD2164 chip is plugged in, we have to set the Zcheck select register to channels 32-63
@@ -256,23 +258,23 @@ bool ImpedanceReader::measureImpedances()
                                                                          RHXDataBlock::samplesPerDataBlock(controllerType));
                 // Upload version with no ADC calibration to AuxCmd3 RAM Bank 1.
                 rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd3, 3);
-
-                rhxController->run();
-                while (rhxController->isRunning()) {
+                auto future = std::async(
+                    &AbstractRHXController::runAndReadDataBlocks, rhxController, numBlocks
+                );
+                while (future.wait_for(std::chrono::milliseconds(1)) == std::future_status::timeout)
                     qApp->processEvents();
+                auto data = future.get();
+                if (!data.has_value()) {
+                    std::cerr << "Error reading data blocks";
+                    return false;
                 }
-                rhxController->readDataBlocks(numBlocks, dataQueue);
 
                 for (int stream = 0; stream < rhxController->getNumEnabledDataStreams(); ++stream) {
                     if (state->chipType[stream] == RHD2164MISOBChip) {
                         measuredImpedance[stream][channel][capRange] =
-                                measureComplexAmplitude(dataQueue, stream, channel, state->sampleRate->getNumericValue(),
+                                measureComplexAmplitude(data.value(), stream, channel, state->sampleRate->getNumericValue(),
                                                         state->actualImpedanceFreq->getValue(), numPeriods);
                     }
-                }
-                while (!dataQueue.empty()) {
-                    delete dataQueue.back();
-                    dataQueue.pop_back();
                 }
             }
         }
@@ -438,20 +440,20 @@ ComplexPolar ImpedanceReader::factorOutParallelCapacitance(ComplexPolar impedanc
     return result;
 }
 
-ComplexPolar ImpedanceReader::measureComplexAmplitude(const deque<RHXDataBlock*> &dataQueue, int stream, int chipChannel,
+ComplexPolar ImpedanceReader::measureComplexAmplitude(const vector<RHXDataBlock> &data, int stream, int chipChannel,
                                                       double sampleRate, double frequency, int numPeriods, QDataStream *outStream) const
 {
     int samplesPerDataBlock = RHXDataBlock::samplesPerDataBlock(state->getControllerTypeEnum());
-    int numBlocks = (int) dataQueue.size();
+    int numBlocks = (int) data.size();
 
     // Copy waveform data from data blocks.
     vector<double> waveform(samplesPerDataBlock * numBlocks);
     int index = 0;
     for (int block = 0; block < numBlocks; ++block) {
         for (int t = 0; t < samplesPerDataBlock; ++t) {
-            waveform[index++] = 0.195 * (double)(dataQueue[block]->amplifierData(stream, chipChannel, t) - 32768);
+            waveform[index++] = 0.195 * (double)(data[block].amplifierData(stream, chipChannel, t) - 32768);
             if (outStream) {
-                *outStream << 0.195 * (double)(dataQueue[block]->amplifierData(stream, chipChannel, t) - 32768);
+                *outStream << 0.195 * (double)(data[block].amplifierData(stream, chipChannel, t) - 32768);
             }
         }
     }

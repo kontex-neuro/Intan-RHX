@@ -1,3 +1,4 @@
+#include "abstractrhxcontroller.h"
 #include "controlpanelconfiguretab.h"
 #include "testcontrolpanel.h"
 #include "controlwindow.h"
@@ -777,14 +778,16 @@ void TestControlPanel::recordDummySegment(double duration, int portIndex)
     }
 
     // Put duration of data into amplifierPreFilter.
-    rhxController->run();
-    while (rhxController->isRunning()) {
+    auto future =
+        std::async(&AbstractRHXController::runAndReadDataBlocks, rhxController, numBlocks);
+    //Possibly put in progress bar and LED increment here
+    while (future.wait_for(std::chrono::milliseconds(1)) == std::future_status::timeout)
         qApp->processEvents();
-        //Possibly put in progress bar and LED increment here
+    auto data = future.get();
+    if (!data.has_value()) {
+        std::cerr << "Error reading data blocks";
+        return;
     }
-
-    deque<RHXDataBlock*> dataQueue;
-    rhxController->readDataBlocks(numBlocks, dataQueue);
 
     // BEGIN SIMPLIFY LOADAMPLIFIERDATA
     QVector<QVector<QVector<double>>> ampData;
@@ -798,13 +801,11 @@ void TestControlPanel::recordDummySegment(double duration, int portIndex)
             for (channel = 0; channel < channelsPerStream; ++channel) {
                 for (stream = 0; stream < numStreams; ++stream) {
                     // Amplifier waveform units = microvolts
-                    ampData[stream][channel][indexAmp] = 0.195 * (dataQueue.front()->amplifierData(stream, channel, t) - 32768);
+                    ampData[stream][channel][indexAmp] = 0.195 * (data.value()[block].amplifierData(stream, channel, t) - 32768);
                 }
             }
             ++indexAmp;
         }
-        // We are done with this RHXDataBlock object; remove it from dataQueue
-        dataQueue.pop_front();
     }
 
     // END SIMPLIFY LOADAMPLIFIERDATA
@@ -927,14 +928,16 @@ int TestControlPanel::recordShortSegment(QVector<QVector<double> > &channels, do
     }
 
     // Put duration of data into amplifierPreFilter.
-    rhxController->run();
-    while (rhxController->isRunning()) {
+    auto future =
+        std::async(&AbstractRHXController::runAndReadDataBlocks, rhxController, numBlocks);
+    //Possibly put in progress bar and LED increment here
+    while (future.wait_for(std::chrono::milliseconds(1)) == std::future_status::timeout)
         qApp->processEvents();
-        //Possibly put in progress bar and LED increment here
+    auto data = future.get();
+    if (!data.has_value()) {
+        std::cerr << "Error reading data blocks";
+        return 0;
     }
-
-    deque<RHXDataBlock*> dataQueue;
-    rhxController->readDataBlocks(numBlocks, dataQueue);
 
     // BEGIN SIMPLIFY LOADAMPLIFIERDATA
     allocateDoubleArray3D(ampData, numStreams, channelsPerStream, numSamples);
@@ -958,7 +961,7 @@ int TestControlPanel::recordShortSegment(QVector<QVector<double> > &channels, do
             for (channel = 0; channel < channelsPerStream; ++channel) {
                 for (stream = 0; stream < numStreams; ++stream) {
                     // Amplifier waveform units = microvolts
-                    ampData[stream][channel][indexAmp] = 0.195 * (dataQueue.front()->amplifierData(stream, channel, t) - 32768);
+                    ampData[stream][channel][indexAmp] = 0.195 * (data.value()[block].amplifierData(stream, channel, t) - 32768);
                 }
             }
             ++indexAmp;
@@ -969,14 +972,12 @@ int TestControlPanel::recordShortSegment(QVector<QVector<double> > &channels, do
             // Aux waveform units = volts
             // t + 0 returns 73 (read from ROM), t + 1 returns AuxIn1, t + 2 returns AuxIn2, t + 3 returns AuxIn3
             if (state->getControllerTypeEnum() != ControllerStimRecord) {
-                auxInData[0][indexAux] = 0.0000374F * (dataQueue.front()->auxiliaryData(0, 1, 4 * t + 1));
-                auxInData[1][indexAux] = 0.0000374F * (dataQueue.front()->auxiliaryData(0, 1, 4 * t + 2));
-                auxInData[2][indexAux] = 0.0000374F * (dataQueue.front()->auxiliaryData(0, 1, 4 * t + 3));
+                auxInData[0][indexAux] = 0.0000374F * (data.value()[block].auxiliaryData(0, 1, 4 * t + 1));
+                auxInData[1][indexAux] = 0.0000374F * (data.value()[block].auxiliaryData(0, 1, 4 * t + 2));
+                auxInData[2][indexAux] = 0.0000374F * (data.value()[block].auxiliaryData(0, 1, 4 * t + 3));
             }
             ++indexAux;
         }
-        // We are done with this RHXDataBlock object; remove it from dataQueue
-        dataQueue.pop_front();
     }
     // END SIMPLIFY LOADAMPLIFIERDATA
 
@@ -1064,15 +1065,18 @@ int TestControlPanel::recordDCSegment(QVector<QVector<double> > &channels, doubl
     }
 
     // Put duration of data into amplifierPreFilter.
-    rhxController->run();
-    while (rhxController->isRunning()) {
+    auto future =
+        std::async(&AbstractRHXController::runAndReadDataBlocks, rhxController, numBlocks);
+    //Possibly put in progress bar and LED increment here
+    while (future.wait_for(std::chrono::milliseconds(1)) == std::future_status::timeout)
         qApp->processEvents();
-        //Possibly put in progress bar and LED increment here
+    auto data = future.get();
+    if (!data.has_value()) {
+        std::cerr << "Error reading data blocks";
+        return 0;
     }
-    rhxController->setStimCmdMode(false);
 
-    deque<RHXDataBlock*> dataQueue;
-    rhxController->readDataBlocks(numBlocks, dataQueue);
+    rhxController->setStimCmdMode(false);
 
     // BEGIN SIMPLIFY LOADAMPLIFIERDATA
     allocateDoubleArray3D(dcData, numStreams, channelsPerStream, numSamples);
@@ -1095,13 +1099,11 @@ int TestControlPanel::recordDCSegment(QVector<QVector<double> > &channels, doubl
             for (channel = 0; channel < channelsPerStream; ++channel) {
                 for (stream = 0; stream < numStreams; ++stream) {
                     // Amplifier waveform units = microvolts
-                    dcData[stream][channel][indexAmp] = -0.01923F * (dataQueue.front()->dcAmplifierData(stream, channel, t) - 512);
+                    dcData[stream][channel][indexAmp] = -0.01923F * (data.value()[block].dcAmplifierData(stream, channel, t) - 512);
                 }
             }
             ++indexAmp;
         }
-        // We are done with this RHXDataBlock object; remove it from dataQueue
-        dataQueue.pop_front();
     }
     // END SIMPLIFY LOADAMPLIFIERDATA
 
@@ -1165,14 +1167,16 @@ int TestControlPanel::recordFSSegment(QVector<QVector<double> > &channels, doubl
     }
 
     // Put 0.1 s of data
-    rhxController->run();
-    while (rhxController->isRunning()) {
+    auto future =
+        std::async(&AbstractRHXController::runAndReadDataBlocks, rhxController, numBlocks);
+    // Possibly put in progress bar and LED increment here
+    while (future.wait_for(std::chrono::milliseconds(1)) == std::future_status::timeout)
         qApp->processEvents();
-        // Possibly put in progress bar and LED increment here
+    auto data = future.get();
+    if (!data.has_value()) {
+        std::cerr << "Error reading data blocks";
+        return 0;
     }
-
-    deque<RHXDataBlock*> dataQueue;
-    rhxController->readDataBlocks(numBlocks, dataQueue);
 
     // BEGIN SIMPLIFY LOADAMPLIFIERDATA
     allocateDoubleArray3D(ampData, numStreams, channelsPerStream, numSamples);
@@ -1195,13 +1199,11 @@ int TestControlPanel::recordFSSegment(QVector<QVector<double> > &channels, doubl
             for (channel = 0; channel < channelsPerStream; ++channel) {
                 for (stream = 0; stream < numStreams; ++stream) {
                     // Amplifier waveform units = microvolts
-                    ampData[stream][channel][indexAmp] = 0.195 * (dataQueue.front()->amplifierData(stream, channel, t) - 32768);
+                    ampData[stream][channel][indexAmp] = 0.195 * (data.value()[block].amplifierData(stream, channel, t) - 32768);
                 }
             }
             ++indexAmp;
         }
-        // We are done with this RHXDataBlock object; remove it from dataQueue
-        dataQueue.pop_front();
     }
     // END SIMPLIFY LOADAMPLIFIERDATA
 

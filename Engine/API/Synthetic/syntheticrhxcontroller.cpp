@@ -34,6 +34,7 @@
 
 #include <QDebug>
 #include <chrono>
+#include <expected>
 #include <iostream>
 #include <thread>
 
@@ -51,49 +52,45 @@ SyntheticRHXController::~SyntheticRHXController()
 }
 
 // For a physical board, read data block from the USB interface. Fill given dataBlock from USB buffer.
-bool SyntheticRHXController::readDataBlock(RHXDataBlock *dataBlock)
-{
-    lock_guard<mutex> lockOk(okMutex);
-
-    unsigned int numBytesToRead = BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
-
-    if (numBytesToRead > usbBufferSize) {
-        cerr << "Error in SyntheticRHXController::readDataBlock: USB buffer size exceeded.  " <<
-                "Increase value of MAX_NUM_BLOCKS.\n";
-        return false;
-    }
-
-    dataBlock->fillFromUsbBuffer(usbBuffer, 0);
-
-    return true;
-}
+// bool SyntheticRHXController::readDataBlock(RHXDataBlock *dataBlock)
+// {
+//     lock_guard<mutex> lockOk(okMutex);
+// 
+//     unsigned int numBytesToRead = BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
+// 
+//     if (numBytesToRead > usbBufferSize) {
+//         cerr << "Error in SyntheticRHXController::readDataBlock: USB buffer size exceeded.  " <<
+//                 "Increase value of MAX_NUM_BLOCKS.\n";
+//         return false;
+//     }
+// 
+//     dataBlock->fillFromUsbBuffer(usbBuffer, 0);
+// 
+//     return true;
+// }
 
 // For a physical board, read a certain number of USB data blocks, and append them to queue.
 // Return true if data blocks were available.
-bool SyntheticRHXController::readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue)
+std::expected<std::vector<RHXDataBlock>, std::string> SyntheticRHXController::runAndReadDataBlocks(int numBlocks) 
 {
     lock_guard<mutex> lockOk(okMutex);
 
     unsigned int numWordsToRead = numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
 
     if (numWordsInFifo() < numWordsToRead)
-        return false;
+        return std::unexpected{"Not enough data to read"};
 
     unsigned int numBytesToRead = BytesPerWord * numWordsToRead;
 
     if (numBytesToRead > usbBufferSize) {
-        cerr << "Error in SyntheticRHXController::readDataBlocks: USB buffer size exceeded.  " <<
-                "Increase value of MAX_NUM_BLOCKS.\n";
-        return false;
+        return std::unexpected{"USB buffer size exceeded. Increase value of MAX_NUM_BLOCKS."};
     }
-
+    std::vector<RHXDataBlock> data_blocks;
     for (int i = 0; i < numBlocks; ++i) {
-        RHXDataBlock* dataBlock = new RHXDataBlock(type, numDataStreams);
-        dataBlock->fillFromUsbBuffer(usbBuffer, i);
-        dataQueue.push_back(dataBlock);
+        data_blocks.emplace_back(type, numDataStreams);
+        data_blocks.back().fillFromUsbBuffer(usbBuffer, i);
     }
-
-    return true;
+    return data_blocks;
 }
 
 // For a physical board, read a certain number of USB data blocks, and write the raw bytes to a buffer.
@@ -110,9 +107,9 @@ struct SyntheticDataStream final : public SyntheticRHXController::DataStream {
         receive_callback &&recv_event,
         std::size_t chunk_size,
         SyntheticRHXController& dev
-    ) : dev(dev), xdaq::Device::DataStream(std::move(recv_event))
+    ) : dev(dev)
     {
-        thread = std::thread([this, chunk_size]() {
+        thread = std::thread([this, chunk_size, on_receive=std::move(recv_event)]() mutable {
             while (running) {
                 auto const read_buffer = new unsigned char[chunk_size];
                 const auto read = this->dev.readDataBlocksRaw(1, read_buffer);
@@ -129,7 +126,7 @@ struct SyntheticDataStream final : public SyntheticRHXController::DataStream {
                     });
                 else std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
-            this->on_receive(xdaq::DataStream::Events::Stop{});
+            on_receive(xdaq::DataStream::Events::Stop{});
         });
     }
 
@@ -139,7 +136,6 @@ struct SyntheticDataStream final : public SyntheticRHXController::DataStream {
     {
         running = false;
         if (thread.joinable()) thread.join();
-        on_receive = nullptr;
     }
 
     std::thread thread;
@@ -149,7 +145,8 @@ struct SyntheticDataStream final : public SyntheticRHXController::DataStream {
 
 std::optional<std::unique_ptr<SyntheticRHXController::DataStream>>
 SyntheticRHXController::start_read_stream(
-    std::uint32_t addr, typename xdaq::DataStream::receive_callback &&receive_event
+    std::uint32_t addr, typename xdaq::DataStream::receive_callback &&receive_event,
+    std::size_t chunk_size
 )
 {
     unsigned int data_block_size =

@@ -71,7 +71,6 @@ private:
 
     uint8_t* usbBuffer;
     int bufferSize;
-    int usbBufferIndex;
 
     bool memoryAllocated;
     double memoryNeededGB;

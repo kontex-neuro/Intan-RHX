@@ -35,6 +35,7 @@
 #include <QElapsedTimer>
 #include <cstdint>
 #include <iostream>
+#include <thread>
 
 #include "rhxglobals.h"
 
@@ -50,8 +51,7 @@ USBDataThread::USBDataThread(
       keepGoing(false),
       running(false),
       stopThread(false),
-      numUsbBlocksToRead(1),
-      usbBufferIndex(0)
+      numUsbBlocksToRead(1)
 {
     bufferSize =
         (BufferSizeInBlocks + 1) * BytesPerWord *
@@ -106,9 +106,12 @@ void USBDataThread::run()
             const auto is_xdaq = !(controller->isSynthetic() || controller->isPlayback());
             const auto use_frame_size = is_xdaq ? xdaq_frame_size : intan_frame_size;
 
+            constexpr int hw_events_per_sec = 100;
+            const auto expected_data_rate = xdaq_frame_size * controller->getSampleRate();
+            const int chunk_size = expected_data_rate / hw_events_per_sec;
+
             controller->setStimCmdMode(true);
             controller->setContinuousRunMode(true);
-            controller->run();
             fifoReportTimer.start();
             // loopTimer.start();
             // workTimer.start();
@@ -118,35 +121,45 @@ void USBDataThread::run()
             //                            controller->getSampleRate();
             const auto streams = controller->getNumEnabledDataStreams();
 
-            auto newStream = controller->start_read_stream(0xa0, [&](auto &&event) {
-                if (!std::holds_alternative<xdaq::DataStream::Events::OwnedData>(event)) return;
-                auto &&data = std::get<xdaq::DataStream::Events::OwnedData>(event);
-                std::copy(
-                    data.buffer.get(), data.buffer.get() + data.length, usbBuffer + usbBufferIndex
-                );
-                bytesInBuffer = usbBufferIndex + data.length;
 
-                if (!errorChecking) {
-                    // If not checking for USB data glitches, just write all the data to the FIFO
-                    // buffer.
-                    // TODO: read 32-channel digital IO
-                    if (!usbFifo->writeToBuffer(
-                            &usbBuffer[usbBufferIndex],
-                            (data.length + usbBufferIndex) / BytesPerWord
-                        )) {
-                        cerr << "USBDataThread: USB FIFO overrun (1)." << '\n';
-                    }
-                    usbBufferIndex = 0;
-                } else {
-                    usbBufferIndex = 0;
-                    // Otherwise, check each USB data block for the correct header bytes before
-                    // writing.
-                    while (usbBufferIndex <= bytesInBuffer - use_frame_size - USBHeaderSizeInBytes
-                    ) {
-                        if (RHXDataBlock::checkUsbHeader(usbBuffer, usbBufferIndex, type) &&
-                            RHXDataBlock::checkUsbHeader(
-                                usbBuffer, usbBufferIndex + use_frame_size, type
+            auto newStream = controller->start_read_stream(
+                0xa0,
+                [&, usbBufferIndex = 0](auto &&event) mutable {
+                    if (!std::holds_alternative<xdaq::DataStream::Events::OwnedData>(event)) return;
+                    auto &&data = std::get<xdaq::DataStream::Events::OwnedData>(event);
+                    std::copy(
+                        data.buffer.get(),
+                        data.buffer.get() + data.length,
+                        usbBuffer + usbBufferIndex
+                    );
+                    bytesInBuffer = usbBufferIndex + data.length;
+
+                    if (!errorChecking) {
+                        // If not checking for USB data glitches, just write all the data to the
+                        // FIFO buffer.
+                        // TODO: read 32-channel digital IO
+                        if (!usbFifo->writeToBuffer(
+                                &usbBuffer[usbBufferIndex],
+                                (data.length + usbBufferIndex) / BytesPerWord
                             )) {
+                            cerr << "USBDataThread: USB FIFO overrun (1)." << '\n';
+                        }
+                        usbBufferIndex = 0;
+                    } else {
+                        usbBufferIndex = 0;
+                        // Otherwise, check each USB data block for the correct header bytes before
+                        // writing.
+                        while (usbBufferIndex <=
+                               bytesInBuffer - use_frame_size - USBHeaderSizeInBytes) {
+                            if (!RHXDataBlock::checkUsbHeader(usbBuffer, usbBufferIndex, type) ||
+                                !RHXDataBlock::checkUsbHeader(
+                                    usbBuffer, usbBufferIndex + use_frame_size, type
+                                )) {
+                                // If headers are not found, advance word by word until we
+                                // find them
+                                usbBufferIndex += 2;
+                                continue;
+                            }
                             const auto frame = usbBuffer + usbBufferIndex;
                             if (is_xdaq && (type == ControllerRecordUSB3)) {
                                 const auto dio_off = xdaq_frame_size - 8;
@@ -193,67 +206,73 @@ void USBDataThread::run()
                                 }
                                 usbBufferIndex += intan_frame_size;
                             }
+                        }
+                        // If any data remains in usbBuffer, shift it to the front.
+                        if (usbBufferIndex > 0) {
+                            int j = 0;
+                            for (int i = usbBufferIndex; i < bytesInBuffer; ++i) {
+                                usbBuffer[j++] = usbBuffer[i];
+                            }
+                            usbBufferIndex = j;
                         } else {
-                            // If headers are not found, advance word by word until we
-                            // find them
-                            usbBufferIndex += 2;
+                            // If usbBufferIndex == 0, we didn't have enough data to work
+                            // with; append more.
+                            usbBufferIndex = bytesInBuffer;
+                        }
+                        if (usbBufferIndex + numBytesRead >= bufferSize) {
+                            cerr << "USBDataThread: USB buffer overrun (3)." << '\n';
                         }
                     }
-                    // If any data remains in usbBuffer, shift it to the front.
-                    if (usbBufferIndex > 0) {
-                        int j = 0;
-                        for (int i = usbBufferIndex; i < bytesInBuffer; ++i) {
-                            usbBuffer[j++] = usbBuffer[i];
-                        }
-                        usbBufferIndex = j;
-                    } else {
-                        // If usbBufferIndex == 0, we didn't have enough data to work
-                        // with; append more.
-                        usbBufferIndex = bytesInBuffer;
+
+                    bool hasBeenUpdated = false;
+                    unsigned int wordsInFifo = controller->getLastNumWordsInFifo(hasBeenUpdated);
+                    if (hasBeenUpdated || (fifoReportTimer.nsecsElapsed() > qint64(50e6))) {
+                        double fifoPercentageFull = 100.0 * wordsInFifo / FIFOCapacityInWords;
+                        emit hardwareFifoReport(fifoPercentageFull);
+                        fifoReportTimer.restart();
+                        // cout << "Opal Kelly FIFO is " << (int) fifoPercentageFull << "%
+                        // full." << EndOfLine;
                     }
-                    if (usbBufferIndex + numBytesRead >= bufferSize) {
-                        cerr << "USBDataThread: USB buffer overrun (3)." << '\n';
-                    }
-                }
 
-                bool hasBeenUpdated = false;
-                unsigned int wordsInFifo = controller->getLastNumWordsInFifo(hasBeenUpdated);
-                if (hasBeenUpdated || (fifoReportTimer.nsecsElapsed() > qint64(50e6))) {
-                    double fifoPercentageFull = 100.0 * wordsInFifo / FIFOCapacityInWords;
-                    emit hardwareFifoReport(fifoPercentageFull);
-                    fifoReportTimer.restart();
-                    // cout << "Opal Kelly FIFO is " << (int) fifoPercentageFull << "%
-                    // full." << EndOfLine;
-                }
-
-                // double workTime = (double) workTimer.nsecsElapsed();
-                // double loopTime = (double) loopTimer.nsecsElapsed();
-                // workTimer.restart();
-                // loopTimer.restart();
-                // if (reportTimer.elapsed() >= 2000) {
-                //     double cpuUsage = 100.0 * workTime / loopTime;
-                //     cout << "UsbDataThread CPU usage: " << (int) cpuUsage << "%" <<
-                //     std::endl; double relativeSpeed = 100.0 * workTime /
-                //     usbDataPeriodNsec; cout << "UsbDataThread speed relative to USB
-                //     data rate: " << (int) relativeSpeed << "%" << std::endl;
-                //     reportTimer.restart();
-                // }
-            });
-
-            while (keepGoing && !stopThread) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
+                    // double workTime = (double) workTimer.nsecsElapsed();
+                    // double loopTime = (double) loopTimer.nsecsElapsed();
+                    // workTimer.restart();
+                    // loopTimer.restart();
+                    // if (reportTimer.elapsed() >= 2000) {
+                    //     double cpuUsage = 100.0 * workTime / loopTime;
+                    //     cout << "UsbDataThread CPU usage: " << (int) cpuUsage << "%" <<
+                    //     std::endl; double relativeSpeed = 100.0 * workTime /
+                    //     usbDataPeriodNsec; cout << "UsbDataThread speed relative to USB
+                    //     data rate: " << (int) relativeSpeed << "%" << std::endl;
+                    //     reportTimer.restart();
+                    // }
+                },
+                chunk_size
+            );
 
             if (!newStream) {
                 cerr << "Failed to start stream..." << endl;
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                running = false;
+                continue;
             }
+
+            controller->run();
+
+            while (keepGoing && !stopThread) {
+                std::this_thread::yield();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            newStream.reset();
 
             controller->setContinuousRunMode(false);
             controller->setStimCmdMode(false);
             controller->setMaxTimeStep(0);
+
+            while (controller->isRunning())
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
             controller->flush();  // Flush USB FIFO on Opal Kelly board.
-            usbBufferIndex = 0;
 
             running = false;
         } else {

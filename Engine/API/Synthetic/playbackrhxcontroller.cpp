@@ -46,49 +46,45 @@ PlaybackRHXController::~PlaybackRHXController()
 }
 
 // For a physical board, read data block from the USB interface. Fill given dataBlock from USB buffer.
-bool PlaybackRHXController::readDataBlock(RHXDataBlock *dataBlock)
-{
-    lock_guard<mutex> lockOk(okMutex);
-
-    unsigned int numBytesToRead = BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
-
-    if (numBytesToRead > usbBufferSize) {
-        cerr << "Error in PlaybackRHXController::readDataBlock: USB buffer size exceeded.  " <<
-                "Increase value of MAX_NUM_BLOCKS.\n";
-        return false;
-    }
-
-    dataBlock->fillFromUsbBuffer(usbBuffer, 0);
-
-    return true;
-}
+// bool PlaybackRHXController::readDataBlock(RHXDataBlock *dataBlock)
+// {
+//     lock_guard<mutex> lockOk(okMutex);
+// 
+//     unsigned int numBytesToRead = BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
+// 
+//     if (numBytesToRead > usbBufferSize) {
+//         cerr << "Error in PlaybackRHXController::readDataBlock: USB buffer size exceeded.  " <<
+//                 "Increase value of MAX_NUM_BLOCKS.\n";
+//         return false;
+//     }
+// 
+//     dataBlock->fillFromUsbBuffer(usbBuffer, 0);
+// 
+//     return true;
+// }
 
 // For a physical board, read a certain number of USB data blocks, and append them to queue.
 // Return true if data blocks were available.
-bool PlaybackRHXController::readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue)
+std::expected<std::vector<RHXDataBlock>, std::string> PlaybackRHXController::runAndReadDataBlocks(int numBlocks)
 {
     lock_guard<mutex> lockOk(okMutex);
 
     unsigned int numWordsToRead = numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
 
     if (numWordsInFifo() < numWordsToRead)
-        return false;
+        return std::unexpected{"Not enough data to read"};
 
     unsigned int numBytesToRead = BytesPerWord * numWordsToRead;
 
     if (numBytesToRead > usbBufferSize) {
-        cerr << "Error in PlaybackRHXController::readDataBlocks: USB buffer size exceeded.  " <<
-                "Increase value of MAX_NUM_BLOCKS.\n";
-        return false;
+        return std::unexpected{"USB buffer size exceeded. Increase value of MAX_NUM_BLOCKS."};
     }
-
+    std::vector<RHXDataBlock> data_blocks;
     for (int i = 0; i < numBlocks; ++i) {
-        RHXDataBlock* dataBlock = new RHXDataBlock(type, numDataStreams);
-        dataBlock->fillFromUsbBuffer(usbBuffer, i);
-        dataQueue.push_back(dataBlock);
+        data_blocks.emplace_back(type, numDataStreams);
+        data_blocks.back().fillFromUsbBuffer(usbBuffer, i);
     }
-
-    return true;
+    return data_blocks;
 }
 
 // For a physical board, read a certain number of USB data blocks, and write the raw bytes to a buffer.
@@ -106,9 +102,9 @@ struct PlaybackDataStream final : public PlaybackRHXController::DataStream {
         receive_callback &&recv_event,
         std::size_t chunk_size,
         PlaybackRHXController& dev
-    ) : dev(dev), xdaq::Device::DataStream(std::move(recv_event))
+    ) : dev(dev)
     {
-        thread = std::thread([this, chunk_size]() {
+        thread = std::thread([this, chunk_size, on_receive=std::move(recv_event)]() mutable {
             while (running) {
                 auto const read_buffer = new unsigned char[chunk_size];
                 const auto read = this->dev.readDataBlocksRaw(1, read_buffer);
@@ -125,7 +121,7 @@ struct PlaybackDataStream final : public PlaybackRHXController::DataStream {
                     });
                 else std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
-            this->on_receive(xdaq::DataStream::Events::Stop{});
+            on_receive(xdaq::DataStream::Events::Stop{});
         });
     }
 
@@ -135,7 +131,6 @@ struct PlaybackDataStream final : public PlaybackRHXController::DataStream {
     {
         running = false;
         if (thread.joinable()) thread.join();
-        on_receive = nullptr;
     }
 
     std::thread thread;
@@ -145,7 +140,7 @@ struct PlaybackDataStream final : public PlaybackRHXController::DataStream {
 
 std::optional<std::unique_ptr<PlaybackRHXController::DataStream>>
 PlaybackRHXController::start_read_stream(
-    std::uint32_t addr, typename xdaq::DataStream::receive_callback &&receive_event
+    std::uint32_t addr, typename xdaq::DataStream::receive_callback &&receive_event, std::size_t chunk_size
 )
 {
     unsigned int data_block_size =

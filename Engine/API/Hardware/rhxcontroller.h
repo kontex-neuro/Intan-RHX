@@ -105,11 +105,13 @@ public:
     void flush() override;
     void resetFpga() override;
 
-    bool readDataBlock(RHXDataBlock *dataBlock) override;
-    bool readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue) override;
-    long readDataBlocksRaw(int numBlocks, uint8_t* buffer) override;
+    std::expected<std::vector<RHXDataBlock>, std::string> runAndReadDataBlocks(int numBlocks
+    ) override;
+    // bool readDataBlock(RHXDataBlock *dataBlock) override;
+    // bool readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue) override;
+    // long readDataBlocksRaw(int numBlocks, uint8_t* buffer) override;
 
-    int queueToFile(deque<RHXDataBlock*> &dataQueue, ofstream &saveOut);
+    // int queueToFile(deque<RHXDataBlock*> &dataQueue, ofstream &saveOut);
 
     void setContinuousRunMode(bool continuousMode) override;
     void setMaxTimeStep(unsigned int maxTimeStep) override;
@@ -173,7 +175,9 @@ public:
     void setVStimBus(int BusMode) override;
 
     std::optional<std::unique_ptr<DataStream>> start_read_stream(
-        std::uint32_t addr, typename xdaq::DataStream::receive_callback&& receive_event) override;
+        std::uint32_t addr, typename xdaq::DataStream::receive_callback &&receive_event,
+        std::size_t chunk_size
+    ) override;
 
 private:
     // Objects of this class should not be copied.  Disable copy and assignment operators.
