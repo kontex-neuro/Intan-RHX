@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.3.2
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2024 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -88,7 +88,7 @@ void CommandParser::getStateItemCommand(StateSingleItem* item)
 void CommandParser::setStateItemCommand(StateSingleItem* item, const QString& value)
 {
     if (!item->setValue(value)) {
-        cerr << "CommandParser::setStateItemCommand: invalid value for " << item->getParameterName().toStdString() << '\n';
+        std::cerr << "CommandParser::setStateItemCommand: invalid value for " << item->getParameterName().toStdString() << '\n';
         errorTCP(item->getParameterName(), item->getValidValues());
         return;
     }
@@ -122,7 +122,7 @@ void CommandParser::getCommandSlot(QString parameter)
     QString pathOrBase;
     StateFilenameItem* filenameItem = state->locateStateFilenameItem(state->stateFilenameItems, parameterLower, pathOrBase); // Can be filename.path or filename.basefilename
     if (filenameItem) {
-        cout << ">> " << (filenameItem->getParameterName().toLower() + "." + pathOrBase).toStdString() << '\n';
+        std::cout << ">> " << (filenameItem->getParameterName().toLower() + "." + pathOrBase).toStdString() << '\n';
         getStateFilenameItemCommand(filenameItem, pathOrBase);
         return;
     }
@@ -152,7 +152,7 @@ void CommandParser::getCommandSlot(QString parameter)
     // Try this parameter at the Global level
     item = state->locateStateSingleItem(state->globalItems, parameterLower);
     if (item) {
-        cout << ">> " << item->getParameterName().toLower().toStdString() << '\n';
+        std::cout << ">> " << item->getParameterName().toLower().toStdString() << '\n';
         getStateItemCommand(item);
         return;
     }

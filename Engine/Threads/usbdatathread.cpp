@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.3.2
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2024 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -57,8 +57,7 @@ USBDataThread::USBDataThread(
         (BufferSizeInBlocks + 1) * BytesPerWord *
         RHXDataBlock::dataBlockSizeInWords(controller->getType(), controller->maxNumDataStreams());
     memoryNeededGB = sizeof(uint8_t) * bufferSize / (1024.0 * 1024.0 * 1024.0);
-    std::cout << "USBDataThread: Allocating " << bufferSize / 1.0e6 << " MBytes for USB buffer."
-              << std::endl;
+    std::cout << "USBDataThread: Allocating " << bufferSize / 1.0e6 << " MBytes for USB buffer." << std::endl;
     usbBuffer = nullptr;
 
     memoryAllocated = true;
@@ -66,8 +65,7 @@ USBDataThread::USBDataThread(
         usbBuffer = new uint8_t[bufferSize];
     } catch (std::bad_alloc &) {
         memoryAllocated = false;
-        cerr << "Error: USBDataThread constructor could not allocate " << memoryNeededGB
-             << " GB of memory." << '\n';
+        std::cerr << "Error: USBDataThread constructor could not allocate " << memoryNeededGB << " GB of memory." << std::endl;
     }
 
     // cout << "Ideal thread count: " << QThread::idealThreadCount() << EndOfLine;
@@ -142,7 +140,7 @@ void USBDataThread::run()
                                 &usbBuffer[usbBufferIndex],
                                 (data.length + usbBufferIndex) / BytesPerWord
                             )) {
-                            cerr << "USBDataThread: USB FIFO overrun (1)." << '\n';
+                            std::cerr << "USBDataThread: USB FIFO overrun (1)." << '\n';
                         }
                         usbBufferIndex = 0;
                     } else {
@@ -168,14 +166,14 @@ void USBDataThread::run()
                                 if (!usbFifo->writeToBuffer(
                                         frame + 0, (pad_off - 0 + (streams % 4) * 2) / BytesPerWord
                                     )) {
-                                    cerr << "USBDataThread: USB FIFO overrun (2)." << '\n';
+                                    std::cerr << "USBDataThread: USB FIFO overrun (2)." << '\n';
                                 }
                                 frame[dio_off + 2] = frame[dio_off + 4];
                                 frame[dio_off + 3] = frame[dio_off + 5];
                                 if (!usbFifo->writeToBuffer(
                                         frame + io_off, (16 + 4) / BytesPerWord
                                     )) {
-                                    cerr << "USBDataThread: USB FIFO overrun (2)." << '\n';
+                                    std::cerr << "USBDataThread: USB FIFO overrun (2)." << '\n';
                                 }
                                 usbBufferIndex += xdaq_frame_size;
                             } else if (is_xdaq && (type == ControllerStimRecord)) {
@@ -186,7 +184,7 @@ void USBDataThread::run()
                                 if (!usbFifo->writeToBuffer(
                                         frame + 0, (pad_off - 0) / BytesPerWord
                                     )) {
-                                    cerr << "USBDataThread: USB FIFO overrun (2)." << '\n';
+                                    std::cerr << "USBDataThread: USB FIFO overrun (2)." << '\n';
                                 }
                                 // move 32 DIO as 16 DIO
                                 frame[dio_off + 2] = frame[dio_off + 4];
@@ -195,14 +193,14 @@ void USBDataThread::run()
                                 if (!usbFifo->writeToBuffer(
                                         frame + io_off, (16 + 16 + 4) / BytesPerWord
                                     )) {
-                                    cerr << "USBDataThread: USB FIFO overrun (2)." << '\n';
+                                    std::cerr << "USBDataThread: USB FIFO overrun (2)." << '\n';
                                 }
                                 usbBufferIndex += xdaq_frame_size;
                             } else {
                                 if (!usbFifo->writeToBuffer(
                                         frame, intan_frame_size / BytesPerWord
                                     )) {
-                                    cerr << "USBDataThread: USB FIFO overrun (2)." << '\n';
+                                    std::cerr << "USBDataThread: USB FIFO overrun (2)." << '\n';
                                 }
                                 usbBufferIndex += intan_frame_size;
                             }
@@ -220,7 +218,7 @@ void USBDataThread::run()
                             usbBufferIndex = bytesInBuffer;
                         }
                         if (usbBufferIndex + numBytesRead >= bufferSize) {
-                            cerr << "USBDataThread: USB buffer overrun (3)." << '\n';
+                            std::cerr << "USBDataThread: USB buffer overrun (3)." << '\n';
                         }
                     }
 
@@ -251,7 +249,7 @@ void USBDataThread::run()
             );
 
             if (!newStream) {
-                cerr << "Failed to start stream..." << endl;
+                std::cerr << "Failed to start stream..." << std::endl;
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 running = false;
                 continue;
@@ -296,8 +294,8 @@ bool USBDataThread::isActive() const { return running; }
 void USBDataThread::setNumUsbBlocksToRead(int numUsbBlocksToRead_)
 {
     if (numUsbBlocksToRead_ > BufferSizeInBlocks) {
-        cerr << "USBDataThread::setNumUsbBlocksToRead: Buffer is too small to read "
-             << numUsbBlocksToRead_ << " blocks.  Increase BUFFER_SIZE_IN_BLOCKS." << '\n';
+        std::cerr << "USBDataThread::setNumUsbBlocksToRead: Buffer is too small to read " << numUsbBlocksToRead_ <<
+                " blocks.  Increase BUFFER_SIZE_IN_BLOCKS." << '\n';
     }
     numUsbBlocksToRead = numUsbBlocksToRead_;
 }

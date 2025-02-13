@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.3.2
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2024 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -28,15 +28,12 @@
 //
 //------------------------------------------------------------------------------
 
-#include "stimparamdialog.h"
-#include "anoutdialog.h"
-#include "digoutdialog.h"
-#include "controlpanelKONTEXtab.h"
 #include "controlpanelbandwidthtab.h"
 #include "controlpanelimpedancetab.h"
 #include "controlpanelaudioanalogtab.h"
 #include "controlpanelconfiguretab.h"
 #include "controlpaneltriggertab.h"
+#include "controlpanelKONTEXtab.h"
 #include "controlwindow.h"
 #include "controlpanel.h"
 
@@ -170,9 +167,9 @@ void ControlPanel::setCurrentTabName(QString tabName)
         tabWidget->setCurrentWidget(configureTab);
     } else if (tabName == tr("Trigger")) {
         tabWidget->setCurrentWidget(triggerTab);
-    } else if (tabWidget->currentWidget() == KonteXTab) {
+    } else if (tabName == tr("KonteX")) {
         tabWidget->setCurrentWidget(KonteXTab);
-    } else if (tabWidget->currentWidget() == close_loop_tab) {
+    } else if (tabName == tr("Close Loop")) {
         tabWidget->setCurrentWidget(close_loop_tab);
     } else {
         qDebug() << "Unrecognized tabName.";
@@ -271,7 +268,7 @@ QHBoxLayout* ControlPanel::createDisplayLayout()
     connect(timeScaleComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(changeTimeScale(int)));
 
     clipWaveformsCheckBox = new QCheckBox(tr("Clip Waves"), this);
-    connect(clipWaveformsCheckBox, SIGNAL(stateChanged(int)), this, SLOT(clipWaveforms(int)));
+    connect(clipWaveformsCheckBox, SIGNAL(checkStateChanged(Qt::CheckState)), this, SLOT(clipWaveforms(Qt::CheckState)));
 
     QVBoxLayout *timeScaleColumn = new QVBoxLayout;
     timeScaleColumn->addWidget(clipWaveformsCheckBox);

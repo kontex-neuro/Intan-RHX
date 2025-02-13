@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.3.2
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2024 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -153,7 +153,7 @@ ProbeMapWindow::ProbeMapWindow(SystemState* state_, ControllerInterface* control
     toolBar->addAction(impedanceViewAction);
     toolBar->addAction(spikeViewAction);
 
-    this->addToolBar(Qt::RightToolBarArea, toolBar);
+    addToolBar(Qt::RightToolBarArea, toolBar);
 
     impedanceGradient = new ImpedanceGradient();
     impedanceGradient->hide();
@@ -475,7 +475,7 @@ void ProbeMapWindow::changeChannelImpedance(QString nativeName, float impedanceM
 void ProbeMapWindow::linkAndUpdateSites()
 {
     // Go through each amplifier channel in state.
-    vector<string> amplifierChannelNames = state->signalSources->amplifierChannelsNameList();
+    std::vector<std::string> amplifierChannelNames = state->signalSources->amplifierChannelsNameList();
 
     for (unsigned int channel = 0; channel < amplifierChannelNames.size(); channel++) {
         // Find all sites with this name.
@@ -540,7 +540,7 @@ void ProbeMapWindow::clearTabWidget() {
 QVector<ElectrodeSite*> ProbeMapWindow::getSitesWithName(const QString& nativeName)
 {
     QString name = nativeName.left(1);
-    int channelNum = nativeName.right(nativeName.length() - 2).toInt();
+    int channelNum = QStringView{nativeName}.right(nativeName.length() - 2).toInt();
     QVector<ElectrodeSite*> sites;
 
     for (int pageIndex = 0; pageIndex < state->probeMapSettings.pages.size(); pageIndex++) {

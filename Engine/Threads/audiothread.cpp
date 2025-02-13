@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.3.2
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2024 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -28,6 +28,7 @@
 //
 //------------------------------------------------------------------------------
 
+#include <QMediaDevices>
 #include "signalsources.h"
 #include "audiothread.h"
 
@@ -79,9 +80,9 @@ void AudioThread::initialize()
     }
 
     // Initialize buffer.
-    finalSoundBytesBuffer = new char[NumSoundBytes];
+    finalSoundBytesBuffer.resize(NumSoundBytes);
     for (int i = 0; i < NumSoundBytes; ++i) {
-        finalSoundBytesBuffer[i] = (char) 0;
+        finalSoundBytesBuffer[i] = 0;
     }
 
     // Set up audio format.
@@ -110,22 +111,21 @@ void AudioThread::run()
 
             // Any 'start up' code goes here.
             initialize();
+            QBuffer m_buffer;
+            m_buffer.setBuffer(&finalSoundBytesBuffer);
+            m_buffer.open(QIODevice::ReadOnly);
 
             QDataStream *s = nullptr;
             while (keepGoing && !stopThread) {
 
                 // Start audio (if it's not started already)
-                if (mAudioSink->state() != QAudio::ActiveState || s == nullptr) {
-                    if (s)
-                        delete s;
-                    s = new QDataStream(mAudioSink->start());
+                if (mAudioSink->state() != QAudio::ActiveState) {
+                    mAudioSink->start(&m_buffer);
                 }
 
                 // Wait for samples to arrive from WaveformFifo (enough where, when scaled to 44.1 kHz audio, NumSoundSamples can be written)
                 if (waveformFifo->requestReadNewData(WaveformFifo::ReaderAudio, rawBlockSampleSize)) {
-                    s->device()->seek(0);
-                    s->writeRawData(finalSoundBytesBuffer, NumSoundBytes);
-                    s->device()->seek(0);
+                    m_buffer.seek(0);
 
                     // Populate rawData from WaveformFifo
                     if (!fillBufferFromWaveformFifo()) {
@@ -145,13 +145,9 @@ void AudioThread::run()
            // Any 'finish up' code goes here.
            mAudioSink->stop();
 
-           if (s)
-                delete s;
-
            delete [] rawData;
            delete [] interpFloats;
            delete [] interpInts;
-           delete [] finalSoundBytesBuffer;
 
            running = false;
         } else {
@@ -273,7 +269,7 @@ void AudioThread::processAudioData()
     }
 
     // Fill buffer with final data.
-    char *ptr = finalSoundBytesBuffer;
+    char *ptr = finalSoundBytesBuffer.data();
     for (int i = 0; i < NumSoundSamples; ++i) {
         qToLittleEndian<int16_t>(interpInts[i], ptr);
         ptr += 2;

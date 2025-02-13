@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.3.2
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2024 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -171,7 +171,7 @@ int SignalGroup::numChannels(SignalType type) const
 
 int SignalGroup::minUserOrder(SignalType type) const
 {
-    int min = numeric_limits<int>::max();
+    int min = std::numeric_limits<int>::max();
     for (int i = 0; i < (int) signalChannels.size(); ++i) {
         if (signalChannels[i]->getSignalType() == type) {
             if (signalChannels[i]->getUserOrder() < min) {
@@ -407,8 +407,8 @@ SignalGroup* SignalSources::groupByName(const QString& groupName) const
 // Return a pointer to a SignalChannel with a particular nativeName (e.g., "A-002").
 Channel* SignalSources::channelByName(const QString& nativeName) const
 {
-    string nativeNameStr = nativeName.section('|', 0, 0).toStdString();  // strip off filter name, if present
-    map<string, Channel*>::const_iterator p = channelMap.find(nativeNameStr);
+    std::string nativeNameStr = nativeName.section('|', 0, 0).toStdString();  // strip off filter name, if present
+    std::map<std::string, Channel*>::const_iterator p = channelMap.find(nativeNameStr);
     if (p != channelMap.end()) {
         return p->second;
     }
@@ -416,7 +416,7 @@ Channel* SignalSources::channelByName(const QString& nativeName) const
     return nullptr;
 }
 
-Channel* SignalSources::channelByName(const string& nativeName) const
+Channel* SignalSources::channelByName(const std::string& nativeName) const
 {
     return channelByName(QString::fromStdString(nativeName));
 }
@@ -447,7 +447,7 @@ QString SignalSources::getNativeAndCustomNames(const QString& nativeName) const
     return fullName;
 }
 
-QString SignalSources::getNativeAndCustomNames(const string& nativeName) const
+QString SignalSources::getNativeAndCustomNames(const std::string& nativeName) const
 {
     return getNativeAndCustomNames(QString::fromStdString(nativeName));
 }
@@ -456,7 +456,7 @@ void SignalSources::setSelected(const QString& nativeName, bool selected)
 {
     Channel* channel = channelByName(nativeName);
     if (!channel) {
-        cerr << "SignalSources::setSelected: channel not found from name " << nativeName.toStdString() << '\n';
+        std::cerr << "SignalSources::setSelected: channel not found from name " << nativeName.toStdString() << '\n';
         return;
     }
     channel->setSelected(selected);
@@ -466,7 +466,7 @@ void SignalSources::setSelectedEntireGroupID(const QString& nativeName, bool sel
 {
     Channel* channel = channelByName(nativeName);
     if (!channel) {
-        cerr << "SignalSources::setSelectedEntireGroupID: channel not found from name " << nativeName.toStdString() << '\n';
+        std::cerr << "SignalSources::setSelectedEntireGroupID: channel not found from name " << nativeName.toStdString() << '\n';
         return;
     }
     int groupID = channel->getGroupID();
@@ -590,7 +590,7 @@ int SignalSources::numChannels(SignalType type) const
 int SignalSources::numUSBAmpChannels() const
 {
     int numAmpDataStreams = 0;
-    for (const string &ampName : amplifierChannelsNameList()) {
+    for (const std::string &ampName : amplifierChannelsNameList()) {
         Channel *channel = channelByName(ampName);
         if (channel->getBoardStream() + 1 > numAmpDataStreams) {
             numAmpDataStreams = channel->getBoardStream() + 1;
@@ -618,7 +618,7 @@ QString SignalSources::singleSelectedAmplifierChannelName() const
 {
     int numSelectedChannels = 0;
     QString singleName;
-    vector<string> namelist = amplifierChannelsNameList();
+    std::vector<std::string> namelist = amplifierChannelsNameList();
     for (auto &name : namelist) {
         QString qName = QString::fromStdString(name);
         Channel *thisChannel = channelByName(qName);
@@ -662,7 +662,7 @@ void SignalSources::getSelectedSignals(QList<Channel*>& selectedSignals) const
 
 QString SignalSources::firstChannelName() const
 {
-    vector<string> namelist = amplifierChannelsNameList();
+    std::vector<std::string> namelist = amplifierChannelsNameList();
     if (amplifierChannelsNameList().size() > 0) {
         return QString::fromStdString(namelist[0]);
     } else {
@@ -670,9 +670,9 @@ QString SignalSources::firstChannelName() const
     }
 }
 
-vector<string> SignalSources::amplifierChannelsNameList() const
+std::vector<std::string> SignalSources::amplifierChannelsNameList() const
 {
-    vector<string> namelist;
+    std::vector<std::string> namelist;
     namelist.resize(numAmplifierChannels());
     int index = 0;
     for (int i = 0; i < (int) portGroups.size(); ++i) {
@@ -686,9 +686,9 @@ vector<string> SignalSources::amplifierChannelsNameList() const
     return namelist;
 }
 
-vector<string> SignalSources::completeChannelsNameList() const
+std::vector<std::string> SignalSources::completeChannelsNameList() const
 {
-    vector<string> namelist;
+    std::vector<std::string> namelist;
     for (int i = 0; i < numGroups(); i++) {
         const SignalGroup* group = groupByIndex(i);
         for (int j = 0; j < group->numChannels(); ++j) {
@@ -995,7 +995,7 @@ void SignalSources::restoreState(const DisplayState& savedState)
     for (int i = 0; i < (int) savedState.groups.size(); ++i) {
         const SignalGroup* group = groupByName(savedState.groups[i].name);
         if (!group) {
-            qDebug() << "SignalSources::restoreState: group " << group->getName() << " not found.";
+            qDebug() << "SignalSources::restoreState: group not found.";
             continue;
         } else if (group->numChannels() != (int) savedState.groups[i].signalChannels.size()) {
             qDebug() << "SignalSources::restoreState: group " << group->getName() <<
@@ -1093,7 +1093,7 @@ QColor SignalSources::channelColor(int colorIndex, int numColors) const
 void SignalSources::autoGroupAmplifierChannels(int groupSize)
 {
     if (groupSize < 2 || groupSize > MaxNumWaveformsInGroup) {
-        cerr << "SignalSources::autoGroupAmplifierChannels: illegal groupSize = " << groupSize << '\n';
+        std::cerr << "SignalSources::autoGroupAmplifierChannels: illegal groupSize = " << groupSize << '\n';
         return;
     }
     for (int port = 0; port < numPortGroups(); ++port) {

@@ -111,8 +111,9 @@ TestControlPanel::TestControlPanel(ControllerInterface *controllerInterface_, Ab
     auxInExpectedMedian(1.5),
     acceptableDifference(0.2)
 {
+    reportPresent = false;
     setFocusPolicy(Qt::StrongFocus);
-    this->setFocus();
+    setFocus();
 
     portComboBox = new QComboBox(this);
     portComboBox->addItems(QStringList({"Port A", "Port B", "Port C", "Port D"}));
@@ -400,7 +401,7 @@ YScaleUsed TestControlPanel::slidersEnabled() const
     return yScaleUsed;
 }
 
-void TestControlPanel::setCurrentTabName(QString tabName)
+void TestControlPanel::setCurrentTabName(QString)
 {
     tabWidget->setCurrentWidget(configureTab);
 }
@@ -544,7 +545,7 @@ QHBoxLayout* TestControlPanel::createDisplayLayout()
 
     clipWaveformsCheckBox = new QCheckBox(tr("Clip Waves"), this);
     clipWaveformsCheckBox->setFocusPolicy(Qt::NoFocus);
-    connect(clipWaveformsCheckBox, SIGNAL(stateChanged(int)), this, SLOT(clipWaveforms(int)));
+    connect(clipWaveformsCheckBox, SIGNAL(checkStateChanged(Qt::CheckState)), this, SLOT(clipWaveforms(Qt::CheckState)));
 
     QVBoxLayout *timeScaleColumn = new QVBoxLayout;
     timeScaleColumn->addWidget(clipWaveformsCheckBox);
@@ -1035,7 +1036,7 @@ int TestControlPanel::recordShortSegment(QVector<QVector<double> > &channels, do
     return numSamples;
 }
 
-int TestControlPanel::recordDCSegment(QVector<QVector<double> > &channels, double duration, int portIndex, QVector<QVector<QString>> &dcChannelNames)
+int TestControlPanel::recordDCSegment(double duration, int portIndex, QVector<QVector<QString>> &dcChannelNames)
 {
     // Turn LEDs on to indicate that data acquisition is running.
     ttlOut[15] = 1;
@@ -1106,15 +1107,6 @@ int TestControlPanel::recordDCSegment(QVector<QVector<double> > &channels, doubl
         }
     }
     // END SIMPLIFY LOADAMPLIFIERDATA
-
-    // Probably not necessary - just leave channels as is? Use dcData later...
-//    if (numChannels == 32) {
-//        load32(numSamples, channels, dcData);
-//    }
-
-//    else {
-//        load16(numSamples, channels, dcData);
-//    }
 
     return numSamples;
 }
@@ -1387,8 +1379,8 @@ void TestControlPanel::load32(int numSamples, QVector<QVector<double> > &channel
     }
 
     //Estimate phase of median waveforms
-    double inner_phase = estimatePhase(inner_f, inner_A, t, innerMedian);
-    double outer_phase = estimatePhase(outer_f, outer_A, t, outerMedian);
+    double inner_phase = estimatePhase(inner_f, t, innerMedian);
+    double outer_phase = estimatePhase(outer_f, t, outerMedian);
 
     //Compare best-fit lines to each group of 16 channels
     QVector<double> inner_channels_report;
@@ -1561,8 +1553,8 @@ void TestControlPanel::load64(int numSamples, QVector<QVector<double> > &channel
     }
 
     // Estimate phase of median waveforms
-    double inner_phase = estimatePhase(inner_f, inner_A, t, innerMedian);
-    double outer_phase = estimatePhase(outer_f, outer_A, t, outerMedian);
+    double inner_phase = estimatePhase(inner_f, t, innerMedian);
+    double outer_phase = estimatePhase(outer_f, t, outerMedian);
 
     // Compare best-fit lines to each group of 32 channels
     QVector<double> inner_channels_report;
@@ -1698,7 +1690,7 @@ double TestControlPanel::estimateFrequency(double A, const QVector<double> &t, c
 }
 
 //Estimate the phase by finding the first time the waveform crosses the t-axis positive to negative
-double TestControlPanel::estimatePhase(double f, double A, const QVector<double> &t, const QVector<double> &waveform)
+double TestControlPanel::estimatePhase(double f, const QVector<double> &t, const QVector<double> &waveform)
 {
     double T = 1/f;
     int L = t.size();
@@ -1933,7 +1925,7 @@ void TestControlPanel::testChip()
     eliminateAverageOffset(channels);
 
     // Get largest max - min difference across data. If less than 40 uV, chip is likely dead.
-    double maxSample, minSample = 0;
+    double maxSample = 0, minSample = 0;
     for (int stream = 0; stream < ampData.size(); stream++) {
         for (int channel = 0; channel < ampData[stream].size(); channel++) {
             for (int index = 0; index < ampData[stream][channel].size(); index++) {
@@ -1990,7 +1982,7 @@ void TestControlPanel::testChip()
     double f = estimateFrequency(A, t, median);
 
     //Estimate the phase of the median waveform
-    double phase = estimatePhase(f, A, t, median);
+    double phase = estimatePhase(f, t, median);
 
     /* Amoeba method */
 
@@ -2080,7 +2072,7 @@ void TestControlPanel::testChip()
         double threshold = triangleErrorThresholdLineEdit->text().toDouble();
         for (int channel = 0; channel < channels.size(); channel++) {
             double thisError = rmsError(t, channels[channel], p_initial[0], p_initial[1], p_initial[2]);
-            maxError = max(maxError, thisError);
+            maxError = (std::max)(maxError, thisError);
         }
         if (maxError < threshold) {
             finalLoops++;
@@ -2148,7 +2140,7 @@ void TestControlPanel::testChip()
 
         // 2) Acquire and stimulate for 400 ms, plot DC
         QVector<QVector<QString>> dcChannelNames;
-        int numSamples = recordDCSegment(channels, 0.4, portIndex, dcChannelNames);
+        recordDCSegment(0.4, portIndex, dcChannelNames);
 
         // 3) Load this segment into plotter
         multiColumnDisplay->loadWaveformDataDirectAmpDC(ampData, ampChannelNames, dcData, dcChannelNames);
@@ -2168,7 +2160,6 @@ void TestControlPanel::testChip()
     if (state->getControllerTypeEnum() == ControllerStimRecord) {
         QVector<int> connectedStreams = getConnectedCommandStreams();
         for (auto it = connectedStreams.begin(); it != connectedStreams.end(); ++it) {
-            auto i = std::distance(connectedStreams.begin(), it);
             controllerInterface->clearStimParameters(*it);
         }
     }
@@ -2334,8 +2325,8 @@ int TestControlPanel::calculateVoltages(QVector<double> dcData, QVector<double> 
         // So, populate posVoltages with a single value - the highest sample value reached in what should be the positive region,
         // and populate negVoltages with a single value - the lowest sample value reached in what should be the negative region,
         // and return 1 (error).
-        posVoltages.append(*max_element(dcData.begin() + transientSamplesToIgnore, dcData.begin() + 400));
-        negVoltages.append(*min_element(dcData.begin() + 400 + transientSamplesToIgnore, dcData.begin() + 800));
+        posVoltages.append(*std::max_element(dcData.begin() + transientSamplesToIgnore, dcData.begin() + 400));
+        negVoltages.append(*std::min_element(dcData.begin() + 400 + transientSamplesToIgnore, dcData.begin() + 800));
         qDebug() << "violates expected A";
         return 1;
     }
@@ -2563,7 +2554,7 @@ int TestControlPanel::amoeba(QVector<double> &t, QVector<double> &ytarget, QVect
             ytry = amotry(t, ytarget, p, y, psum, ndim, ihi, 2);
         }
 
-        else if (ytry >= y[inhi]) {
+        if (ytry >= y[inhi]) {
             //The reflected point is worse than the second-highest, so look for an intermediate lower point,
             //i.e., do a one-dimensional contraction
             double ysave = y[ihi];
@@ -2780,8 +2771,8 @@ void TestControlPanel::saveReport()
         QFile csvFile(csvFileName);
 
         if (!csvFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            cerr << "Cannot open CSV file for writing: " <<
-                    qPrintable(csvFile.errorString()) << endl;
+            std::cerr << "Cannot open CSV file for writing: " <<
+                    qPrintable(csvFile.errorString()) << std::endl;
         }
         QTextStream out(&csvFile);
         if (state->getControllerTypeEnum() == ControllerStimRecord) {
