@@ -104,11 +104,7 @@ bool RHXController::isRunning()
 // Flush all remaining data out of the FIFO.  (This function should only be called when SPI data acquisition has been stopped.)
 void RHXController::flush()
 {
-    std::lock_guard<std::mutex> lockOk(okMutex);
-    dev->SetWireInValue(WireInResetRun, 1 << 17, 1 << 17);
-    dev->UpdateWireIns();
-    dev->SetWireInValue(WireInResetRun, 0 << 17, 1 << 17);
-    dev->UpdateWireIns();
+    dev->dev->read(0xA0,0, nullptr);
 }
 
 // Low-level FPGA reset.  Call when closing application to make sure everything has stopped.
@@ -157,7 +153,7 @@ std::expected<std::vector<RHXDataBlock>, std::string> RHXController::runAndReadD
                                  RHXDataBlock::samplesPerDataBlock(type);
     const auto xdaq_frame_size = get_xdaq_frame_size(type, numDataStreams);
 
-    constexpr int hw_events_per_sec = 100;
+    constexpr int hw_events_per_sec = 200;
     const auto expected_data_rate = xdaq_frame_size * getSampleRate();
     const int chunk_size = expected_data_rate / hw_events_per_sec;
 
@@ -181,6 +177,7 @@ std::expected<std::vector<RHXDataBlock>, std::string> RHXController::runAndReadD
                  ),
                  frames_filled = 0,
                  block_samples = RHXDataBlock::samplesPerDataBlock(type)](auto &&event) mutable {
+                    if (!result_promise.has_value()) return;
                     auto copy_one_sample = [&](const auto begin, auto dst) {
                         if (type == ControllerRecordUSB3) {
                             const auto dio_off = xdaq_frame_size - 8;
@@ -200,7 +197,6 @@ std::expected<std::vector<RHXDataBlock>, std::string> RHXController::runAndReadD
                             dst[1] = begin[dio_off + 5];
                         }
                     };
-                    if (!result_promise.has_value()) return;
                     std::visit(
                         [&](auto &&event) {
                             using T = std::decay_t<decltype(event)>;
@@ -266,7 +262,7 @@ std::expected<std::vector<RHXDataBlock>, std::string> RHXController::runAndReadD
     const auto expected_sample_time = std::chrono::milliseconds{
         (int) (1000 * numBlocks * RHXDataBlock::samplesPerDataBlock(type) / getSampleRate())
     };
-    auto wait_result = result.wait_for(expected_sample_time + 1s);
+    auto wait_result = result.wait_for(expected_sample_time + 2s);
     s->reset();
     while (isRunning()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
     flush();
