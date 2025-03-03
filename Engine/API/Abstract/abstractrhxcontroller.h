@@ -251,11 +251,6 @@ protected:
     // Buffer for reading bytes from USB interface
     uint8_t* usbBuffer;
 
-    // Buffers for writing bytes to command RAM (ControllerStimRecord only)
-    uint8_t commandBufferMsw[65536];
-    uint8_t commandBufferLsw[65536];
-    uint8_t commandBuffer[65536];
-
     virtual unsigned int numWordsInFifo() = 0;
     virtual bool isDcmProgDone() const = 0;
     virtual bool isDataClockLocked() const = 0;

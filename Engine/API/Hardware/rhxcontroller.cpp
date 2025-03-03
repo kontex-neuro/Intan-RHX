@@ -35,6 +35,7 @@
 #include <xdaq/device.h>
 
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <future>
@@ -203,16 +204,12 @@ std::expected<std::vector<RHXDataBlock>, std::string> RHXController::runAndReadD
                             using namespace xdaq::DataStream::Events;
                             if constexpr (std::is_same_v<T, Stop>) {
                             } else if constexpr (std::is_same_v<T, Error>) {
-                                this->setContinuousRunMode(false);
-                                this->setMaxTimeStep(0);
                                 result_promise->set_value(
                                     std::unexpected(fmt::format("Datastream Error {}", event.error))
                                 );
                                 result_promise.reset();
                             } else if constexpr (std::is_same_v<T, DataView>) {
                                 if (event.data.size() % xdaq_frame_size != 0) {
-                                    this->setContinuousRunMode(false);
-                                    this->setMaxTimeStep(0);
                                     result_promise->set_value(std::unexpected(fmt::format(
                                         "Unexpected data size {} % {} != 0",
                                         event.data.size(),
@@ -234,8 +231,6 @@ std::expected<std::vector<RHXDataBlock>, std::string> RHXController::runAndReadD
                                         );
                                         frames_filled = 0;
                                         if (data_blocks.size() == numBlocks) {
-                                            this->setContinuousRunMode(false);
-                                            this->setMaxTimeStep(0);
                                             result_promise->set_value(std::move(data_blocks));
                                             result_promise.reset();
                                             return;
@@ -257,7 +252,12 @@ std::expected<std::vector<RHXDataBlock>, std::string> RHXController::runAndReadD
         ),
         chunk_size
     );
-    setContinuousRunMode(true);
+    auto bytes_required = numBlocks * RHXDataBlock::samplesPerDataBlock(type) * xdaq_frame_size;
+    setMaxTimeStep(
+        ((bytes_required + chunk_size - 1) / chunk_size * chunk_size + xdaq_frame_size - 1) /
+        xdaq_frame_size
+    );
+    setContinuousRunMode(false);
     run();
     const auto expected_sample_time = std::chrono::milliseconds{
         (int) (1000 * numBlocks * RHXDataBlock::samplesPerDataBlock(type) / getSampleRate())
@@ -1552,47 +1552,28 @@ void RHXController::uploadCommandList(const std::vector<unsigned int> &commandLi
             }
         }
     } else {
+        static_assert(std::endian::native == std::endian::little, "Endian conversion unimplemented");
+        std::vector<unsigned char> buf(commandList.size() * sizeof(commandList[0]));
+        std::memcpy(buf.data(), commandList.data(), buf.size());
 
-        int i;
-        for (i = 0; i < commandList.size(); i++) {
-
-             commandBuffer[4 * i + 0] = (unsigned char)((commandList[i] & 0x000000ff) >> 0);
-             commandBuffer[4 * i + 1] = (unsigned char)((commandList[i] & 0x0000ff00) >> 8);
-             commandBuffer[4 * i + 2] = (unsigned char)((commandList[i] & 0x00ff0000) >> 16);
-             commandBuffer[4 * i + 3] = (unsigned char)((commandList[i] & 0xff000000) >> 24);
-
-         }
-        int cmdSize = commandList.size();
-        if (commandList.size() % 16 != 0){
-            cmdSize = (int)std::ceil(commandList.size() / 16.0) * 16;
-            auto numOfDummy = cmdSize - commandList.size();
-            for (int j = 0; j < numOfDummy; j++) {
-                commandBuffer[4 * (i  + j) + 0 ] = (unsigned char)(0x00000000);
-                commandBuffer[4 * (i  + j) + 1 ] = (unsigned char)(0x00000000);
-                commandBuffer[4 * (i  + j) + 2 ] = (unsigned char)(0x00000000);
-                commandBuffer[4 * (i  + j) + 3 ] = (unsigned char)(0x00000000);
-            }
+        switch (auxCommandSlot) {
+        case AuxCmd1:
+            dev->ActivateTriggerIn(TrigInRamAddrReset, 0);
+            dev->WriteToBlockPipeIn(PipeInAuxCmd1, 16, buf.size(), buf.data());
+            break;
+        case AuxCmd2:
+            dev->ActivateTriggerIn(TrigInRamAddrReset, 0);
+            dev->WriteToBlockPipeIn(PipeInAuxCmd2, 16, buf.size(), buf.data());
+            break;
+        case AuxCmd3:
+            dev->ActivateTriggerIn(TrigInRamAddrReset, 0);
+            dev->WriteToBlockPipeIn(PipeInAuxCmd3, 16, buf.size(), buf.data());
+            break;
+        case AuxCmd4:
+            dev->ActivateTriggerIn(TrigInRamAddrReset, 0);
+            dev->WriteToBlockPipeIn(PipeInAuxCmd4, 16, buf.size(), buf.data());
+            break;
         }
-
-         switch (auxCommandSlot) {
-             case AuxCmd1:
-                 dev->ActivateTriggerIn(TrigInRamAddrReset, 0);
-                 dev->WriteToBlockPipeIn(PipeInAuxCmd1, 16, 4 * cmdSize, commandBuffer);
-                 break;
-             case AuxCmd2:
-                 dev->ActivateTriggerIn(TrigInRamAddrReset, 0);
-                 dev->WriteToBlockPipeIn(PipeInAuxCmd2, 16, 4 * cmdSize, commandBuffer);
-                 break;
-             case AuxCmd3:
-                 dev->ActivateTriggerIn(TrigInRamAddrReset, 0);
-                 dev->WriteToBlockPipeIn(PipeInAuxCmd3, 16, 4 * cmdSize, commandBuffer);
-                 break;
-             case AuxCmd4:
-                 dev->ActivateTriggerIn(TrigInRamAddrReset, 0);
-                 dev->WriteToBlockPipeIn(PipeInAuxCmd4, 16, 4 * cmdSize, commandBuffer);
-                 break;
-         }
-
     }
 }
 
@@ -1671,12 +1652,12 @@ int RHXController::findConnectedChips(std::vector<ChipType> &chipType, std::vect
     }
 
     // Run the SPI interface for multiple command sequences (i.e., NRepeats data blocks).
-    const int NRepeats = 1;
+    const int NRepeats = 12;
     RHXDataBlock dataBlock(type, getNumEnabledDataStreams());
     setMaxTimeStep(NRepeats * dataBlock.samplesPerDataBlock());
     setContinuousRunMode(false);
 
-    int auxCmdSlot = (type == ControllerStimRecord ? AuxCmd1 : AuxCmd3);
+    int auxCmdSlot = (type == ControllerStimRecord) ? AuxCmd1 : AuxCmd3;
 
     std::vector<std::vector<int> > goodDelays;
     goodDelays.resize(maxMISOLines);

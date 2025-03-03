@@ -1371,18 +1371,25 @@ void ControllerInterface::setStimSequenceParameters(Channel* ampChannel)
     rhxController->setStimCmdMode(false);
     rhxController->enableAuxCommandsOnOneStream(stream);
 
+    qApp->processEvents();
     rhxController->run();
     while (rhxController->isRunning() ) {
         qApp->processEvents();
     }
+    rhxController->flush();
+    qApp->processEvents();
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterRead(commandList);
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter
     rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
+
+    qApp->processEvents();
     rhxController->run();
     while (rhxController->isRunning() ) {
         qApp->processEvents();
     }
+    rhxController->flush();
+    qApp->processEvents();
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, true);
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter

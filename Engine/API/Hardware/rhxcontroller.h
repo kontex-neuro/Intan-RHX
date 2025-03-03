@@ -71,7 +71,7 @@ struct XDAQDeviceProxy {
         return dev->read(epAddr, length, data);
     }
 
-	long WriteToBlockPipeIn(int epAddr, int blockSize, long length, unsigned char *data){
+	long WriteToBlockPipeIn(int epAddr, int blockSize, long length, const unsigned char *data){
         return dev->write(epAddr, length, data);
     }
 

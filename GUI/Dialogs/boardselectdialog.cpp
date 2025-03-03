@@ -521,7 +521,6 @@ auto get_demo_board(QWidget *parent, auto launch)
             },
             stim_step_size
         );
-        settings.endGroup();
     });
     auto launch_button_layout = new QVBoxLayout;
     launch_button_layout->addWidget(launch_button_rhd, 0, Qt::AlignLeft);
