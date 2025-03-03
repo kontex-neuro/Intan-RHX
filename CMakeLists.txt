@@ -3,6 +3,19 @@ cmake_minimum_required(VERSION 3.16)
 
 project(XDAQ-RHX VERSION 1.2.1 LANGUAGES CXX)
 
+if(MSVC)
+    add_compile_definitions(NOMINMAX)
+    add_compile_definitions(__PRETTY_FUNCTION__=__FUNCSIG__)
+elseif(
+    CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR
+    (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND ${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fexperimental-library>)
+    # https://gitlab.kitware.com/cmake/cmake/-/issues/25297
+    # CMake 3.29
+    add_link_options(LINKER:-no_warn_duplicate_libraries)
+endif()
+
 SET(CMAKE_MODULE_PATH
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake
     ${CMAKE_MODULE_PATH}
