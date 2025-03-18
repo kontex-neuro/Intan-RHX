@@ -49,6 +49,7 @@ jobs:
         run: |
           echo "CC=$(brew --prefix llvm@18)/bin/clang" >> $GITHUB_ENV
           echo "CXX=$(brew --prefix llvm@18)/bin/clang++" >> $GITHUB_ENV
+          sed -i '' '/^#define _LIBCPP_HAS_NO_VENDOR_AVAILABILITY_ANNOTATIONS/d' "$(brew --prefix llvm@18)"/include/c++/v1/__config_site
 
       - name: Install OpenCL (Ubuntu)
         if: matrix.os_arch.os == 'ubuntu-24.04'
