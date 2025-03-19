@@ -127,7 +127,6 @@ StimParamDialog::StimParamDialog(SystemState* state_, Channel* channel_, QWidget
 
     numberOfStimPulsesLabel = new QLabel(tr("Number of Stim Pulses"), this);
     numberOfStimPulsesSpinBox = new QSpinBox(this);
-    numberOfStimPulsesSpinBox->setMaximumWidth(numberOfStimPulsesSpinBox->fontMetrics().horizontalAdvance("99999  "));
     numberOfStimPulsesSpinBox->setRange(2, 256);
 
     pulseTrainPeriodLabel = new QLabel(tr("Pulse Train Period:"), this);
