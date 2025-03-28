@@ -318,7 +318,7 @@ auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info, const XD
         // Report if an io expander is connected.
         if (info.model == XDAQModel::Unknown) {
             main_layout->addWidget(new QLabel(parent->tr("N/A")));
-        } else if (info.expander) {
+        } else if (status.expander) {
             auto expander_layout = new QHBoxLayout;
             auto icon = new QLabel();
             icon->setPixmap(parent->style()->standardIcon(QStyle::SP_DialogYesButton).pixmap(20));
@@ -639,7 +639,7 @@ void InsertBoard(BoardSelectDialog *parent, StackedWidget *launch_panel, QTableW
             boardTable,
             get_xdaq_board(
                 parent,
-                [parent, info](
+                [parent, info, status](
                     std::function<AbstractRHXController *()> open_controller, StimStepSize step_size
                 ) {
                     QSettings settings;
@@ -652,7 +652,7 @@ void InsertBoard(BoardSelectDialog *parent, StackedWidget *launch_panel, QTableW
                         nullptr,
                         use_opencl,
                         false,
-                        info.expander,
+                        status.expander,
                         info.model == XDAQModel::One,
                         (info.model == XDAQModel::Core ? 1 : 2)
                     );

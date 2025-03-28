@@ -33,9 +33,6 @@ XDAQInfo parse_info(const json &device_info)
         info.generation = 2;
     }
 
-    if (info.FPGA_vender.contains("Opal Kelly")) {
-        info.expander = device_info["Expander"];
-    }
 
     info.max_rhd_channels = device_info.contains("RHD") ? device_info["RHD"].get<int>() : 0;
     info.max_rhs_channels = device_info.contains("RHS") ? device_info["RHS"].get<int>() : 0;
@@ -51,6 +48,8 @@ XDAQStatus parse_status(const json &device_status)
     status.version = device_status.at("Version");
     status.build = device_status.at("Build");
     status.mode = device_status.at("Mode");
+    status.expander =
+        device_status.contains("Expander") ? device_status["Expander"].get<bool>() : false;
 
     return status;
 }
