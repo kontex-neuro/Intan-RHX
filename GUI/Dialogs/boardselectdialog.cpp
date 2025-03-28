@@ -31,6 +31,8 @@
 #include "boardselectdialog.h"
 
 #include <fmt/format.h>
+#include <qmessagebox.h>
+#include <qnamespace.h>
 #include <qwindowdefs.h>
 #include <xdaq/device_manager.h>
 
@@ -123,13 +125,17 @@ auto create_default_sample_rate_checkbox = [](QWidget *parent) {
         parent->tr(" sample rate and ") + StimStepSizeString[defaultStimStepSizeIndex]
     );
 
-    QObject::connect(defaultSampleRateCheckBox, &QCheckBox::stateChanged, [](int state) {
-        // save the state of the checkbox to QSettings
-        QSettings settings;
-        settings.beginGroup("XDAQ");
-        settings.setValue("useDefaultSettings", state == Qt::Checked);
-        settings.endGroup();
-    });
+    QObject::connect(
+        defaultSampleRateCheckBox,
+        &QCheckBox::checkStateChanged,
+        [](Qt::CheckState state) {
+            // save the state of the checkbox to QSettings
+            QSettings settings;
+            settings.beginGroup("XDAQ");
+            settings.setValue("useDefaultSettings", state == Qt::Checked);
+            settings.endGroup();
+        }
+    );
     return defaultSampleRateCheckBox;
 };
 
@@ -144,19 +150,23 @@ auto create_default_settings_file_checkbox = [](QWidget *parent) {
     defaultSettingsFileCheckBox->setText(
         parent->tr("Load default settings file: ") + defaultSettingsFile
     );
-    QObject::connect(defaultSettingsFileCheckBox, &QCheckBox::stateChanged, [](int state) {
-        QSettings settings;
-        settings.beginGroup("XDAQ");
-        settings.setValue("loadDefaultSettingsFile", state == Qt::Checked);
-        settings.endGroup();
-    });
+    QObject::connect(
+        defaultSettingsFileCheckBox,
+        &QCheckBox::checkStateChanged,
+        [](Qt::CheckState state) {
+            QSettings settings;
+            settings.beginGroup("XDAQ");
+            settings.setValue("loadDefaultSettingsFile", state == Qt::Checked);
+            settings.endGroup();
+        }
+    );
     return defaultSettingsFileCheckBox;
 };
 
 auto get_properties_table(QStringList headers, std::vector<std::vector<QWidget *>> rows)
 {
     auto num_rows = rows.size();
-    auto num_cols = rows[0].size();
+    auto num_cols = num_rows > 0 ? rows[0].size() : 0;
     auto table = new QTableWidget(num_rows, num_cols, nullptr);
     table->setHorizontalHeaderLabels(headers);
     table->horizontalHeader()->setSectionsClickable(false);
@@ -235,18 +245,22 @@ auto get_playback_board(QWidget *parent, auto launch)
         );
         enable_checkbox->setChecked((last_playback_ports & (1 << port)) > 0);
 
-        QObject::connect(enable_checkbox, &QCheckBox::stateChanged, [port](int state) {
-            QSettings settings;
-            settings.beginGroup("XDAQ");
-            auto ports = settings.value("playbackPorts", 255).toUInt();
-            if (state == Qt::Checked) {
-                ports |= (1 << port);
-            } else {
-                ports &= ~(1 << port);
+        QObject::connect(
+            enable_checkbox,
+            &QCheckBox::checkStateChanged,
+            [port](Qt::CheckState state) {
+                QSettings settings;
+                settings.beginGroup("XDAQ");
+                auto ports = settings.value("playbackPorts", 255).toUInt();
+                if (state == Qt::Checked) {
+                    ports |= (1 << port);
+                } else {
+                    ports &= ~(1 << port);
+                }
+                settings.setValue("playbackPorts", ports);
+                settings.endGroup();
             }
-            settings.setValue("playbackPorts", ports);
-            settings.endGroup();
-        });
+        );
     }
     auto launch_properties_widget = get_properties_table(
         {parent->tr("Property"), parent->tr("Value"), parent->tr("Description")}, rows
@@ -406,6 +420,15 @@ auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info, const XD
             auto stim_step_size =
                 static_cast<StimStepSize>(settings.value("stim_step_size").toInt());
             settings.endGroup();
+            if (AbstractRHXController::getSampleRate(sample_rate) <
+                AbstractRHXController::getSampleRate(SampleRate20000Hz)) {
+                QMessageBox::warning(
+                    nullptr,
+                    "Unsupported Sample Rate",
+                    "Only 20, 25 and 30 kHz is supported using Stim-Record"
+                );
+                return;
+            }
 
             launch(
                 [=]() {
@@ -465,8 +488,10 @@ auto get_demo_board(QWidget *parent, auto launch)
         settings.setValue("demo_sample_rate", SampleRate30000Hz);
     if (!settings.contains("demo_stim_step_size"))
         settings.setValue("demo_stim_step_size", StimStepSize10uA);
-    auto init_sample_rate = static_cast<AmplifierSampleRate>(settings.value("sample_rate").toInt());
-    auto init_stim_step_size = static_cast<StimStepSize>(settings.value("stim_step_size").toInt());
+    auto init_sample_rate =
+        static_cast<AmplifierSampleRate>(settings.value("demo_sample_rate").toInt());
+    auto init_stim_step_size =
+        static_cast<StimStepSize>(settings.value("demo_stim_step_size").toInt());
     settings.endGroup();
 
     auto sr_selector = create_default_combobox(init_sample_rate, SampleRateString, [](int index) {
@@ -493,8 +518,10 @@ auto get_demo_board(QWidget *parent, auto launch)
     QObject::connect(launch_button_rhd, &QPushButton::clicked, [launch]() {
         QSettings settings;
         settings.beginGroup("XDAQ");
-        auto sample_rate = static_cast<AmplifierSampleRate>(settings.value("sample_rate").toInt());
-        auto stim_step_size = static_cast<StimStepSize>(settings.value("stim_step_size").toInt());
+        auto sample_rate =
+            static_cast<AmplifierSampleRate>(settings.value("demo_sample_rate").toInt());
+        auto stim_step_size =
+            static_cast<StimStepSize>(settings.value("demo_stim_step_size").toInt());
         settings.endGroup();
 
         launch(
@@ -510,9 +537,20 @@ auto get_demo_board(QWidget *parent, auto launch)
     QObject::connect(launch_button_rhs, &QPushButton::clicked, [launch]() {
         QSettings settings;
         settings.beginGroup("XDAQ");
-        auto sample_rate = static_cast<AmplifierSampleRate>(settings.value("sample_rate").toInt());
-        auto stim_step_size = static_cast<StimStepSize>(settings.value("stim_step_size").toInt());
+        auto sample_rate =
+            static_cast<AmplifierSampleRate>(settings.value("demo_sample_rate").toInt());
+        auto stim_step_size =
+            static_cast<StimStepSize>(settings.value("demo_stim_step_size").toInt());
         settings.endGroup();
+        if (AbstractRHXController::getSampleRate(sample_rate) <
+            AbstractRHXController::getSampleRate(SampleRate20000Hz)) {
+            QMessageBox::warning(
+                nullptr,
+                "Unsupported Sample Rate",
+                "Only 20, 25 and 30 kHz is supported using Stim-Record"
+            );
+            return;
+        }
         launch(
             [=]() {
                 return new SyntheticRHXController(
