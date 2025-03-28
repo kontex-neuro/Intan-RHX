@@ -154,7 +154,7 @@ std::expected<std::vector<RHXDataBlock>, std::string> RHXController::runAndReadD
                                  RHXDataBlock::samplesPerDataBlock(type);
     const auto xdaq_frame_size = get_xdaq_frame_size(type, numDataStreams);
 
-    constexpr int hw_events_per_sec = 200;
+    constexpr int hw_events_per_sec = 100;
     const auto expected_data_rate = xdaq_frame_size * getSampleRate();
     const int chunk_size = expected_data_rate / hw_events_per_sec;
 
