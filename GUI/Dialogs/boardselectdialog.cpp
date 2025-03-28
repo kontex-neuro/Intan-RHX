@@ -648,7 +648,7 @@ void InsertBoard(BoardSelectDialog *parent, StackedWidget *launch_panel, QTableW
                     settings.endGroup();
                     parent->emit launch(
                         std::move(open_controller),
-                        StimStepSize10uA,
+                        step_size,
                         nullptr,
                         use_opencl,
                         false,
