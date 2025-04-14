@@ -78,7 +78,12 @@ jobs:
           cmake -S . -B build/Release --preset conan-release
           cmake --build build/Release --preset conan-release
 
-      - name: Package and Notarize the app
+      - name: Package XDAQ-RHX (Windows)
+        if: matrix.os_arch.os == 'windows-2022'
+        run: cmake --build build/Release --target package
+
+      - name: Package and Notarize the app (MacOS)
+        if: matrix.os_arch.os == 'macos-15'
         env:
           CERTIFICATE_BASE64: ${{ secrets.CERTIFICATE_BASE64 }}
           CERTIFICATE_PWD: ${{ secrets.CERTIFICATE_PWD }}
