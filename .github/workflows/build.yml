@@ -77,7 +77,31 @@ jobs:
           conan install . --build=missing --profile:all ${{ env.OS_ARCH }} -s build_type=Release
           cmake -S . -B build/Release --preset conan-release
           cmake --build build/Release --preset conan-release
-          cmake --build build/Release --preset conan-release --target package
+
+      - name: Package and Notarize the app
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.CERTIFICATE_BASE64 }}
+          CERTIFICATE_PWD: ${{ secrets.CERTIFICATE_PWD }}
+          KEYCHAIN_PWD: ${{ secrets.KEYCHAIN_PWD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          APP_PWD: ${{ secrets.APP_PWD }}
+        run: |
+          # Certificate setup
+          echo $CERTIFICATE_BASE64 | base64 --decode > certificate.p12
+          security create-keychain -p $KEYCHAIN_PWD build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p $KEYCHAIN_PWD build.keychain
+          security import certificate.p12 -k build.keychain -P $CERTIFICATE_PWD -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k $KEYCHAIN_PWD build.keychain
+
+          # Codesign script called before package
+          cmake --build build/Release --target package
+
+          # Notarize
+          xcrun notarytool store-credentials "kontex" --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$APP_PWD"
+          xcrun notarytool submit build/Release/package/XDAQ-RHX-1.2.3-Darwin.dmg --keychain-profile "kontex" --wait
+          xcrun stapler staple build/Release/package/XDAQ-RHX-1.2.3-Darwin.dmg
 
       - name: Tar binaries to keep file permissions
         shell: bash
