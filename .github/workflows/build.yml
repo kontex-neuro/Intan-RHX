@@ -105,8 +105,10 @@ jobs:
 
           # Notarize
           xcrun notarytool store-credentials "kontex" --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$APP_PWD"
-          xcrun notarytool submit build/Release/package/XDAQ-RHX-1.2.3-Darwin.dmg --keychain-profile "kontex" --wait
-          xcrun stapler staple build/Release/package/XDAQ-RHX-1.2.3-Darwin.dmg
+          find build/Release/package \
+            -name 'XDAQ-RHX-*-Darwin.dmg' \
+            -exec xcrun notarytool submit {} --keychain-profile "kontex" --wait \; \
+            -exec xcrun stapler staple {} \;
 
       - name: Tar binaries to keep file permissions
         shell: bash
