@@ -291,8 +291,11 @@ ControlWindow::ControlWindow(SystemState* state_, CommandParser* parser_, Contro
     connect(state, SIGNAL(stateChanged()), this, SLOT(updateFromState()));  // Wait until ControlPanel is set up before making
                                                                             // this connection.
     setWindowIcon(QIcon(":/images/IntanLogo_32x32_white_frame.png"));
-
-    QString title = tr("XDAQ-RHX v1.2.4 ");
+    QString title = tr("XDAQ-RHX ");
+    title += QString::fromStdString(
+        "v" + std::to_string(XDAQ_RHX_VERSION_MAJOR) + "." +
+        std::to_string(XDAQ_RHX_VERSION_MINOR) + "." + std::to_string(XDAQ_RHX_VERSION_PATCH) + " "
+    );
     if (state->getControllerTypeEnum() == ControllerRecordUSB3) {
         title += tr("Recording");
     } else if (state->getControllerTypeEnum() == ControllerStimRecord) {
