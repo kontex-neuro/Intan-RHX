@@ -104,7 +104,7 @@ long SyntheticRHXController::readDataBlocksRaw(int numBlocks, uint8_t *buffer)
 
 struct SyntheticDataStream final : public SyntheticRHXController::DataStream {
     SyntheticDataStream(
-        receive_callback &&recv_event,
+        xdaq::DataStream::receive_callback &&recv_event,
         std::size_t chunk_size,
         SyntheticRHXController& dev
     ) : dev(dev)

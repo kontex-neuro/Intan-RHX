@@ -99,7 +99,7 @@ long PlaybackRHXController::readDataBlocksRaw(int numBlocks, uint8_t *buffer)
 
 struct PlaybackDataStream final : public PlaybackRHXController::DataStream {
     PlaybackDataStream(
-        receive_callback &&recv_event,
+        xdaq::DataStream::receive_callback &&recv_event,
         std::size_t chunk_size,
         PlaybackRHXController& dev
     ) : dev(dev)

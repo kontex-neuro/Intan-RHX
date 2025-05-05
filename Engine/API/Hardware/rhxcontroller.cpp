@@ -163,8 +163,8 @@ std::expected<std::vector<RHXDataBlock>, std::string> RHXController::runAndReadD
 
     auto s = dev->dev->start_read_stream(
         PipeOutData,
-        xdaq::queue<xdaq::Device>(
-            xdaq::aligned_read_stream<xdaq::Device>(
+        xdaq::DataStream::queue(
+            xdaq::DataStream::aligned_read_stream(
                 [this,
                  xdaq_frame_size,
                  intan_frame_size,
@@ -248,6 +248,7 @@ std::expected<std::vector<RHXDataBlock>, std::string> RHXController::runAndReadD
                 xdaq_frame_size
             ),
             32,
+            4096,
             std::chrono::nanoseconds{0}
         ),
         chunk_size
