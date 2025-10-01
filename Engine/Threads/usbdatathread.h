@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -71,7 +71,6 @@ private:
 
     uint8_t* usbBuffer;
     int bufferSize;
-    int usbBufferIndex;
 
     bool memoryAllocated;
     double memoryNeededGB;

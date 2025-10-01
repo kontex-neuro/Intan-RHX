@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -37,13 +37,13 @@
 ControlPanelConfigureTab::ControlPanelConfigureTab(ControllerInterface* controllerInterface_, SystemState* state_,
                                                    CommandParser* parser_, QWidget *parent) :
     QWidget(parent),
+    fastSettleCheckBox(nullptr),
     state(state_),
     parser(parser_),
     controllerInterface(controllerInterface_),
     scanButton(nullptr),
     setCableDelayButton(nullptr),
     digOutButton(nullptr),
-    fastSettleCheckBox(nullptr),
     externalFastSettleCheckBox(nullptr),
     externalFastSettleSpinBox(nullptr),
     note1LineEdit(nullptr),
@@ -63,6 +63,8 @@ ControlPanelConfigureTab::ControlPanelConfigureTab(ControllerInterface* controll
     }
     manualDelayEnabledOld.resize(8, false);
     manualDelayOld.resize(8, 1);
+    auxDigOutEnabledOld.resize(8, false);
+    auxDigOutChannelOld.resize(8, 0);
 
     QVBoxLayout *configLayout = new QVBoxLayout;
     scanButton = new QPushButton(tr("Rescan Ports"), this);
@@ -71,7 +73,9 @@ ControlPanelConfigureTab::ControlPanelConfigureTab(ControllerInterface* controll
     QHBoxLayout *scanLayout = new QHBoxLayout;
     scanLayout->addWidget(scanButton);
     scanLayout->addWidget(setCableDelayButton);
-    scanLayout->addStretch();
+    if (!state->testMode->getValue()) {
+        scanLayout->addStretch();
+    }
 
     QGroupBox *scanGroupBox = new QGroupBox(tr("Connected Amplifiers"), this);
     scanGroupBox->setLayout(scanLayout);
@@ -79,72 +83,78 @@ ControlPanelConfigureTab::ControlPanelConfigureTab(ControllerInterface* controll
     QHBoxLayout *configTopLayout1 = new QHBoxLayout;
     configTopLayout1->addWidget(scanGroupBox);
 
-    note1LineEdit = new QLineEdit(this);
-    note2LineEdit = new QLineEdit(this);
-    note3LineEdit = new QLineEdit(this);
-    note1LineEdit->setMaxLength(255);   // Note: default maxlength of a QLineEdit is 32767
-    note2LineEdit->setMaxLength(255);
-    note3LineEdit->setMaxLength(255);
+    QGroupBox *notesGroupBox = nullptr;
+    QGroupBox *liveNotesGroupBox = nullptr;
+    if (!state->testMode->getValue()) {
+        note1LineEdit = new QLineEdit(this);
+        note2LineEdit = new QLineEdit(this);
+        note3LineEdit = new QLineEdit(this);
+        note1LineEdit->setMaxLength(255);   // Note: default maxlength of a QLineEdit is 32767
+        note2LineEdit->setMaxLength(255);
+        note3LineEdit->setMaxLength(255);
 
-    connect(note1LineEdit, SIGNAL(editingFinished()), this, SLOT(setNotes()));
-    connect(note2LineEdit, SIGNAL(editingFinished()), this, SLOT(setNotes()));
-    connect(note3LineEdit, SIGNAL(editingFinished()), this, SLOT(setNotes()));
+        connect(note1LineEdit, SIGNAL(editingFinished()), this, SLOT(setNotes()));
+        connect(note2LineEdit, SIGNAL(editingFinished()), this, SLOT(setNotes()));
+        connect(note3LineEdit, SIGNAL(editingFinished()), this, SLOT(setNotes()));
 
-    QHBoxLayout *note1Layout = new QHBoxLayout;
-    note1Layout->addWidget(new QLabel(tr("Note 1:"), this));
-    note1Layout->addWidget(note1LineEdit);
-    QHBoxLayout *note2Layout = new QHBoxLayout;
-    note2Layout->addWidget(new QLabel(tr("Note 2:"), this));
-    note2Layout->addWidget(note2LineEdit);
-    QHBoxLayout *note3Layout = new QHBoxLayout;
-    note3Layout->addWidget(new QLabel(tr("Note 3:"), this));
-    note3Layout->addWidget(note3LineEdit);
+        QHBoxLayout *note1Layout = new QHBoxLayout;
+        note1Layout->addWidget(new QLabel(tr("Note 1:"), this));
+        note1Layout->addWidget(note1LineEdit);
+        QHBoxLayout *note2Layout = new QHBoxLayout;
+        note2Layout->addWidget(new QLabel(tr("Note 2:"), this));
+        note2Layout->addWidget(note2LineEdit);
+        QHBoxLayout *note3Layout = new QHBoxLayout;
+        note3Layout->addWidget(new QLabel(tr("Note 3:"), this));
+        note3Layout->addWidget(note3LineEdit);
 
-    QVBoxLayout *notesLayout = new QVBoxLayout;
-    notesLayout->addWidget(new QLabel(tr("The following text will be appended to saved data files"), this));
-    notesLayout->addLayout(note1Layout);
-    notesLayout->addLayout(note2Layout);
-    notesLayout->addLayout(note3Layout);
-    notesLayout->addStretch(1);
+        QVBoxLayout *notesLayout = new QVBoxLayout;
+        notesLayout->addWidget(new QLabel(tr("The following text will be appended to saved data files"), this));
+        notesLayout->addLayout(note1Layout);
+        notesLayout->addLayout(note2Layout);
+        notesLayout->addLayout(note3Layout);
+        notesLayout->addStretch(1);
 
-    QGroupBox *notesGroupBox = new QGroupBox(tr("Notes"), this);
-    notesGroupBox->setLayout(notesLayout);
+        notesGroupBox = new QGroupBox(tr("Notes"), this);
+        notesGroupBox->setLayout(notesLayout);
 
-    QVBoxLayout *liveNotesLayout = new QVBoxLayout;
-    liveNotesLayout->addWidget(new QLabel(tr("The following text will be appended to the live notes file"), this));
-    liveNotesLineEdit = new QLineEdit(this);
-    liveNotesLineEdit->setMaxLength(1024);
-    liveNotesLayout->addWidget(liveNotesLineEdit);
-    QHBoxLayout *liveNotesButtonLayout = new QHBoxLayout;
-    liveNotesButton = new QPushButton(tr("Add Live Note"), this);
-    lastLiveNoteLabel = new QLabel("", this);
-    lastLiveNoteLabel->setFixedWidth(200);
-    liveNotesButtonLayout->addWidget(liveNotesButton);
-    liveNotesButtonLayout->addWidget(lastLiveNoteLabel);
-    liveNotesButtonLayout->addStretch(1);
+        QVBoxLayout *liveNotesLayout = new QVBoxLayout;
+        liveNotesLayout->addWidget(new QLabel(tr("The following text will be appended to the live notes file"), this));
+        liveNotesLineEdit = new QLineEdit(this);
+        liveNotesLineEdit->setMaxLength(1024);
+        liveNotesLayout->addWidget(liveNotesLineEdit);
+        QHBoxLayout *liveNotesButtonLayout = new QHBoxLayout;
+        liveNotesButton = new QPushButton(tr("Add Live Note"), this);
+        lastLiveNoteLabel = new QLabel("", this);
+        lastLiveNoteLabel->setFixedWidth(200);
+        liveNotesButtonLayout->addWidget(liveNotesButton);
+        liveNotesButtonLayout->addWidget(lastLiveNoteLabel);
+        liveNotesButtonLayout->addStretch(1);
 
-    liveNotesLayout->addLayout(liveNotesButtonLayout);
-    liveNotesLayout->addStretch(1);
+        liveNotesLayout->addLayout(liveNotesButtonLayout);
+        liveNotesLayout->addStretch(1);
 
-    QGroupBox *liveNotesGroupBox = new QGroupBox(tr("Live Notes"), this);
-    liveNotesGroupBox->setLayout(liveNotesLayout);
+        liveNotesGroupBox = new QGroupBox(tr("Live Notes"), this);
+        liveNotesGroupBox->setLayout(liveNotesLayout);
 
-    connect(liveNotesButton, SIGNAL(clicked()), this, SLOT(addLiveNote()));
-    connect(liveNotesLineEdit, SIGNAL(returnPressed()), this, SLOT(addLiveNote()));
+        connect(liveNotesButton, SIGNAL(clicked()), this, SLOT(addLiveNote()));
+        connect(liveNotesLineEdit, SIGNAL(returnPressed()), this, SLOT(addLiveNote()));
+    }
 
     QGroupBox *fastSettleGroupBox;
-    if (state->getControllerTypeEnum() != ControllerStimRecordUSB2) {
-        digOutButton = new QPushButton(tr("Configure"), this);
-        QHBoxLayout *digOutLayout = new QHBoxLayout;
-        digOutLayout->addWidget(digOutButton);
-        digOutLayout->addStretch(1);
+    if (state->getControllerTypeEnum() != ControllerStimRecord) {
+        if (!state->testMode->getValue()) {
+            digOutButton = new QPushButton(tr("Configure"), this);
+            QHBoxLayout *digOutLayout = new QHBoxLayout;
+            digOutLayout->addWidget(digOutButton);
+            digOutLayout->addStretch(1);
 
-        QGroupBox *digOutGroupBox = new QGroupBox(tr("Auxout Pins"), this);
-        digOutGroupBox->setLayout(digOutLayout);
+            QGroupBox *digOutGroupBox = new QGroupBox(tr("Auxout Pins"), this);
+            digOutGroupBox->setLayout(digOutLayout);
 
-        configTopLayout1->addWidget(digOutGroupBox);
+            configTopLayout1->addWidget(digOutGroupBox);
 
-        connect(digOutButton, SIGNAL(clicked()), this, SLOT(configDigOutControl()));
+            connect(digOutButton, SIGNAL(clicked()), this, SLOT(configDigOutControl()));
+        }
 
         fastSettleCheckBox = new QCheckBox(tr("Manual"), this);
 
@@ -164,7 +174,9 @@ ControlPanelConfigureTab::ControlPanelConfigureTab(ControllerInterface* controll
 
         QHBoxLayout *fastSettleLayout = new QHBoxLayout;
         fastSettleLayout->addWidget(fastSettleCheckBox);
-        fastSettleLayout->addStretch(1);
+        if (!state->testMode->getValue()) {
+            fastSettleLayout->addStretch(1);
+        }
         fastSettleLayout->addWidget(externalFastSettleCheckBox);
         fastSettleLayout->addWidget(externalFastSettleSpinBox);
 
@@ -172,12 +184,14 @@ ControlPanelConfigureTab::ControlPanelConfigureTab(ControllerInterface* controll
         fastSettleGroupBox->setLayout(fastSettleLayout);
     }
     configLayout->addLayout(configTopLayout1);
-    if (state->getControllerTypeEnum() != ControllerStimRecordUSB2) {
+    if (state->getControllerTypeEnum() != ControllerStimRecord) {
         configLayout->addWidget(fastSettleGroupBox);
     }
-    configLayout->addWidget(notesGroupBox);
-    configLayout->addWidget(liveNotesGroupBox);
-    configLayout->addStretch(1);
+    if (!state->testMode->getValue()) {
+        configLayout->addWidget(notesGroupBox);
+        configLayout->addWidget(liveNotesGroupBox);
+        configLayout->addStretch(1);
+    }
     setLayout(configLayout);
 
     connect(this, SIGNAL(sendExecuteCommand(QString)), parser, SLOT(executeCommandSlot(QString)));
@@ -193,8 +207,10 @@ void ControlPanelConfigureTab::updateFromState()
     scanButton->setEnabled(!state->running && nonPlayback);
     setCableDelayButton->setEnabled(!state->running && nonPlayback);
 
-    if (state->getControllerTypeEnum() != ControllerStimRecordUSB2) {
-        digOutButton->setEnabled(!state->running && nonPlayback);
+    if (state->getControllerTypeEnum() != ControllerStimRecord) {
+        if (!state->testMode->getValue()) {
+            digOutButton->setEnabled(!state->running && nonPlayback);
+        }
         fastSettleCheckBox->setEnabled(!externalFastSettleCheckBox->isChecked() && nonPlayback);
         externalFastSettleCheckBox->setEnabled(!fastSettleCheckBox->isChecked() && nonPlayback);
         externalFastSettleSpinBox->setEnabled(!fastSettleCheckBox->isChecked() && nonPlayback);
@@ -236,18 +252,55 @@ void ControlPanelConfigureTab::updateFromState()
         controllerInterface->setManualCableDelays();
     }
 
-    if (state->recording) {
-        liveNotesLineEdit->setEnabled(true);
-        liveNotesButton->setEnabled(true);
-    } else {
-        liveNotesLineEdit->setEnabled(false);
-        liveNotesButton->setEnabled(false);
-        lastLiveNoteLabel->clear();
+    bool digOutChanged = false;
+    for (int port = 0; port < (int) spiPort.size(); ++port) {
+        if (auxDigOutEnabledOld[port] != spiPort[port]->auxDigOutEnabled->getValue()) {
+            auxDigOutEnabledOld[port] = spiPort[port]->auxDigOutEnabled->getValue();
+            digOutChanged = true;
+        }
+        if (auxDigOutChannelOld[port] != spiPort[port]->auxDigOutChannel->getValue()) {
+            auxDigOutChannelOld[port] = spiPort[port]->auxDigOutChannel->getValue();
+            digOutChanged = true;
+        }
+    }
+    if (digOutChanged) {
+        controllerInterface->enableExternalDigOut(PortA, spiPort[0]->auxDigOutEnabled->getValue());
+        controllerInterface->enableExternalDigOut(PortB, spiPort[1]->auxDigOutEnabled->getValue());
+        controllerInterface->enableExternalDigOut(PortC, spiPort[2]->auxDigOutEnabled->getValue());
+        controllerInterface->enableExternalDigOut(PortD, spiPort[3]->auxDigOutEnabled->getValue());
+        if (state->numSPIPorts == 8) {
+            controllerInterface->enableExternalDigOut(PortE, spiPort[4]->auxDigOutEnabled->getValue());
+            controllerInterface->enableExternalDigOut(PortF, spiPort[5]->auxDigOutEnabled->getValue());
+            controllerInterface->enableExternalDigOut(PortG, spiPort[6]->auxDigOutEnabled->getValue());
+            controllerInterface->enableExternalDigOut(PortH, spiPort[7]->auxDigOutEnabled->getValue());
+        }
+
+        controllerInterface->setExternalDigOutChannel(PortA, spiPort[0]->auxDigOutChannel->getValue());
+        controllerInterface->setExternalDigOutChannel(PortB, spiPort[1]->auxDigOutChannel->getValue());
+        controllerInterface->setExternalDigOutChannel(PortC, spiPort[2]->auxDigOutChannel->getValue());
+        controllerInterface->setExternalDigOutChannel(PortD, spiPort[3]->auxDigOutChannel->getValue());
+        if (state->numSPIPorts == 8) {
+            controllerInterface->setExternalDigOutChannel(PortE, spiPort[4]->auxDigOutChannel->getValue());
+            controllerInterface->setExternalDigOutChannel(PortF, spiPort[5]->auxDigOutChannel->getValue());
+            controllerInterface->setExternalDigOutChannel(PortG, spiPort[6]->auxDigOutChannel->getValue());
+            controllerInterface->setExternalDigOutChannel(PortH, spiPort[7]->auxDigOutChannel->getValue());
+        }
     }
 
-    note1LineEdit->setText(state->note1->getValueString());
-    note2LineEdit->setText(state->note2->getValueString());
-    note3LineEdit->setText(state->note3->getValueString());
+    if (!state->testMode->getValue()) {
+        if (state->recording) {
+            liveNotesLineEdit->setEnabled(true);
+            liveNotesButton->setEnabled(true);
+        } else {
+            liveNotesLineEdit->setEnabled(false);
+            liveNotesButton->setEnabled(false);
+            lastLiveNoteLabel->clear();
+        }
+
+        note1LineEdit->setText(state->note1->getValueString());
+        note2LineEdit->setText(state->note2->getValueString());
+        note3LineEdit->setText(state->note3->getValueString());
+    }
 }
 
 void ControlPanelConfigureTab::updateForRun()
@@ -266,7 +319,7 @@ void ControlPanelConfigureTab::updateForStop()
     enableNotes(true);
 }
 
-void ControlPanelConfigureTab::rescanPorts()
+void ControlPanelConfigureTab::rescanPorts(bool usePreviousDelay, int selectedPort)
 {
     // Create a dummy progress bar to show that the rescan has been executed.  (Not necessary, but good user feedback.)
     int maxProgress = 25;
@@ -274,6 +327,9 @@ void ControlPanelConfigureTab::rescanPorts()
     progress.setWindowTitle(QObject::tr("Progress"));
     progress.setMinimumDuration(0);
     progress.setModal(true);
+
+    state->usePreviousDelay->setValue(usePreviousDelay);
+    state->previousDelaySelectedPort->setValue(selectedPort);
 
     QElapsedTimer timer;
     timer.start();
@@ -299,9 +355,9 @@ void ControlPanelConfigureTab::rescanPorts()
 void ControlPanelConfigureTab::manualCableDelayControl()
 {
     const int NumPorts = (int) spiPort.size();
-    vector<int> currentDelays(NumPorts, 0);
+    std::vector<int> currentDelays(NumPorts, 0);
     controllerInterface->getCableDelay(currentDelays);
-    vector<bool> manualDelayEnabled(NumPorts, false);
+    std::vector<bool> manualDelayEnabled(NumPorts, false);
     for (int i = 0; i < (int) manualDelayEnabled.size(); ++i) {
         manualDelayEnabled[i] = spiPort[i]->manualDelayEnabled->getValue();
     }
@@ -360,15 +416,15 @@ void ControlPanelConfigureTab::manualCableDelayControl()
 void ControlPanelConfigureTab::configDigOutControl()
 {
     const int NumPorts = state->numSPIPorts;
-    vector<SignalGroup*> spiPort(NumPorts, nullptr);
+    std::vector<SignalGroup*> spiPort(NumPorts, nullptr);
     for (int i = 0; i < (int) spiPort.size(); ++i) {
         spiPort[i] = state->signalSources->portGroupByIndex(i);
     }
-    vector<bool> auxDigOutEnabled(NumPorts, false);
+    std::vector<bool> auxDigOutEnabled(NumPorts, false);
     for (int i = 0; i < (int) auxDigOutEnabled.size(); ++i) {
         auxDigOutEnabled[i] = spiPort[i]->auxDigOutEnabled->getValue();
     }
-    vector<int> auxDigOutChannel(NumPorts, 0);
+    std::vector<int> auxDigOutChannel(NumPorts, 0);
     for (int i = 0; i < (int) auxDigOutEnabled.size(); ++i) {
         auxDigOutChannel[i] = spiPort[i]->auxDigOutChannel->getValue();
     }
@@ -418,12 +474,14 @@ void ControlPanelConfigureTab::setExternalFastSettleChannel(int channel)
 
 void ControlPanelConfigureTab::addLiveNote()
 {
+    if (state->testMode->getValue()) return;
     emit sendNoteCommand(liveNotesLineEdit->text());
     liveNotesLineEdit->clear();
 }
 
 void ControlPanelConfigureTab::setNotes()
 {
+    if (state->testMode->getValue()) return;
     state->note1->setValue(note1LineEdit->text());
     state->note2->setValue(note2LineEdit->text());
     state->note3->setValue(note3LineEdit->text());
@@ -431,6 +489,7 @@ void ControlPanelConfigureTab::setNotes()
 
 void ControlPanelConfigureTab::enableNotes(bool enabled)
 {
+    if (state->testMode->getValue()) return;
     note1LineEdit->setEnabled(enabled);
     note2LineEdit->setEnabled(enabled);
     note3LineEdit->setEnabled(enabled);

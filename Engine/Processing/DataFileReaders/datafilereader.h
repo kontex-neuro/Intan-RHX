@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -36,8 +36,6 @@
 #include "signalsources.h"
 #include "datafilemanager.h"
 
-using namespace std;
-
 class DataFileManager;
 
 enum HeaderFileType {
@@ -69,7 +67,7 @@ struct HeaderFileChannel
     double impedanceMagnitude;
     double impedancePhase;
     int channelNumber() const { return nativeChannelName.section('-', -1).toInt(); }
-    int endingNumber(int numChars = 1) const { return nativeChannelName.right(numChars).toInt(); }
+    int endingNumber(int numChars = 1) const { return QStringView{nativeChannelName}.right(numChars).toInt(); }
 };
 
 
@@ -79,7 +77,7 @@ struct HeaderFileGroup
     QString prefix;
     bool enabled;
     int numAmplifierChannels;
-    vector<HeaderFileChannel> channels;
+    std::vector<HeaderFileChannel> channels;
     int numChannels() const { return (int) channels.size(); }
 };
 
@@ -131,7 +129,7 @@ public:
 
     QString refChannelName;
 
-    vector<HeaderFileGroup> groups;
+    std::vector<HeaderFileGroup> groups;
     int numGroups() const { return (int) groups.size(); }
     int groupIndex(const QString& prefix) const;
     int numChannels() const;
@@ -175,7 +173,7 @@ class DataFileReader : public QObject
 {
     Q_OBJECT
 public:
-    DataFileReader(const QString& fileName, bool& canReadFile, QString& report, QObject* parent = nullptr);
+    DataFileReader(const QString& fileName, bool& canReadFile, QString& report, uint8_t playbackPortsInt, QObject* parent = nullptr);
     ~DataFileReader();
 
     ControllerType controllerType() const { return headerInfo.controllerType; }
@@ -200,7 +198,10 @@ public:
     int64_t getCurrentTimeStamp() const { return dataFileManager->getCurrentTimeStamp(); }
 
     static bool readHeader(const QString& fileName, IntanHeaderInfo& info, QString& report);
+    void applyPlaybackPorts(IntanHeaderInfo& info, QString& report);
     static void printHeader(const IntanHeaderInfo& info);
+
+    int64_t blocksPresent();
 
 signals:
     void setPosStimAmplitude(int stream, int channel, int amplitude);
@@ -210,21 +211,29 @@ signals:
     void sendSetCommand(QString, QString);
 
 public slots:
+    void jumpToEnd();
     void jumpToStart();
     void jumpToPosition(const QString& targetTime);
     void jumpRelative(double jumpInSeconds);
     void setStatusBarReady();
     void setStatusBarEOF();
     void setPlaybackSpeed(double playbackSpeed_) { playbackSpeed = playbackSpeed_; }
+    void setLive(bool live_) { live = live_; }
+    double getPlaybackSpeed() { return playbackSpeed; }
+    bool getLive() { return live; }
 
 private:
     IntanHeaderInfo headerInfo;
     DataFileManager* dataFileManager;
 
     double playbackSpeed;
+    bool live;
     QElapsedTimer timer;
     double dataBlockPeriodInNsec;
     double timeDeficitInNsec;
+    QVector<bool> playbackPorts;
+
+    int applyPlaybackPort(int portIndex, HeaderFileGroup *group, QString &report);
 };
 
 #endif // DATAFILEREADER_H

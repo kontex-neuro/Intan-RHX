@@ -78,9 +78,49 @@ Intan RHX release notes
 - Increase max number of columns to 16.
 - Put waveform display in a scroll area so that when too many columns are present to be displayed at once, a scroll bar can be used.
 
-* Version 3.1.0, 6 June 2022
+* Version 3.1.0, 3 June 2022
 - Fixed memory issue that caused systems with multiple RHD2216 chips to erroneously duplicate channels.
 - Added Plotting Mode options in the Performance menu, including a new High Efficiency mode that plots data more efficiently.
 - Allowed some elements (including window size, position, and control panel state) of the basic GUI appearance to automatically load/save through QSettings.
 - Added current channel name to the Window Title of the Spike Scope, ISI, PSTH, and Spectrogram tools.
 - Added current loaded filename to the Window Title of the Probe Map tool.
+
+* Version 3.2.0, 6 March 2023
+- Allow user to specify which port(s) to read data from in Advanced dialog
+- For One File Per Channel file format, when playing back data as it's being written, allow for jumping to the end of data for near-real-time playback
+- Support for use of XEM7310 board in Intan controllers to replace XEM6010 and XEM6310
+- Allow user to specify use of median instead of average for reference calculations
+- Fix various issues with re-recorded playback data dropping data blocks at the end
+- Allow user to specify whether or not to use max # of channels possible in synth mode
+- Add "Get CurrentTimestamp" and "Get CurrentTimeSeconds" TCP commands
+- Improved error detection and reporting for TCP commands
+- Various improvements in RHX API including easier use of the API without Qt, and additional utility functions described in Rhythm and RhythmStim documentation.
+
+* Version 3.3.0, 23 August 2023
+- Improve TCP reception of commands to not duplicate slot connections
+- Add Chip Test Mode
+- Fix issue where for RHD chips, Rescan Ports would not run chip calibration
+- Fix 7310 bit files so that for RHS systems, using a sample rate other than default (30 kHz) will no longer cause the software to use the wrong sample rate.
+- Fix crashing when attempting to open a new file for recording fails, instead display an error message and stop acquisition.
+
+* Version 3.3.1, 5 December 2023
+- Add 10, 16, and 20 ms time scale options for Spike Scope
+- Fix intermittent Stim Parameters dialog initialization issue that could cause incorrect values to appear
+- Append date/timestamp to end of LiveNotes filename to avoid unintentional file overwriting for multi-file recording sessions
+- Improve TCP functionality to allow for multiple connections/disconnections to occur without having to restart software
+- Add TCP "execute" commands: SaveSettingsFile, LoadSettingsFile, SaveStimulationSettingsFile, LoadStimulationSettingsFile, analogous to already present UI elements.
+- Improve test mode: wider acceptable input signal ranges, reduced likelihood of unintentionally entering test mode, and faster chip testing
+
+* Version 3.3.2, 8 July 2024
+- Improve chip testing mode, and give a more direct warning against using chip test mode for headstages
+- Flush livenotes file every time a livenote occurs (useful for real-time applications that rely on livenotes)
+- Fix XML loading of Port-specific parameters (manual delay, auxiliary digital out assignment) failing after Port A
+- Fix intermittent crashing that would occur from hovering cursor in tooltip mode over border between signal types in plot
+
+* Version 3.4.0, 4 February 2025
+- Comprehensive codebase overhaul from Qt 5 to Qt 6
+- Fix Spike Output TCP GUI unresponsiveness
+- Add OpenCL setting to saved settings, allowing OpenCL to remain disabled between sessions if specified by user
+- Small adjustments to preserve readability with Qt 6 GUI display
+- Fix bug that could cause incorrect fast settle behavior during stimulation pulse trains
+- Fix bug that could, under rare conditions, cause software to enter test mode upon startup

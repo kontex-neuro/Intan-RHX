@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -33,7 +33,7 @@
 #include <QtWidgets>
 
 StartupDialog::StartupDialog(ControllerType controllerType_, AmplifierSampleRate* sampleRate_, StimStepSize* stimStepSize_,
-                             bool* rememberSettings_, bool askToRememberSettings, QWidget *parent) :
+                             bool* rememberSettings_, bool askToRememberSettings, bool testMode, QWidget *parent) :
     QDialog(parent),
     controllerType(controllerType_),
     sampleRate(sampleRate_),
@@ -43,7 +43,7 @@ StartupDialog::StartupDialog(ControllerType controllerType_, AmplifierSampleRate
     QGroupBox *sampleRateGroupBox;
     sampleRateComboBox = new QComboBox(this);
 
-    if (controllerType == ControllerStimRecordUSB2) {
+    if (controllerType == ControllerStimRecord) {
         sampleRateGroupBox = new QGroupBox(tr("Sample Rate / Stimulation Time Resolution"), this);
         sampleRateComboBox->addItem(tr("20 kHz sample rate (50 ") + MicroSecondsSymbol + tr(" stimulation time resolution)"));
         sampleRateComboBox->addItem(tr("25 kHz sample rate (40 ") + MicroSecondsSymbol + tr(" stimulation time resolution)"));
@@ -67,20 +67,20 @@ StartupDialog::StartupDialog(ControllerType controllerType_, AmplifierSampleRate
         sampleRateComboBox->addItem(tr("20.0 kHz"));
         sampleRateComboBox->addItem(tr("25.0 kHz"));
         sampleRateComboBox->addItem(tr("30.0 kHz"));
-        sampleRateComboBox->setCurrentIndex(14);
+        testMode ? sampleRateComboBox->setCurrentIndex(16) : sampleRateComboBox->setCurrentIndex(14);
     }
 
     QHBoxLayout *sampleRateLayout = new QHBoxLayout();
     sampleRateLayout->addWidget(new QLabel(tr("Sample Rate"), this));
     sampleRateLayout->addWidget(sampleRateComboBox);
     sampleRateLayout->addStretch(1);
-    if (controllerType == ControllerStimRecordUSB2) {
+    if (controllerType == ControllerStimRecord) {
         sampleRateGroupBox->setLayout(sampleRateLayout);
     }
 
     QGroupBox *stimStepGroupBox;
 
-    if (controllerType == ControllerStimRecordUSB2) {
+    if (controllerType == ControllerStimRecord) {
         stimStepGroupBox = new QGroupBox(tr("Stimulation Range / Step Size"), this);
         stimStepComboBox = new QComboBox(this);
         stimStepComboBox->addItem(StimStepSizeString[1]);
@@ -106,7 +106,7 @@ StartupDialog::StartupDialog(ControllerType controllerType_, AmplifierSampleRate
     }
 
     rememberSettingsCheckBox = new QCheckBox(this);
-    if (controllerType == ControllerStimRecordUSB2) {
+    if (controllerType == ControllerStimRecord) {
         rememberSettingsCheckBox->setText(tr("Always use these settings with ") + ControllerTypeString[(int)controllerType]);
     } else {
         rememberSettingsCheckBox->setText(tr("Always use this sample rate with ") + ControllerTypeString[(int)controllerType]);
@@ -122,7 +122,7 @@ StartupDialog::StartupDialog(ControllerType controllerType_, AmplifierSampleRate
 
     QVBoxLayout *mainLayout = new QVBoxLayout;
 
-    if (controllerType == ControllerStimRecordUSB2) {
+    if (controllerType == ControllerStimRecord) {
         mainLayout->addWidget(sampleRateGroupBox);
         mainLayout->addWidget(stimStepGroupBox);
     } else {
@@ -130,19 +130,16 @@ StartupDialog::StartupDialog(ControllerType controllerType_, AmplifierSampleRate
     }
 
     setWindowTitle(tr("Select Sample Rate"));
+    setWindowFlags(windowFlags() | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+
     mainLayout->addWidget(rememberSettingsCheckBox);
     mainLayout->addLayout(buttonBoxRow);
     setLayout(mainLayout);
 }
 
-void StartupDialog::closeEvent(QCloseEvent *)
-{
-    exit(EXIT_FAILURE);
-}
-
 void StartupDialog::accept()
 {
-    if (controllerType == ControllerStimRecordUSB2) {
+    if (controllerType == ControllerStimRecord) {
         switch (sampleRateComboBox->currentIndex()) {
         case 0: *sampleRate = SampleRate20000Hz; break;
         case 1: *sampleRate = SampleRate25000Hz; break;

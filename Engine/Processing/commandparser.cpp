@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -29,9 +29,11 @@
 //------------------------------------------------------------------------------
 
 #include "commandparser.h"
+#include "controlwindow.h"
 
 CommandParser::CommandParser(SystemState* state_, ControllerInterface *controllerInterface_, QObject *parent) :
     QObject(parent),
+    controlWindow(nullptr),
     controllerInterface(controllerInterface_),
     state(state_)
 {
@@ -86,7 +88,7 @@ void CommandParser::getStateItemCommand(StateSingleItem* item)
 void CommandParser::setStateItemCommand(StateSingleItem* item, const QString& value)
 {
     if (!item->setValue(value)) {
-        cerr << "CommandParser::setStateItemCommand: invalid value for " << item->getParameterName().toStdString() << '\n';
+        std::cerr << "CommandParser::setStateItemCommand: invalid value for " << item->getParameterName().toStdString() << '\n';
         errorTCP(item->getParameterName(), item->getValidValues());
         return;
     }
@@ -120,7 +122,7 @@ void CommandParser::getCommandSlot(QString parameter)
     QString pathOrBase;
     StateFilenameItem* filenameItem = state->locateStateFilenameItem(state->stateFilenameItems, parameterLower, pathOrBase); // Can be filename.path or filename.basefilename
     if (filenameItem) {
-        cout << ">> " << (filenameItem->getParameterName().toLower() + "." + pathOrBase).toStdString() << '\n';
+        std::cout << ">> " << (filenameItem->getParameterName().toLower() + "." + pathOrBase).toStdString() << '\n';
         getStateFilenameItemCommand(filenameItem, pathOrBase);
         return;
     }
@@ -150,7 +152,7 @@ void CommandParser::getCommandSlot(QString parameter)
     // Try this parameter at the Global level
     item = state->locateStateSingleItem(state->globalItems, parameterLower);
     if (item) {
-        cout << ">> " << item->getParameterName().toLower().toStdString() << '\n';
+        std::cout << ">> " << item->getParameterName().toLower().toStdString() << '\n';
         getStateItemCommand(item);
         return;
     }
@@ -174,6 +176,10 @@ void CommandParser::getCommandSlot(QString parameter)
         getTCPWaveformDataConnectionStatusCommand();
     else if (parameterLower == "tcpspikedataoutputconnectionstatus")
         getTCPSpikeDataConnectionStatusCommand();
+    else if (parameterLower == "currenttimestamp")
+        getCurrentTimestampCommand();
+    else if (parameterLower == "currenttimeseconds")
+        getCurrentTimeSecondsCommand();
 
     // If parameter doesn't match an acceptable command, return an error.
    else emit TCPErrorSignal("Unrecognized parameter");
@@ -211,6 +217,14 @@ void CommandParser::setCommandSlot(QString parameter, QString value)
                 return;
             }
             setStateItemCommand(item, valueLower);
+
+            // Check if this is a Stim Parameter, and if it is, check validity and potentially emit a TCPErrorSignal
+            if (!isDependencyRelated(item->getParameterName())) return;
+
+            QString warningMessage = validateStimParams(channel->stimParameters);
+            if (warningMessage != "") {
+                emit TCPWarningSignal("Warning: " + warningMessage);
+            }
             return;
         }
     }
@@ -293,7 +307,7 @@ void CommandParser::executeCommandSlot(QString action)
     } else if (actionLower == "clearalldataoutputs") {
         clearAllDataOutputsCommand();
     } else if (actionLower == "uploadampsettlesettings") {
-        if (state->getControllerTypeEnum() == ControllerStimRecordUSB2) {
+        if (state->getControllerTypeEnum() == ControllerStimRecord) {
             if (!state->running) {
                 uploadAmpSettleSettingsCommand();
             } else {
@@ -301,7 +315,7 @@ void CommandParser::executeCommandSlot(QString action)
             }
         }
     } else if (actionLower == "uploadchargerecoverysettings") {
-        if (state->getControllerTypeEnum() == ControllerStimRecordUSB2) {
+        if (state->getControllerTypeEnum() == ControllerStimRecord) {
             if (!state->running) {
                 uploadChargeRecoverySettingsCommand();
             } else {
@@ -309,7 +323,7 @@ void CommandParser::executeCommandSlot(QString action)
             }
         }
     } else if (actionLower == "uploadstimparameters") {
-        if (state->getControllerTypeEnum() == ControllerStimRecordUSB2) {
+        if (state->getControllerTypeEnum() == ControllerStimRecord) {
             if (!state->running) {
                 uploadStimParametersCommand();
             } else {
@@ -347,8 +361,32 @@ void CommandParser::executeCommandWithParameterSlot(QString action, QString para
     } else if (actionLower == "manualstimtriggerpulse") {
         controllerInterface->manualStimTriggerPulse(parameterLower);
     } else if (actionLower == "uploadstimparameters") {
-        if (state->getControllerTypeEnum() == ControllerStimRecordUSB2) {
+        if (state->getControllerTypeEnum() == ControllerStimRecord) {
             uploadStimParametersCommand(parameterLower);
+        }
+    } else if (actionLower == "loadsettingsfile") {
+        if (!state->running) {
+            loadSettingsFileCommand(parameterLower);
+        } else {
+            emit TCPErrorSignal("LoadSettingsFile cannot be executed while the board is running");
+        }
+    } else if (actionLower == "savesettingsfile") {
+        if (!state->running) {
+            saveSettingsFileCommand(parameterLower);
+        } else {
+            emit TCPErrorSignal("SaveSettingsFile cannot be executed while the board is running");
+        }
+    } else if (actionLower == "loadstimulationsettingsfile") {
+        if (!state->running) {
+            loadStimulationSettingsFileCommand(parameterLower);
+        } else {
+            emit TCPErrorSignal("LoadStimulationSettingsFile cannot be executed while the board is running");
+        }
+    } else if (actionLower == "savestimulationsettingsfile") {
+        if (!state->running) {
+            saveStimulationSettingsFileCommand(parameterLower);
+        } else {
+            emit TCPErrorSignal("SaveStimulationSettingsFile cannot be executed while the board is running");
         }
     }
 
@@ -599,6 +637,24 @@ void CommandParser::getTCPSpikeDataConnectionStatusCommand()
         emit TCPReturnSignal("Return: TCPSpikeDataOutputConnectionStatus Disconnected");
 }
 
+void CommandParser::getCurrentTimestampCommand()
+{
+    if (state->running) {
+        emit TCPReturnSignal("Return: " + QString::number(state->getLastTimestamp()));
+    } else {
+        emit TCPReturnSignal("Return: -1");
+    }
+}
+
+void CommandParser::getCurrentTimeSecondsCommand()
+{
+    if (state->running) {
+        emit TCPReturnSignal("Return: " + QString::number((double) state->getLastTimestamp() / state->sampleRate->getNumericValue()));
+    } else {
+        emit TCPReturnSignal("Return: -1");
+    }
+}
+
 void CommandParser::measureImpedanceCommand()
 {
     controllerInterface->measureImpedances();
@@ -674,4 +730,177 @@ void CommandParser::uploadStimParametersCommand(QString channelName)
 void CommandParser::setSpikeDetectionThresholdsCommand()
 {
     controllerInterface->setAllSpikeDetectionThresholds();
+}
+
+void CommandParser::loadSettingsFileCommand(QString fileName)
+{
+    controlWindow->updateForLoad();
+
+    QString errorMessage;
+    bool loadSuccess = state->loadGlobalSettings(fileName, errorMessage);
+    if (!loadSuccess) {
+        emit TCPErrorSignal(errorMessage);
+    } else if (!errorMessage.isEmpty()) {
+        emit TCPErrorSignal(errorMessage);
+    }
+    controllerInterface->updateChipCommandLists(false); // Update amplifier bandwidth settings
+    controlWindow->restoreDisplaySettings();
+
+    if (loadSuccess) {
+        QFileInfo fileInfo(fileName);
+        QSettings settings;
+        settings.beginGroup(ControllerTypeSettingsGroup[(int) state->getControllerTypeEnum()]);
+        settings.setValue("settingsDirectory", fileInfo.absolutePath());
+        settings.endGroup();
+    }
+
+    controlWindow->updateForStop();
+}
+
+void CommandParser::saveSettingsFileCommand(QString fileName)
+{
+    QFileInfo fileInfo(fileName);
+    QSettings settings;
+    settings.setValue("settingsDirectory", fileInfo.absolutePath());
+    settings.endGroup();
+
+    // Generate display settings string to record state of multi-column display, scroll bars, pinned waveforms, etc.
+    state->displaySettings->setValue(controlWindow->getDisplaySettingsString());
+
+    if (!state->saveGlobalSettings(fileName)) {
+        emit TCPErrorSignal("Failure writing XML Global Settings");
+    }
+}
+
+void CommandParser::loadStimulationSettingsFileCommand(QString fileName)
+{    
+    controlWindow->updateForLoad();
+
+    QFileInfo fileInfo(fileName);
+    QString errorMessage;
+    bool loadSuccess = false;
+    loadSuccess = controlWindow->stimParametersInterface->loadFile(fileName, errorMessage, false, false, true); // Parse with stimOnly, so StimParameters are all that are loaded
+    if (loadSuccess) {
+        QSettings settings;
+        settings.beginGroup(ControllerTypeSettingsGroup[(int)state->getControllerTypeEnum()]);
+        settings.setValue("stimSettingsDirectory", fileInfo.absolutePath());
+        settings.endGroup();
+        controlWindow->updateForStop();
+        return;
+    }
+
+    errorMessage = "";
+    loadSuccess = controlWindow->stimParametersInterface->loadFile(fileName, errorMessage, true, false, true); // Try parsing as with stimLegacy=true
+
+    if (!loadSuccess) {
+        emit TCPErrorSignal("Error: Loading from XML: " + errorMessage);
+    } else {
+        if (!errorMessage.isEmpty()) {
+            emit TCPErrorSignal("Warning: Loading from XML: " + errorMessage);
+        }
+        QSettings settings;
+        settings.beginGroup(ControllerTypeSettingsGroup[(int)state->getControllerTypeEnum()]);
+        settings.setValue("stimSettingsDirectory", fileInfo.absolutePath());
+        settings.endGroup();
+        controlWindow->updateForStop();
+        return;
+    }
+}
+
+void CommandParser::saveStimulationSettingsFileCommand(QString fileName)
+{
+    QFileInfo fileInfo(fileName);
+    QSettings settings;
+    settings.beginGroup(ControllerTypeSettingsGroup[(int)state->getControllerTypeEnum()]);
+    settings.setValue("stimSettingsDirectory", fileInfo.absolutePath());
+    settings.endGroup();
+
+    if (!controlWindow->stimParametersInterface->saveFile(fileName)) {
+        emit TCPErrorSignal("Failure writing Stimulation Parameters");
+    }
+}
+
+bool CommandParser::isDependencyRelated(QString parameter) const
+{   
+    if (parameter == "PostTriggerDelayMicroseconds" ||
+            parameter == "PreStimAmpSettleMicroseconds" ||
+            parameter == "PostStimAmpSettleMicroseconds" ||
+            parameter == "PostStimChargeRecovOffMicroseconds" ||
+            parameter == "PostStimChargeRecovOnMicroseconds" ||
+            parameter == "RefractoryPeriodMicroseconds" ||
+            parameter == "PulseTrainPeriodMicroseconds" ||
+            parameter == "FirstPhaseDurationMicroseconds" ||
+            parameter == "SecondPhaseDurationMicroseconds" ||
+            parameter == "InterphaseDelayMicroseconds" ||
+            parameter == "Shape") {
+        return true;
+    }
+    return false;
+}
+
+QString CommandParser::validateStimParams(StimParameters *stimParams) const
+{
+    double stimDuration = 0;
+
+    switch (stimParams->getSignalType()) {
+    case AmplifierSignal:
+        // PostTriggerDelay cannot be less than PreStimAmpSettle
+        if (stimParams->postTriggerDelay->getValue() < stimParams->preStimAmpSettle->getValue())
+            return "PostTriggerDelayMicroseconds cannot be less than PreStimAmpSettleMicroseconds";
+
+        // PostStimChargeRecovOff cannot be less than PostStimChargeRecovOn
+        if (stimParams->postStimChargeRecovOff->getValue() < stimParams->postStimChargeRecovOn->getValue())
+            return "PostStimChargeRecovOffMicroseconds cannot be less than PostStimChargeRecovOnMicroseconds";
+
+        // RefractoryPeriod cannot be less than PostStimAmpSettle OR PostStimChargeRecovOff
+        if (stimParams->refractoryPeriod->getValue() < stimParams->postStimAmpSettle->getValue())
+            return "RefractoryPeriodMicroseconds cannot be less than PostStimAmpSettleMicroseconds";
+        if (stimParams->refractoryPeriod->getValue() < stimParams->postStimChargeRecovOff->getValue())
+            return "RefractoryPeriodMicroseconds cannot be less than PostStimChargeRecovOffMicroseconds";
+
+        // PulseTrainPeriod cannot be less than stimDuration (which depends on Shape)
+        // Biphasic: stimDuration = FirstPhaseDuration + SecondPhaseDuration
+        // BiphasicWithInterphaseDelay: stimDuration = FirstPhaseDuration + InterphaseDelay + SecondPhaseDuration
+        // Triphasic: stimDuration = 2*FirstPhaseDuration + SecondPhaseDuration
+        if (stimParams->stimShape->getValue() == "Biphasic")
+            stimDuration = stimParams->firstPhaseDuration->getValue() + stimParams->secondPhaseDuration->getValue();
+        else if (stimParams->stimShape->getValue() == "BiphasicWithInterphaseDelay")
+            stimDuration = stimParams->firstPhaseDuration->getValue() + stimParams->interphaseDelay->getValue() + stimParams->secondPhaseDuration->getValue();
+        else
+            stimDuration = 2.0 * stimParams->firstPhaseDuration->getValue() + stimParams->secondPhaseDuration->getValue();
+        if (stimParams->pulseTrainPeriod->getValue() < stimDuration)
+            return "PulseTrainPeriodMicroseconds cannot be less than total pulse duration (sum of all phases used for this Shape)";
+
+        break;
+
+    case BoardDacSignal:
+        // PulseTrainPeriod cannot be less than stimDuration (which depends on Shape)
+        // Biphasic: stimDuration = FirstPhaseDuration + SecondPhaseDuration
+        // BiphasicWithInterphaseDelay: stimDuration = FirstPhaseDuration + InterphaseDelay + SecondPhaseDuration
+        // Triphasic: stimDuration = 2*FirstPhaseDuration + SecondPhaseDuration
+        // Monophasic: stimDuration = FirstPhaseDuration
+        if (stimParams->stimShape->getValue() == "Biphasic")
+            stimDuration = stimParams->firstPhaseDuration->getValue() + stimParams->secondPhaseDuration->getValue();
+        else if (stimParams->stimShape->getValue() == "BiphasicWithInterphaseDelay")
+            stimDuration = stimParams->firstPhaseDuration->getValue() + stimParams->interphaseDelay->getValue() + stimParams->secondPhaseDuration->getValue();
+        else if (stimParams->stimShape->getValue() == "Triphasic")
+            stimDuration = 2.0 * stimParams->firstPhaseDuration->getValue() + stimParams->secondPhaseDuration->getValue();
+        else
+            stimDuration = stimParams->firstPhaseDuration->getValue();
+        if (stimParams->pulseTrainPeriod->getValue() < stimDuration)
+            return "PulseTrainPeriodMicroseconds cannot be less than total pulse duration (sum of all phases used for this Shape)";
+
+        break;
+
+    case BoardDigitalOutSignal:
+        // PulseTrainPeriod cannot be less than FirstPhaseDuration
+        if (stimParams->pulseTrainPeriod->getValue() < stimParams->firstPhaseDuration->getValue())
+            return "PulseTrainPeriodMicroseconds cannot be less than pulse duration (FirstPhaseDurationMicroseconds)";
+
+        break;
+
+    default:
+        break;
+    }
+    return "";
 }

@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -34,8 +34,6 @@
 #include "multiwaveformplot.h"
 #include <QtWidgets>
 
-using namespace std;
-
 class MultiColumnDisplay;
 
 class WaveformDisplayColumn : public QWidget
@@ -65,6 +63,8 @@ public:
     inline void loadWaveformData(WaveformFifo* waveformFifo) { waveformPlot->loadWaveformData(waveformFifo); }
     inline void loadWaveformDataFromMemory(WaveformFifo* waveformFifo, int startTime, bool loadAll = false)
         { waveformPlot->loadWaveformDataFromMemory(waveformFifo, startTime, loadAll); }
+    inline void loadWaveformDataDirect(QVector<QVector<QVector<double>>> &ampData, QVector<QVector<QString>> &ampChannelNames, QVector<QVector<double>> &auxInData)
+        { waveformPlot->loadWaveformDataDirect(ampData, ampChannelNames, auxInData); }
 
     QString getSelectedPort() const { return portComboBox->currentText().section(" (", 0, 0); }
     void setSelectedPort(const QString& portName);

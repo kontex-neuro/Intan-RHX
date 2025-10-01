@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -53,20 +53,20 @@
 #include "spectrogramdialog.h"
 #include "spikesortingdialog.h"
 
-class ControlPanel;
+class AbstractPanel;
 
 class ControllerInterface : public QObject
 {
     Q_OBJECT
 public:
     ControllerInterface(SystemState* state_, AbstractRHXController* rhxController_, const QString& boardSerialNumber, bool useOpenCL,
-                        DataFileReader* dataFileReader_ = nullptr, QObject* parent = nullptr);
+                        DataFileReader* dataFileReader_ = nullptr, QObject* parent = nullptr, bool is7310_ = false);
     ~ControllerInterface();
 
     void rescanPorts(bool updateDisplay = false);
 
     void updateChipCommandLists(bool updateStimParams = false);
-    void getCableDelay(vector<int> &delays) const { rhxController->getCableDelay(delays); }
+    void getCableDelay(std::vector<int> &delays) const { rhxController->getCableDelay(delays); }
     void setCableDelay(BoardPort port, int delay) { rhxController->setCableDelay(port, delay); }
     void enableExternalDigOut(BoardPort port, bool enable) { rhxController->enableExternalDigOut(port, enable); }
     void setExternalDigOutChannel(BoardPort port, int channel) { rhxController->setExternalDigOutChannel(port, channel); }
@@ -77,14 +77,14 @@ public:
 
     void runController();
     void runControllerSilently(double nSeconds, QProgressDialog* progress = nullptr);
-    float measureRmsLevel(string waveName, double timeSec) const;
+    float measureRmsLevel(std::string waveName, double timeSec) const;
     void setAllSpikeDetectionThresholds();
     void sweepDisplay(double speed);
     bool rewindPossible() const { return waveformFifo->numWordsInMemory(WaveformFifo::ReaderDisplay) > 0; }
     bool fastForwardPossible() const { return currentSweepPosition < 0; }
 
     void setDisplay(MultiColumnDisplay* display_) { display = display_; }
-    void setControlPanel(ControlPanel* controlPanel_) { controlPanel = controlPanel_; }
+    void setControlPanel(AbstractPanel* controlPanel_) { controlPanel = controlPanel_; }
     void setISIDialog(ISIDialog* isiDialog_) { isiDialog = isiDialog_; }
     void setPSTHDialog(PSTHDialog* psthDialog_) { psthDialog = psthDialog_; }
     void setSpectrogramDialog(SpectrogramDialog* spectrogramDialog_) { spectrogramDialog = spectrogramDialog_; }
@@ -140,6 +140,8 @@ public:
     void uploadAmpSettleSettings();
     void uploadChargeRecoverySettings();
     void uploadBandwidthSettings();
+    void uploadAutoStimParameters(int stream);
+    void clearStimParameters(int stream);
     void uploadStimParameters(Channel* channel);
     void uploadStimParameters();
     void setVStimBus(int BusMode);
@@ -166,14 +168,15 @@ private slots:
 private:
     void openController(const QString& boardSerialNumber);
     void initializeController();
-    int scanPorts(vector<ChipType> &chipType, vector<int> &portIndex, vector<int> &commandStream,
-                  vector<int> &numChannelsOnPort);
-    void addAmplifierChannels(const vector<ChipType> &chipType, const vector<int> &portIndex,
-                              const vector<int> &commandStream, const vector<int> &numChannelsOnPort);
+    int scanPorts(std::vector<ChipType> &chipType, std::vector<int> &portIndex, std::vector<int> &commandStream,
+                  std::vector<int> &numChannelsOnPort);
+    void addAmplifierChannels(const std::vector<ChipType> &chipType, const std::vector<int> &portIndex,
+                              const std::vector<int> &commandStream, const std::vector<int> &numChannelsOnPort);
     void enablePlaybackChannels();
     void addPlaybackHeadstageChannels();
 
     void sendTCPError(QString errorMessage);
+    void pipeReadErrorMessage(int errorID);
 
     SystemState* state;
     AbstractRHXController* rhxController;
@@ -188,7 +191,7 @@ private:
     WaveformProcessorThread* waveformProcessorThread;
 
     MultiColumnDisplay* display;
-    ControlPanel* controlPanel;
+    AbstractPanel* controlPanel;
     ISIDialog* isiDialog;
     PSTHDialog* psthDialog;
     SpectrogramDialog* spectrogramDialog;
@@ -206,7 +209,9 @@ private:
 
     double hardwareFifoPercentFull;
     double waveformProcessorCpuLoad;
-    vector<double> cpuLoadHistory;
+    std::vector<double> cpuLoadHistory;
+
+    bool is7310;
 
     void outOfMemoryError(double memRequiredGB);
 };

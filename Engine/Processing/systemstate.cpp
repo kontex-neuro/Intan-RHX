@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -31,6 +31,7 @@
 #include <iostream>
 #include "xmlinterface.h"
 #include "signalsources.h"
+#include "datafilereader.h"
 #include "systemstate.h"
 
 // Restrict functions for StateItem objects
@@ -38,22 +39,24 @@ bool RestrictAlways(const SystemState*) { return true; }
 bool RestrictIfRunning(const SystemState* state) { return state->running; }
 bool RestrictIfRecording(const SystemState* state) { return state->recording || state->triggerSet; }
 bool RestrictIfNotStimController(const SystemState* state)
-    { return (ControllerType) state->controllerType->getIndex() != ControllerStimRecordUSB2; }
+    { return (ControllerType) state->controllerType->getIndex() != ControllerStimRecord; }
 bool RestrictIfNotStimControllerOrRunning(const SystemState* state)
-    { return (ControllerType) state->controllerType->getIndex() != ControllerStimRecordUSB2 || state->running; }
+    { return (ControllerType) state->controllerType->getIndex() != ControllerStimRecord || state->running; }
 bool RestrictIfStimController(const SystemState* state)
-    { return (ControllerType) state->controllerType->getIndex() == ControllerStimRecordUSB2; }
+    { return (ControllerType) state->controllerType->getIndex() == ControllerStimRecord; }
 bool RestrictIfStimControllerOrRunning(const SystemState* state)
-    { return (ControllerType) state->controllerType->getIndex() == ControllerStimRecordUSB2 || state->running; }
+    { return (ControllerType) state->controllerType->getIndex() == ControllerStimRecord || state->running; }
 
 SystemState::SystemState(const AbstractRHXController* controller_, StimStepSize stimStepSize_, int numSPIPorts_,
-                         bool expanderConnected_, bool enableVStim, int on_board_adda) :
+                         bool expanderConnected_, bool testMode_, DataFileReader* dataFileReader_, bool enableVStim, int on_board_adda) :
     numSPIPorts(numSPIPorts_),
     on_board_adda(on_board_adda),
     logErrors(false),
     reportSpikes(false),
     decayTime(1.0),
+    lastTimestamp(0),
     globalSettingsInterface(nullptr),
+    dataFileReader(dataFileReader_),
     enableVStim(enableVStim)
 {
     setupLog();
@@ -69,11 +72,14 @@ SystemState::SystemState(const AbstractRHXController* controller_, StimStepSize 
     controllerType = new DiscreteItemList("Type", globalItems, this, XMLGroupReadOnly);
     controllerType->addItem("ControllerRecordUSB2", "ControllerRecordUSB2", 0);
     controllerType->addItem("ControllerRecordUSB3", "ControllerRecordUSB3", 1);
-    controllerType->addItem("ControllerStimRecordUSB2", "ControllerStimRecordUSB2", 2);
+    controllerType->addItem("ControllerStimRecord", "ControllerStimRecord", 2);
     controllerType->setIndex((int) controller_->getType());
 
     expanderConnected = new BooleanItem("ExpanderConnected", globalItems, this, expanderConnected_, XMLGroupNone);
     expanderConnected->setRestricted(RestrictAlways, ReadOnlyErrorMessage);
+
+    testMode = new BooleanItem("TestMode", globalItems, this, testMode_, XMLGroupNone);
+    testMode->setRestricted(RestrictAlways, ReadOnlyErrorMessage);
 
     // Intrinsic variables that shouldn't be changed solely through software (e.g. hardware-related, or set in software upon startup)
     signalSources = new SignalSources(this);
@@ -111,7 +117,7 @@ SystemState::SystemState(const AbstractRHXController* controller_, StimStepSize 
     stimStepSize->setIndex((int) stimStepSize_);
 
     sampleRate = new DiscreteItemList("SampleRateHertz", globalItems, this, XMLGroupReadOnly);
-    if (getControllerTypeEnum() != ControllerStimRecordUSB2) {
+    if (getControllerTypeEnum() != ControllerStimRecord) {
         sampleRate->addItem("1000", QString::fromStdString(AbstractRHXController::getSampleRateString(SampleRate1000Hz)), 1000.0);
         sampleRate->addItem("1250", QString::fromStdString(AbstractRHXController::getSampleRateString(SampleRate1250Hz)), 1250.0);
         sampleRate->addItem("1500", QString::fromStdString(AbstractRHXController::getSampleRateString(SampleRate1500Hz)), 1500.0);
@@ -277,7 +283,7 @@ SystemState::SystemState(const AbstractRHXController* controller_, StimStepSize 
     analogOut6Threshold = new IntRangeItem("AnalogOut6ThresholdMicroVolts", globalItems, this, -6000, 6000, 0);
     analogOut7Threshold = new IntRangeItem("AnalogOut7ThresholdMicroVolts", globalItems, this, -6000, 6000, 0);
     analogOut8Threshold = new IntRangeItem("AnalogOut8ThresholdMicroVolts", globalItems, this, -6000, 6000, 0);
-    bool defaultThresholdEnable = getControllerTypeEnum() != ControllerStimRecordUSB2;
+    bool defaultThresholdEnable = getControllerTypeEnum() != ControllerStimRecord;
     analogOut1ThresholdEnabled = new BooleanItem("AnalogOut1ThresholdEnabled", globalItems, this, defaultThresholdEnable);
     analogOut2ThresholdEnabled = new BooleanItem("AnalogOut2ThresholdEnabled", globalItems, this, defaultThresholdEnable);
     analogOut3ThresholdEnabled = new BooleanItem("AnalogOut3ThresholdEnabled", globalItems, this, defaultThresholdEnable);
@@ -303,6 +309,10 @@ SystemState::SystemState(const AbstractRHXController* controller_, StimStepSize 
     actualImpedanceFreq = new DoubleRangeItem("ActualImpedanceFreqHertz", globalItems, this, 0.0, 7500.0, 1000.0, XMLGroupReadOnly);
 
     writeToLog("Created impedance testing variables");
+
+    // Referencing
+    useMedianReference = new BooleanItem("UseMedianReference", globalItems, this, false);
+    useMedianReference->setRestricted(RestrictIfRunning, RunningErrorMessage);
 
     // Filtering
 
@@ -552,7 +562,7 @@ SystemState::SystemState(const AbstractRHXController* controller_, StimStepSize 
     labelWidth->addItem("Hide", "Hide Tags", 0);
     labelWidth->addItem("Narrow", "Narrow Tags", 1);
     labelWidth->addItem("Wide", "Wide Tags", 2);
-    labelWidth->setValue("Wide");
+    labelWidth->setValue(testMode_ ? "Narrow" : "Wide");
 
     writeToLog("Created waveform plotting variables");
 
@@ -712,6 +722,9 @@ SystemState::SystemState(const AbstractRHXController* controller_, StimStepSize 
     tScaleSpikeScope->addItem("2", "2 ms", 2.0);
     tScaleSpikeScope->addItem("4", "4 ms", 4.0);
     tScaleSpikeScope->addItem("6", "6 ms", 6.0);
+    tScaleSpikeScope->addItem("10", "10 ms", 10.0);
+    tScaleSpikeScope->addItem("16", "16 ms", 16.0);
+    tScaleSpikeScope->addItem("20", "20 ms", 20.0);
     tScaleSpikeScope->setValue("2");
     numSpikesDisplayed = new DiscreteItemList("SpikeScopeNumSpikes", globalItems, this);
     numSpikesDisplayed->addItem("10", "10", 10);
@@ -779,6 +792,14 @@ SystemState::SystemState(const AbstractRHXController* controller_, StimStepSize 
 
     writeToLog("Created stim only variables");
 
+    usePreviousDelay = new BooleanItem("UsePreviousDelay", globalItems, this, false, XMLGroupNone);
+    previousDelaySelectedPort = new IntRangeItem("PreviousDelaySelectedPort", globalItems, this, 0, 7, 0, XMLGroupNone);
+    lastDetectedChip = new IntRangeItem("LastDetectedChip", globalItems, this, -1, 1000, -1, XMLGroupNone);
+    lastDetectedNumStreams = new IntRangeItem("LastDetectedNumStreams", globalItems, this, -1, 1000, -1, XMLGroupNone);
+
+    testAuxIns = new BooleanItem("TestAuxIns", globalItems, this, getControllerTypeEnum() != ControllerStimRecord, XMLGroupNone);
+    testingPort = new StringItem("TestingPort", globalItems, this, "A", XMLGroupNone);
+
     // Start timer
     timerId = startTimer(20);  // Minimum time between two stateChanged() signals, in milliseconds.
     writeToLog("Started timer. End of SystemState ctor");
@@ -799,7 +820,7 @@ SystemState::~SystemState()
 
 AmplifierSampleRate SystemState::getSampleRateEnum() const
 {
-    if (getControllerTypeEnum() != ControllerStimRecordUSB2) {
+    if (getControllerTypeEnum() != ControllerStimRecord) {
         return (AmplifierSampleRate) sampleRate->getIndex();
     } else {
         if (sampleRate->getValue() == "20000") {
@@ -827,7 +848,7 @@ ControllerType SystemState::getControllerTypeEnum() const
 
 StimStepSize SystemState::getStimStepSizeEnum() const
 {
-    if (getControllerTypeEnum() != ControllerStimRecordUSB2) {
+    if (getControllerTypeEnum() != ControllerStimRecord) {
         return StimStepSizeMin;
     } else {
         return (StimStepSize) stimStepSize->getIndex();
@@ -836,7 +857,7 @@ StimStepSize SystemState::getStimStepSizeEnum() const
 
 RHXRegisters::ChargeRecoveryCurrentLimit SystemState::getChargeRecoveryCurrentLimitEnum() const
 {
-    if (getControllerTypeEnum() != ControllerStimRecordUSB2) {
+    if (getControllerTypeEnum() != ControllerStimRecord) {
         return RHXRegisters::CurrentLimitMin;
     } else {
         return (RHXRegisters::ChargeRecoveryCurrentLimit) chargeRecoveryCurrentLimit->getIndex();
@@ -934,12 +955,12 @@ QStringList SystemState::getAttributes(XMLGroup xmlGroup) const
                 addAttribute = true;
                 break;
             case TypeDependencyNonStim:
-                if (getControllerTypeEnum() != ControllerStimRecordUSB2) {
+                if (getControllerTypeEnum() != ControllerStimRecord) {
                     addAttribute = true;
                 }
                 break;
             case TypeDependencyStim:
-                if (getControllerTypeEnum() == ControllerStimRecordUSB2) {
+                if (getControllerTypeEnum() == ControllerStimRecord) {
                     addAttribute = true;
                 }
                 break;
@@ -963,12 +984,12 @@ QStringList SystemState::getAttributes(XMLGroup xmlGroup) const
                 addAttribute = true;
                 break;
             case TypeDependencyNonStim:
-                if (getControllerTypeEnum() != ControllerStimRecordUSB2) {
+                if (getControllerTypeEnum() != ControllerStimRecord) {
                     addAttribute = true;
                 }
                 break;
             case TypeDependencyStim:
-                if (getControllerTypeEnum() == ControllerStimRecordUSB2) {
+                if (getControllerTypeEnum() == ControllerStimRecord) {
                     addAttribute = true;
                 }
                 break;
@@ -993,7 +1014,7 @@ QVector<StateSingleItem*> SystemState::getHeaderStateItems() const
 
     returnVector.append(sampleRate);
     returnVector.append(controllerType);
-    if (getControllerTypeEnum() == ControllerStimRecordUSB2) returnVector.append(stimStepSize);
+    if (getControllerTypeEnum() == ControllerStimRecord) returnVector.append(stimStepSize);
     returnVector.append(softwareVersion);
 
     return returnVector;
@@ -1014,7 +1035,7 @@ QStringList SystemState::getTCPDataOutputChannels() const
             } else if (thisChannel->getSignalType() == AmplifierSignal) {
                 if (thisChannel->getOutputToTcpLow() || thisChannel->getOutputToTcpHigh() || thisChannel->getOutputToTcpSpike()) {
                     channelList.append(thisChannel->getNativeName());
-                } else if (getControllerTypeEnum() == ControllerStimRecordUSB2) {
+                } else if (getControllerTypeEnum() == ControllerStimRecord) {
                     if (thisChannel->getOutputToTcpDc() || thisChannel->getOutputToTcpStim()) {
                         channelList.append(thisChannel->getNativeName());
                     }
@@ -1116,7 +1137,7 @@ void SystemState::setupGlobalSettingsLoadSave(ControllerInterface* controllerInt
 bool SystemState::loadGlobalSettings(const QString& filename, QString &errorMessage) const
 {
     if (!globalSettingsInterface) {
-        cerr << "SystemState::loadGlobalSettings: Must run setupGlobalSettingsLoadSave first." << '\n';
+        std::cerr << "SystemState::loadGlobalSettings: Must run setupGlobalSettingsLoadSave first." << '\n';
         return false;
     }
     return globalSettingsInterface->loadFile(filename, errorMessage);
@@ -1125,7 +1146,7 @@ bool SystemState::loadGlobalSettings(const QString& filename, QString &errorMess
 bool SystemState::saveGlobalSettings(const QString& filename) const
 {
     if (!globalSettingsInterface) {
-        cerr << "SystemState::loadGlobalSettings: Must run setupGlobalSettingsLoadSave first." << '\n';
+        std::cerr << "SystemState::loadGlobalSettings: Must run setupGlobalSettingsLoadSave first." << '\n';
         return false;
     }
     return globalSettingsInterface->saveFile(filename);
@@ -1228,4 +1249,13 @@ void SystemState::spikeReport(QString names)
 void SystemState::advanceSpikeTimer()
 {
     emit spikeTimerTick();
+}
+
+int64_t SystemState::getPlaybackBlocks()
+{
+    if (playback->getValue() && dataFileReader) {
+        return dataFileReader->blocksPresent();
+    } else {
+        return -1;
+    }
 }

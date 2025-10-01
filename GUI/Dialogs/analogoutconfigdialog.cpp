@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -35,10 +35,9 @@
 AnalogOutConfigDialog::AnalogOutConfigDialog(SystemState* state_, ControllerInterface* controllerInterface_, QWidget* parent) :
     QDialog(parent),
     state(state_),
-    controllerInterface(controllerInterface_)
+    controllerInterface(controllerInterface_),
+    eightAnalogOuts(AbstractRHXController::numAnalogIO(state->getControllerTypeEnum(), state->expanderConnected->getValue()) == 8)
 {
-    eightAnalogOuts = AbstractRHXController::numAnalogIO(state->getControllerTypeEnum(), state->expanderConnected->getValue()) == 8;
-
     dacLockToSelectedCheckBox = new QCheckBox(tr("Lock to Selected"), this);
     int dacLockToSelectedCheckBoxWidth = dacLockToSelectedCheckBox->minimumSizeHint().width();
     connect(dacLockToSelectedCheckBox, SIGNAL(clicked(bool)), this, SLOT(dac1LockToSelected(bool)));
@@ -177,7 +176,7 @@ AnalogOutConfigDialog::AnalogOutConfigDialog(SystemState* state_, ControllerInte
         connect(dac8ThresholdEnableCheckBox, SIGNAL(clicked(bool)), this, SLOT(enableDac8Threshold(bool)));
     }
 
-    if (state->getControllerTypeEnum() != ControllerStimRecordUSB2) {
+    if (state->getControllerTypeEnum() != ControllerStimRecord) {
         dac1ThresholdEnableCheckBox->setChecked(true);
         dac2ThresholdEnableCheckBox->setChecked(true);
         if (eightAnalogOuts) {

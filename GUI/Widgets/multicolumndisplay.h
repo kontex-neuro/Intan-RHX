@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -59,6 +59,9 @@ public:
 
     YScaleUsed loadWaveformData(WaveformFifo* waveformFifo);
     YScaleUsed loadWaveformDataFromMemory(WaveformFifo* waveformFifo, int startTime, bool loadAll = false);
+    YScaleUsed loadWaveformDataDirectAmp(QVector<QVector<QVector<double>>> &ampData, QVector<QVector<QString>> &ampChannelNames, QVector<QVector<double>> &auxInData);
+    YScaleUsed loadWaveformDataDirectAmpDC(QVector<QVector<QVector<double>>> &ampData, QVector<QVector<QString>> &ampChannelNames,
+                                      QVector<QVector<QVector<double>>> &dcData, QVector<QVector<QString>> &dcChannelNames);
     void reset();
 
     inline int getSamplesPerRefresh() const { return waveformManager->getSamplesPerRefresh(); }
@@ -105,7 +108,7 @@ private:
     SystemState* state;
 
     WaveformDisplayManager* waveformManager;
-    vector<int> numRefreshZones;
+    std::vector<int> numRefreshZones;
 
     const int MaxNumColumns = 16;
     QList<WaveformDisplayColumn*> displayColumns;

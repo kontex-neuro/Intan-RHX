@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -45,8 +45,6 @@
 #include "systemstate.h"
 #include "displayedwaveform.h"
 
-using namespace std;
-
 const QColor DisabledColor = QColor(80, 80, 80);
 
 struct DragStateData {
@@ -73,6 +71,7 @@ public:
 
     void loadWaveformData(WaveformFifo* waveformFifo);
     void loadWaveformDataFromMemory(WaveformFifo* waveformFifo, int startTime, bool loadAll = false);
+    void loadWaveformDataDirect(QVector<QVector<QVector<double>>> &ampData, QVector<QVector<QString>> &ampChannelNames, QVector<QVector<double>> &auxInData);
     inline void updateNow() { update(); }
 
     void enableSelectedWaveforms(bool enable) { listManager->enableSelectedWaveforms(enable); }
@@ -174,14 +173,14 @@ private:
     QFont* labelFont;
     QFontMetrics* labelFontMetrics;
     int labelHeight;
-    vector<int> labelWidth;
-    vector<int> labelWidthFilter;
+    std::vector<int> labelWidth;
+    std::vector<int> labelWidthFilter;
     int labelWidthIndexOld;
 
     // Screen regions used for plotting and mouse calculations
-    vector<QRect> regionWaveforms;
-    vector<QRect> regionLabels;
-    vector<QRect> regionTimeAxis;
+    std::vector<QRect> regionWaveforms;
+    std::vector<QRect> regionLabels;
+    std::vector<QRect> regionTimeAxis;
     QRect regionAboveLabels;
     QRect regionBelowLabels;
     QRect regionScrollBar;

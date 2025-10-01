@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -43,8 +43,8 @@ public:
     bool isSynthetic() const override { return false; }
     bool isPlayback() const override { return true; }
     AcquisitionMode acquisitionMode() const override { return PlaybackMode; }
-    int open(const string& /* boardSerialNumber */) override { return 1; }  // Always return 1 to emulate a successful opening.
-    bool uploadFPGABitfile(const string& /* filename */) override { return true; }
+    int open(const std::string& /* boardSerialNumber */) override { return 1; }  // Always return 1 to emulate a successful opening.
+    bool uploadFPGABitfile(const std::string& /* filename */) override { return true; }
     void resetBoard() override {}
 
     void run() override {}
@@ -52,9 +52,11 @@ public:
     void flush() override {}
     void resetFpga() override {}
 
-    bool readDataBlock(RHXDataBlock *dataBlock) override;
-    bool readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue) override;
-    long readDataBlocksRaw(int numBlocks, uint8_t *buffer) override;
+    std::expected<std::vector<RHXDataBlock>, std::string> runAndReadDataBlocks(int numBlocks
+    ) override;
+    // bool readDataBlock(RHXDataBlock *dataBlock) override;
+    // bool readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue) override;
+    long readDataBlocksRaw(int numBlocks, uint8_t *buffer);
 
     void setContinuousRunMode(bool) override {}
     void setMaxTimeStep(unsigned int) override {}
@@ -104,11 +106,14 @@ public:
     void clearTtlOut() override {}
     void resetSequencers() override {}
     void programStimReg(int, int, StimRegister, int) override {}
-    void uploadCommandList(const vector<unsigned int>&, AuxCmdSlot, int) override {}
+    void uploadCommandList(const std::vector<unsigned int>&, AuxCmdSlot, int) override {}
 
-    int findConnectedChips(vector<ChipType> &chipType, vector<int> &portIndex, vector<int> &commandStream,
-                           vector<int> &numChannelsOnPort) override;
+    int findConnectedChips(std::vector<ChipType> &chipType, std::vector<int> &portIndex, std::vector<int> &commandStream,
+                           std::vector<int> &numChannelsOnPort, bool synthMaxChannels = false, bool returnToFastSettle = false,
+                           bool usePreviousDelay = false, int selectedPort = 0, int lastDetectedChip = -1, int lastDetectedNumStreams = -1) override;
 
+    std::optional<std::unique_ptr<DataStream>> start_read_stream(
+        std::uint32_t addr, typename xdaq::DataStream::receive_callback&& receive_event, std::size_t chunk_size) override;
 private:
     unsigned int numWordsInFifo() override;
     bool isDcmProgDone() const override { return true; }

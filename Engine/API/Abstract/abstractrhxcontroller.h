@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -31,14 +31,16 @@
 #ifndef ABSTRACTRHXCONTROLLER_H
 #define ABSTRACTRHXCONTROLLER_H
 
-#include "rhxglobals.h"
-#include "rhxdatablock.h"
+#include <xdaq/device_manager.h>
+
+#include <expected>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
-#include <deque>
-#include <mutex>
 
-using namespace std;
+#include "rhxdatablock.h"
+#include "rhxglobals.h"
 
 enum AcquisitionMode {
     LiveMode,
@@ -109,16 +111,16 @@ public:
     static double getSampleRate(AmplifierSampleRate sampleRate_);
     static int numAnalogIO(ControllerType type_, bool expanderConnected_);
     static int numDigitalIO(ControllerType type_, bool expanderConnected_);
-    static string getAnalogInputChannelName(ControllerType type_, int channel_);
-    static string getAnalogOutputChannelName(ControllerType type_, int channel_);
-    static string getDigitalInputChannelName(ControllerType type_, int channel_);
-    static string getDigitalOutputChannelName(ControllerType type_, int channel_);
-    static string getAnalogIOChannelNumber(ControllerType type_, int channel_);
-    static string getDigitalIOChannelNumber(ControllerType type_, int channel_);
+    static std::string getAnalogInputChannelName(ControllerType type_, int channel_);
+    static std::string getAnalogOutputChannelName(ControllerType type_, int channel_);
+    static std::string getDigitalInputChannelName(ControllerType type_, int channel_);
+    static std::string getDigitalOutputChannelName(ControllerType type_, int channel_);
+    static std::string getAnalogIOChannelNumber(ControllerType type_, int channel_);
+    static std::string getDigitalIOChannelNumber(ControllerType type_, int channel_);
 
-    static string getBoardTypeString(ControllerType type_);
-    static string getSampleRateString(AmplifierSampleRate sampleRate);
-    static string getStimStepSizeString(StimStepSize stepSize);
+    static std::string getBoardTypeString(ControllerType type_);
+    static std::string getSampleRateString(AmplifierSampleRate sampleRate_);
+    static std::string getStimStepSizeString(StimStepSize stepSize_);
     static AmplifierSampleRate nearestSampleRate(double rate, double percentTolerance = 1.0);
     static StimStepSize nearestStimStepSize(double step, double percentTolerance = 1.0);
 
@@ -127,7 +129,7 @@ public:
     unsigned int getLastNumWordsInFifo(bool& hasBeenUpdated);
     unsigned int fifoCapacityInWords();
 
-    void printCommandList(const vector<unsigned int> &commandList) const;
+    void printCommandList(const std::vector<unsigned int> &commandList) const;
 
     void setCableLengthMeters(BoardPort port, double lengthInMeters);
     void setCableLengthFeet(BoardPort port, double lengthInFeet);
@@ -136,20 +138,20 @@ public:
 
     int getNumEnabledDataStreams() const;
     int getCableDelay(BoardPort port) const;
-    void getCableDelay(vector<int> &delays) const;
+    void getCableDelay(std::vector<int> &delays) const;
 
     void setAllDacsToZero();
 
     void configureStimTrigger(int stream, int channel, int triggerSource, bool triggerEnabled, bool edgeTriggered, bool triggerOnLow);
     void configureStimPulses(int stream, int channel, int numPulses, StimShape shape, bool negStimFirst);
 
-    StreamChannelPair streamChannelFromWaveName(const string& waveName) const;
+    StreamChannelPair streamChannelFromWaveName(const std::string& waveName) const;
 
     virtual bool isSynthetic() const = 0;
     virtual bool isPlayback() const = 0;
     virtual AcquisitionMode acquisitionMode() const = 0;
-    virtual int open(const string& boardSerialNumber) = 0;
-    virtual bool uploadFPGABitfile(const string& filename) = 0;
+    virtual int open(const std::string& boardSerialNumber) = 0;
+    virtual bool uploadFPGABitfile(const std::string& filename) = 0;
     virtual void resetBoard() = 0;
 
     virtual void run() = 0;
@@ -157,9 +159,11 @@ public:
     virtual void flush() = 0;
     virtual void resetFpga() = 0;
 
-    virtual bool readDataBlock(RHXDataBlock *dataBlock) = 0;
-    virtual bool readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue) = 0;
-    virtual long readDataBlocksRaw(int numBlocks, uint8_t* buffer) = 0;
+    virtual std::expected<std::vector<RHXDataBlock>, std::string> runAndReadDataBlocks(int numBlocks
+    ) = 0;
+    // virtual bool readDataBlock(RHXDataBlock *dataBlock) = 0;
+    // virtual bool readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue) = 0;
+    // virtual long readDataBlocksRaw(int numBlocks, uint8_t* buffer) = 0;
 
     virtual void setContinuousRunMode(bool continuousMode) = 0;
     virtual void setMaxTimeStep(unsigned int maxTimeStep) = 0;
@@ -210,23 +214,36 @@ public:
     virtual void clearTtlOut() = 0;
     virtual void resetSequencers() = 0;
     virtual void programStimReg(int stream, int channel, StimRegister reg, int value) = 0;
-    virtual void uploadCommandList(const vector<unsigned int> &commandList, AuxCmdSlot auxCommandSlot, int bank) = 0;
+    virtual void uploadCommandList(const std::vector<unsigned int> &commandList, AuxCmdSlot auxCommandSlot, int bank) = 0;
 
-    virtual int findConnectedChips(vector<ChipType> &chipType, vector<int> &portIndex, vector<int> &commandStream,
-                                   vector<int> &numChannelsOnPort) = 0;
+    virtual int findConnectedChips(std::vector<ChipType> &chipType, std::vector<int> &portIndex, std::vector<int> &commandStream,
+                                   std::vector<int> &numChannelsOnPort, bool synthMaxChannels = false, bool returnToFastSettle = false,
+                                   bool usePreviousDelay = false, int selectedPort = 0, int lastDetectedChip = -1, int lastDetectedNumStreams = -1) = 0;
+
+    int pipeReadError() const { return pipeReadErrorCode; }
     virtual void setVStimBus(int BusMode){};
+
+    using DataStream = xdaq::Device::DataStream;
+
+    virtual std::optional<std::unique_ptr<DataStream>> start_read_stream(
+        std::uint32_t addr, typename xdaq::DataStream::receive_callback &&receive_event,
+        std::size_t chunk_size
+    )
+    {
+        return std::nullopt;
+    }
 
 protected:
     ControllerType type;
     AmplifierSampleRate sampleRate;
     unsigned int usbBufferSize;
     int numDataStreams; // total number of data streams currently enabled
-    vector<bool> dataStreamEnabled;
-    vector<BoardDataSource> boardDataSources; // used by ControllerRecordUSB2 only
-    vector<int> cableDelay;
+    std::vector<bool> dataStreamEnabled;
+    std::vector<BoardDataSource> boardDataSources; // used by ControllerRecordUSB2 only
+    std::vector<int> cableDelay;
 
     // Methods in this class are designed to be thread-safe.  This variable is used to ensure that.
-    mutex okMutex;
+    std::mutex okMutex;
 
     unsigned int lastNumWordsInFifo;
     bool numWordsHasBeenUpdated;
@@ -234,15 +251,12 @@ protected:
     // Buffer for reading bytes from USB interface
     uint8_t* usbBuffer;
 
-    // Buffers for writing bytes to command RAM (ControllerStimRecordUSB2 only)
-    uint8_t commandBufferMsw[65536];
-    uint8_t commandBufferLsw[65536];
-    uint8_t commandBuffer[65536];
-
     virtual unsigned int numWordsInFifo() = 0;
     virtual bool isDcmProgDone() const = 0;
     virtual bool isDataClockLocked() const = 0;
     virtual void forceAllDataStreamsOff() = 0;
+
+    int pipeReadErrorCode;
 
 private:
     static bool approximatelyEqual(double a, double b, double percentTolerance);

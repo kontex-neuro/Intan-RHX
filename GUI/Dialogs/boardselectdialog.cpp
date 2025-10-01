@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -27,72 +27,49 @@
 //  See <http://www.intantech.com> for documentation and product information.
 //
 //------------------------------------------------------------------------------
-#include <QSettings>
-#include <QApplication>
-#include <QtGlobal>
-#include "datafilereader.h"
+
 #include "boardselectdialog.h"
-#include "scrollablemessageboxdialog.h"
-#include "advancedstartupdialog.h"
-#include <sstream>
-#include <iomanip>
+
+#include <fmt/format.h>
+#include <qmessagebox.h>
+#include <qnamespace.h>
+#include <qwindowdefs.h>
+#include <xdaq/device_manager.h>
+
+#include <QBoxLayout>
+#include <QCoreApplication>
+#include <QLabel>
+#include <QObject>
+#include <QPushButton>
+#include <QSettings>
+#include <QSizePolicy>
+#include <QStackedWidget>
+#include <QTableWidget>
+#include <QWidget>
+#include <QtGlobal>
 #include <cstdint>
-#include <charconv>
+#include <filesystem>
+#include <memory>
+#include <nlohmann/json.hpp>
+#include <ranges>
+#include <unordered_set>
 
-// Check if FrontPanel DLL is loaded, and create an instance of okCFrontPanel.
-BoardIdentifier::BoardIdentifier(QWidget *parent_) :
-    parent(parent_)
-{
-    qDebug() << "---- Intan Technologies ----\n";
-    if (!okFrontPanel_TryLoadLib()) {
-#ifdef _WIN32
-        QMessageBox::warning(nullptr, "FrontPanel DLL could not be loaded.", "FrontPanel DLL could not be loaded. Make sure 'okFrontPanel.dll' is in the application start directory"
-                                                                             " and check that Microsoft Visual C++ 2010 Redistributable x64 is installed");
-        qDebug() << "FrontPanel DLL could not be loaded. Make sure this DLL is in the application start directory.";
-#elif __APPLE__
-        QMessageBox::warning(nullptr, "FrontPanel DyLib could not be loaded.", "FrontPanel DyLib could not be loaded. Make sure 'libokFrontPanel.dylib' is in the Frameworks directory\n"
-                                                                             "of the application");
-        qDebug() << "FrontPanel DyLib could not be loaded. Make sure DyLib can be found.";
-#elif __linux__
-        QMessageBox::warning(nullptr, "FrontPanel Shared Object could not be loaded.", "FrontPanel Shared Object could not be loaded. Make sure 'libokFrontPanel.so' is in the\n"
-                                                                              "application start directory.");
-        qDebug() << "FrontPanel Shared Object could not be loaded. Make sure the .so is in the application start directory";
-#endif
-        return;
-    }
-    qDebug() << "FrontPanel DLL loaded. Version: " << okFrontPanel_GetAPIVersionString();
+#include "../../Engine/API/Hardware/controller_info.h"
+#include "abstractrhxcontroller.h"
+#include "advancedstartupdialog.h"
+#include "datafilereader.h"
+#include "playbackrhxcontroller.h"
+#include "rhxcontroller.h"
+#include "rhxglobals.h"
+#include "scrollablemessageboxdialog.h"
+#include "startupdialog.h"
+#include "syntheticrhxcontroller.h"
 
-    dev = new okCFrontPanel;
-}
 
-// Delete the controllers object.
-BoardIdentifier::~BoardIdentifier()
-{
-    while (controllers.size() > 0) {
-        delete controllers.first();
-        controllers.remove(0);
-    }
-}
 
-// Return a QString description of the specified board.
-QString getBoardTypeString(const ControllerInfo& info)
-{
-    std::stringstream ss;
-    switch(info.xdaqModel){
-        case XDAQModel::Core:
-            ss << "XDAQ Core";
-            break;
-        case XDAQModel::One:
-            ss << "XDAQ One";
-            break;
-        default:
-            ss << "Unknown";
-            break;
-    }
-    ss << "\nRHD " << info.maxRHDchannels << "ch";
-    ss << "\nRHS " << info.maxRHSchannels << "ch";
-    return QString::fromStdString(ss.str());
-}
+using json = nlohmann::json;
+
+namespace fs = std::filesystem;
 
 // Return a QIcon with a picture of the specified board.
 QIcon getIcon(XDAQModel model, QStyle *style, int size)
@@ -105,446 +82,9 @@ QIcon getIcon(XDAQModel model, QStyle *style, int size)
         return QIcon(style->standardIcon(QStyle::SP_MessageBoxQuestion).pixmap(size));
 }
 
-// Return a QVector of ControllerInfo structures containing information about each controller, after uploading bit files
-// to each controller and determining its characteristics.
-QVector<ControllerInfo*> BoardIdentifier::getConnectedControllersInfo()
-{
-    int i, nDevices;
-    qDebug() << "Scanning USB for Opal Kelly devices...";
-    nDevices = dev->GetDeviceCount();
-    qDebug() << "Found" << nDevices << "Opal Kelly" << ((nDevices == 1) ? "device" : "devices") << "connected.";
-
-    for (i = 0; i < nDevices; ++i) {
-        // Create Controller data structure
-        ControllerInfo *controller = new ControllerInfo;
-
-        // Fill Controller data structure with characteristics relating to this controller.
-        // This function uploads a bit file to the controller, writes some WireIns, and reads some WireOuts.
-        identifyController(controller, i);
-
-        // Add this Controller to the 'controllers' QVector.
-        controllers.append(controller);
-    }
-    delete dev;
-    dev = nullptr;
-
-    return controllers;
-}
-
-
-enum class XDAQHeadstageType{
-    NA = 0,
-    Recording = 1,
-    StimRecord = 2
-};
-
-XDAQHeadstageType askHeadstageType(){
-    QMessageBox msgBox;
-    const auto msg = std::string("Select X-Headstage");
-    msgBox.setText(QObject::tr(msg.c_str()));
-    auto* pButtonRHD = msgBox.addButton(QObject::tr("Record (X3R/X6R)"), QMessageBox::YesRole);
-
-    auto* pButtonRHS = msgBox.addButton(QObject::tr("Stim-Record (X3SR)"), QMessageBox::NoRole);
-    auto cancel = msgBox.addButton(QObject::tr("Cancel"),QMessageBox::RejectRole);
-    msgBox.exec();
-    if(msgBox.clickedButton() == cancel) exit(0);
-    return (msgBox.clickedButton() == pButtonRHD) ? XDAQHeadstageType::Recording : XDAQHeadstageType::StimRecord;
-}
-
-
-// Populate variables in 'controller'. Upload a bit file, writes some WireIns, and reads some WireOuts.
-void BoardIdentifier::identifyController(ControllerInfo *controller, int index)
-{
-    // Populate serialNumber field.
-    controller->serialNumber = dev->GetDeviceListSerial(index).c_str();
-
-    // Upload bitfile to determine boardMode, expConnected, and numSPIPorts.
-    // Initialize expConnected, numSPIPorts, and boardMode to correspond to an unsuccessful mat.
-    controller->expConnected = false;
-    controller->numSPIPorts = 0;
-    controller->boardMode = UnknownUSB2Device;
-    controller->xdaqModel = XDAQModel::Unknown;
-
-    // Open device.
-    if (dev->OpenBySerial(dev->GetDeviceListSerial(index).c_str()) != okCFrontPanel::NoError) {
-        qDebug() << "Device could not be opened. Is one connected?";
-        return;
-    }
-    // Set up default PLL.
-    dev->LoadDefaultPLLConfiguration();
-
-    // Determine proper bitfile to load to FPGA (depending on if USB 2 or 3).
-    QString bitfilename = ConfigFileRHDController;
-
-    if (!uploadFpgaBitfileQMessageBox(QCoreApplication::applicationDirPath() + "/" + bitfilename)) {
-        QMessageBox::critical(nullptr, QObject::tr("Configuration File Error: Software Aborting"),
-                              QObject::tr("Cannot upload configuration file: ") + bitfilename +
-                              QObject::tr(".  Make sure file is in the same directory as the executable file."));
-        exit(EXIT_FAILURE);
-    }
-    RHXController::resetBoard(dev);
-
-    // Read mode from board.
-    controller->numSPIPorts = RHXController::getNumSPIPorts(dev, true, controller->expConnected);
-
-    dev->UpdateWireOuts();
-    const uint32_t val = dev->GetWireOutValue(0x31);
-    const auto model = static_cast<XDAQModel>((val>>8) & 0xFF);
-    const auto rhd = 32 * (val >> 24) / (model == XDAQModel::Core ? 2 : 1);
-    const auto rhs = 16 * ((val >> 16) & 0xFF);
-    const uint32_t serial = dev->GetWireOutValue(0x32);
-
-    controller->xdaqModel = model;
-    controller->maxRHDchannels = rhd;
-    controller->maxRHSchannels = rhs;
-    controller->numSPIPorts = 0;
-    std::stringstream ss;
-    ss << std::setbase(16) << serial;
-    controller->xdaqSerial = QString::fromStdString(ss.str());
-    controller->xdaqSerial = controller->xdaqSerial.toUpper();
-
-}
-
-// Return name of Opal Kelly board based on model code.
-QString BoardIdentifier::opalKellyModelName(int model) const
-{
-    switch (model) {
-    case OK_PRODUCT_XEM3001V1:
-        return "XEM3001V1";
-    case OK_PRODUCT_XEM3001V2:
-        return "XEM3001V2";
-    case OK_PRODUCT_XEM3010:
-        return "XEM3010";
-    case OK_PRODUCT_XEM3005:
-        return "XEM3005";
-    case OK_PRODUCT_XEM3001CL:
-        return "XEM3001CL";
-    case OK_PRODUCT_XEM3020:
-        return "XEM3020";
-    case OK_PRODUCT_XEM3050:
-        return "XEM3050";
-    case OK_PRODUCT_XEM9002:
-        return "XEM9002";
-    case OK_PRODUCT_XEM3001RB:
-        return "XEM3001RB";
-    case OK_PRODUCT_XEM5010:
-        return "XEM5010";
-    case OK_PRODUCT_XEM6110LX45:
-        return "XEM6110LX45";
-    case OK_PRODUCT_XEM6001:
-        return "XEM6001";
-    case OK_PRODUCT_XEM6010LX45:
-        return "XEM6010LX45";
-    case OK_PRODUCT_XEM6010LX150:
-        return "XEM6010LX150";
-    case OK_PRODUCT_XEM6110LX150:
-        return "XEM6110LX150";
-    case OK_PRODUCT_XEM6006LX9:
-        return "XEM6006LX9";
-    case OK_PRODUCT_XEM6006LX16:
-        return "XEM6006LX16";
-    case OK_PRODUCT_XEM6006LX25:
-        return "XEM6006LX25";
-    case OK_PRODUCT_XEM5010LX110:
-        return "XEM5010LX110";
-    case OK_PRODUCT_ZEM4310:
-        return "ZEM4310";
-    case OK_PRODUCT_XEM6310LX45:
-        return "XEM6310LX45";
-    case OK_PRODUCT_XEM6310LX150:
-        return "XEM6310LX150";
-    case OK_PRODUCT_XEM6110V2LX45:
-        return "XEM6110V2LX45";
-    case OK_PRODUCT_XEM6110V2LX150:
-        return "XEM6110V2LX150";
-    case OK_PRODUCT_XEM6002LX9:
-        return "XEM6002LX9";
-    case OK_PRODUCT_XEM6310MTLX45T:
-        return "XEM6310MTLX45T";
-    case OK_PRODUCT_XEM6320LX130T:
-        return "XEM6320LX130T";
-    default:
-        return "UNKNOWN";
-    }
-}
-
-bool uploadFpgaBitfileQMessageBox(const QString& filename, QWidget *parent, okCFrontPanel *dev)
-{
-    okCFrontPanel::ErrorCode errorCode = dev->ConfigureFPGA(filename.toStdString());
-
-    switch (errorCode) {
-    case okCFrontPanel::NoError:
-        break;
-    case okCFrontPanel::DeviceNotOpen:
-        QMessageBox::critical(parent, "FPGA configuration failed", "Device not open.");
-        return false;
-    case okCFrontPanel::FileError:
-        QMessageBox::critical(parent, "FPGA configuration failed", "Cannot find configuration file.");
-        return false;
-    case okCFrontPanel::InvalidBitstream:
-        QMessageBox::critical(parent, "FPGA configuration failed", "Bitstream is not properly formatted.");
-        return false;
-    case okCFrontPanel::DoneNotHigh:
-        QMessageBox::critical(parent, "FPGA configuration failed", "FPGA DONE signal did not assert after configuration. Make sure switch on Opal Kelly board is set to 'USB' not 'PROM'.");
-        return false;
-    case okCFrontPanel::TransferError:
-        QMessageBox::critical(parent, "FPGA configuration failed", "USB error occurred during download.");
-        return false;
-    case okCFrontPanel::CommunicationError:
-        QMessageBox::critical(parent, "FPGA configuration failed", "Communication error with firmware.");
-        return false;
-    case okCFrontPanel::UnsupportedFeature:
-        QMessageBox::critical(parent, "FPGA configuration failed", "Unsupported feature.");
-        return false;
-    default:
-        QMessageBox::critical(parent, "FPGA configuration failed", "Unknown error.");
-        return false;
-    }
-
-    // Check for Opal Kelly FrontPanel support in the FPGA configuration.
-    if (dev->IsFrontPanelEnabled() == false) {
-        QMessageBox::critical(parent, "FPGA configuration failed",
-                              "Opal Kelly FrontPanel support is not enabled in this FPGA configuration.");
-        return false;
-    }
-
-    return true;
-}
-
-// Upload bitfile specified by 'filename' to the FPGA, reporting any errors that occur as a QMessageBox.
-bool BoardIdentifier::uploadFpgaBitfileQMessageBox(const QString& filename){
-    return ::uploadFpgaBitfileQMessageBox(filename, parent, dev);
-}
-
-// Create a dialog window for user to select which board's software to initialize.
-BoardSelectDialog::BoardSelectDialog(QWidget *parent) :
-    QDialog(parent),
-    boardTable(nullptr),
-    openButton(nullptr),
-    playbackButton(nullptr),
-    advancedButton(nullptr),
-    useOpenCL(true),
-    defaultSampleRateCheckBox(nullptr),
-    defaultSettingsFileCheckBox(nullptr),
-    splash(nullptr),
-    boardIdentifier(nullptr),
-    dataFileReader(nullptr),
-    rhxController(nullptr),
-    state(nullptr),
-    controllerInterface(nullptr),
-    parser(nullptr),
-    controlWindow(nullptr)
-{
-    // Information used by QSettings to save basic settings across sessions.
-    QCoreApplication::setOrganizationName(OrganizationName);
-    QCoreApplication::setOrganizationDomain(OrganizationDomain);
-    QCoreApplication::setApplicationName(ApplicationName);
-
-    // Globally disable unused Context Help buttons from windows/dialogs
-    QApplication::setAttribute(Qt::AA_DisableWindowContextHelpButton);
-
-    // Initialize Board Identifier.
-    boardIdentifier = new BoardIdentifier(this);
-
-    // Determine how many and what type of controllers are connected to this machine.
-    controllersInfo = boardIdentifier->getConnectedControllersInfo();
-
-    // Create a table containing information about connected controllers.
-    boardTable = new QTableWidget(controllersInfo.size(), 3, this);
-    populateTable();
-
-    // Allow the user to open the selected board by clicking the open button
-    // (can also be done by double-clicking the row in the table).
-    openButton = new QPushButton(tr("Open"), this);
-    openButton->setEnabled(false);
-    connect(openButton, SIGNAL(clicked()), this, SLOT(openSelectedBoard()));
-
-    // Allow the user to open a data file for playback.
-    playbackButton = new QPushButton(tr("Data File Playback"), this);
-    connect(playbackButton, SIGNAL(clicked()), this, SLOT(playbackDataFile()));
-
-    // Allow the user to open 'Advanced' dialog to allow opting out of OpenCL
-    advancedButton = new QPushButton(tr("Advanced"), this);
-    connect(advancedButton, SIGNAL(clicked()), this, SLOT(advanced()));
-    int advancedButtonSize = advancedButton->sizeHint().width() + 10;
-    advancedButton->setFixedWidth(advancedButtonSize);
-
-    defaultSampleRateCheckBox = new QCheckBox(this);
-    defaultSettingsFileCheckBox = new QCheckBox(this);
-
-    QHBoxLayout *firstRowLayout = new QHBoxLayout;
-    firstRowLayout->addWidget(defaultSettingsFileCheckBox);
-    firstRowLayout->addStretch(1);
-    firstRowLayout->addWidget(playbackButton);
-
-    QHBoxLayout *secondRowLayout = new QHBoxLayout;
-    secondRowLayout->addWidget(defaultSampleRateCheckBox);
-    secondRowLayout->addStretch(1);
-    secondRowLayout->addWidget(openButton);
-
-    QVBoxLayout *mainLayout = new QVBoxLayout;
-    mainLayout->addWidget(boardTable);
-    mainLayout->addLayout(firstRowLayout);
-    mainLayout->addLayout(secondRowLayout);
-    mainLayout->addWidget(advancedButton);
-
-    setWindowTitle("Select XDAQ");
-
-    setLayout(mainLayout);
-
-    resize(minimumSize());
-
-    splash = new QSplashScreen(QPixmap(":images/RHX_splash.png"));
-    splashMessage = "Copyright " + CopyrightSymbol + " " + ApplicationCopyrightYear + " Intan Technologies.  RHX version " +
-            SoftwareVersion + ".  Opening XDAQ ...";
-    splashMessageAlign = Qt::AlignCenter | Qt::AlignBottom;
-    splashMessageColor = Qt::white;
-
-    if (!validControllersPresent(controllersInfo)) {
-        showDemoMessageBox();
-    } else {
-        show();
-    }
-
-    // Highlight first enabled row.
-    for (int row = 0; row < boardTable->rowCount(); row++) {
-        // Get this row's text.
-        QString thisText = boardTable->itemAt(row, 0)->text();
-        // If this type of board is recognized and enabled, give it focus. Otherwise, move to the next row.
-        if (thisText != "N/A") {
-            boardTable->setRangeSelected(QTableWidgetSelectionRange(row, 0, row, 2), true);
-            boardTable->setFocus();
-            break;
-        }
-    }
-}
-
-BoardSelectDialog::~BoardSelectDialog()
-{
-    if (boardIdentifier) delete boardIdentifier;
-    if (dataFileReader) delete dataFileReader;
-    if (controllerInterface) delete controllerInterface;
-    if (rhxController) delete rhxController;
-    if (parser) delete parser;
-//    if (state) delete state;  // This causes "The program has unexpectedly finished" upon quitting for some unknown reason.
-}
-
-// Determine whether or not the given QVector of type ControllerInfo contains any valid controllers that can be opened
-// by this software (RHD USB interface board, RHD Recording Controller, or RHS Stim/Record Controller).
-bool BoardSelectDialog::validControllersPresent(QVector<ControllerInfo*> cInfo)
-{
-    for (int i = 0; i < cInfo.size(); i++){
-        std::cout<<static_cast<int>(cInfo[i]->xdaqModel)<<'\n';
-        if(cInfo[i]->xdaqModel != XDAQModel::Unknown)
-        return true;
-    }
-    return false;
-}
-
-void BoardSelectDialog::showDemoMessageBox()
-{
-    AmplifierSampleRate sampleRate = SampleRate20000Hz;
-    StimStepSize stimStepSize = StimStepSize500nA;
-    bool rememberSettings = false;
-
-    DemoSelections demoSelection;
-    DemoDialog demoDialog(&demoSelection, useOpenCL, this);
-    demoDialog.exec();
-
-    if (demoSelection == DemoPlayback) {
-        playbackDataFile();
-    } else {
-        ControllerType controllerType;
-        if (demoSelection == DemoUSBInterfaceBoard) {
-            controllerType = ControllerRecordUSB2;
-        } else if (demoSelection == DemoRecordingController) {
-            controllerType = ControllerRecordUSB3;
-        } else {
-            controllerType = ControllerStimRecordUSB2;
-        }
-
-        StartupDialog startupDialog(controllerType, &sampleRate, &stimStepSize, &rememberSettings, false, this);
-        startupDialog.exec();
-
-        splash->show();
-        splash->showMessage(splashMessage, splashMessageAlign, splashMessageColor);
-
-        startSoftware(controllerType, sampleRate, stimStepSize, controllerType == ControllerRecordUSB3 ? 8 : 4, true, "N/A",
-                      SyntheticMode);
-
-        splash->finish(controlWindow);
-        this->accept();
-    }
-}
-
-// Fill the table with information corresponding to all connected Opal Kelly devices.
-void BoardSelectDialog::populateTable()
-{
-    // Set up header.
-    boardTable->setHorizontalHeaderLabels(QStringList() << "XDAQ" << "I/O Expander" << "Serial Number");
-    boardTable->horizontalHeader()->setSectionsClickable(false);
-    boardTable->verticalHeader()->setSectionsClickable(false);
-    boardTable->setFocusPolicy(Qt::ClickFocus);
-
-    // Populate each row with information corresponding to a single controller.
-    Qt::ItemFlags itemFlags = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-    for (int row = 0; row < controllersInfo.size(); row++) {
-        const auto& info = *controllersInfo[row];
-        // Report the type of board.
-        QString boardType = getBoardTypeString(info);
-        auto* intanBoardType = new QTableWidgetItem(getIcon(info.xdaqModel, style(), 100), boardType);
-        // If this type is clamp, add a description to the boardType string.
-        if (info.boardMode == CLAMPController) {
-            intanBoardType->setText(intanBoardType->text().append(tr(" (run Clamp software to use)")));
-        }
-        intanBoardType->setFlags(itemFlags);
-        boardTable->setItem(row, 0, intanBoardType);
-
-        // Report if an io expander is connected.
-        QTableWidgetItem *ioExpanderStatus = nullptr;
-        if (info.xdaqModel == XDAQModel::Unknown) {
-            ioExpanderStatus = new QTableWidgetItem(tr("N/A"));
-        } else {
-            QIcon icon((controllersInfo[row]->expConnected) ?
-                           style()->standardIcon(QStyle::SP_DialogYesButton).pixmap(20) :
-                           style()->standardIcon(QStyle::SP_DialogNoButton).pixmap(20));
-            ioExpanderStatus = new QTableWidgetItem(icon, (controllersInfo[row]->expConnected ?
-                                                               tr("I/O Expander Connected") :
-                                                               tr("No I/O Expander Connected")));
-        }
-        ioExpanderStatus->setFlags(itemFlags);
-        boardTable->setItem(row, 1, ioExpanderStatus);
-
-        // Report the serial number of this board.
-        QTableWidgetItem *serialNumber = new QTableWidgetItem(controllersInfo[row]->xdaqSerial);
-        serialNumber->setFlags(itemFlags);
-        boardTable->setItem(row, 2, serialNumber);
-
-        // If the type of board is unrecognized, disable the row (greyed-out and unclickable).
-        if (info.xdaqModel == XDAQModel::Unknown) {
-            intanBoardType->setFlags(Qt::NoItemFlags);
-            ioExpanderStatus->setFlags(Qt::NoItemFlags);
-            serialNumber->setFlags(Qt::NoItemFlags);
-        }
-    }
-
-    // Make table visible in full (for up to 5 rows... then allow a scroll bar to be used).
-    boardTable->setIconSize(QSize(283, 100));
-    boardTable->resizeColumnsToContents();
-    boardTable->resizeRowsToContents();
-    boardTable->setMinimumSize(calculateTableSize());
-    boardTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-    boardTable->setSelectionMode(QAbstractItemView::SingleSelection);
-
-    connect(boardTable, SIGNAL(cellDoubleClicked(int, int)),
-            this, SLOT(startBoard(int)));  // When the user double clicks a row, trigger that board's software.
-    connect(boardTable, SIGNAL(currentCellChanged(int, int, int, int)),
-            this, SLOT(newRowSelected(int)));  // When the user selects a valid row, enable 'open' button.
-}
-
-// Return a QSize (that should be the minimum size of the table) which allows all columns to be visible, and up to 5 rows
-// to be visible before a scroll bar is added.
-QSize BoardSelectDialog::calculateTableSize()
+// Return a QSize (that should be the minimum size of the table) which allows all columns to be
+// visible, and up to 5 rows to be visible before a scroll bar is added.
+QSize calculateTableSize(QTableWidget *boardTable)
 {
     int width = boardTable->verticalHeader()->width();
     for (int column = 0; column < boardTable->columnCount(); column++) {
@@ -554,8 +94,7 @@ QSize BoardSelectDialog::calculateTableSize()
 
     // Make the minimum height to be 5 rows.
     int numRows = 5;
-    if (boardTable->rowCount() <= 5)
-        numRows = boardTable->rowCount();
+    if (boardTable->rowCount() <= 5) numRows = boardTable->rowCount();
     int height = boardTable->horizontalHeader()->height();
     for (int row = 0; row < numRows; row++) {
         height += boardTable->rowHeight(row);
@@ -565,222 +104,707 @@ QSize BoardSelectDialog::calculateTableSize()
     return QSize(width, height);
 }
 
-void BoardSelectDialog::startSoftware(ControllerType controllerType, AmplifierSampleRate sampleRate, StimStepSize stimStepSize,
-                                      int numSPIPorts, bool expanderConnected, const QString& boardSerialNumber,
-                                      AcquisitionMode mode, const ControllerInfo* info)
+auto create_default_combobox(auto init, const auto &items, auto on_change)
 {
-    if (mode == LiveMode) {
-        rhxController = new RHXController(controllerType, sampleRate);
-    } else if (mode == SyntheticMode) {
-        rhxController = new SyntheticRHXController(controllerType, sampleRate);
-    } else if (mode == PlaybackMode) {
-        rhxController = new PlaybackRHXController(controllerType, sampleRate, dataFileReader);
-    } else {
-        return;
-    }
-    
-    state = new SystemState(rhxController, stimStepSize,
-        numSPIPorts, expanderConnected,
-        info == nullptr ? false : info->xdaqModel == XDAQModel::One,
-        info == nullptr ? 2 : (info->xdaqModel == XDAQModel::One ? 2 : 1)
+    auto combo = new QComboBox();
+    for (const auto &item : items) combo->addItem(item);
+    combo->setCurrentIndex(init);
+    QObject::connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged), on_change);
+    return combo;
+}
+
+auto create_default_sample_rate_checkbox = [](QWidget *parent) {
+    auto defaultSampleRateCheckBox = new QCheckBox(parent);
+    QSettings settings;
+    settings.beginGroup("XDAQ");
+    defaultSampleRateCheckBox->setChecked(settings.value("useDefaultSettings", false).toBool());
+    int defaultSampleRateIndex = settings.value("defaultSampleRate", 14).toInt();
+    int defaultStimStepSizeIndex = settings.value("defaultStimStepSize", 6).toInt();
+    defaultSampleRateCheckBox->setText(
+        parent->tr("Start software with ") + SampleRateString[defaultSampleRateIndex] +
+        parent->tr(" sample rate and ") + StimStepSizeString[defaultStimStepSizeIndex]
     );
-    state->highDPIScaleFactor = this->devicePixelRatio();  // Use this to adjust graphics for high-DPI monitors.
-    state->availableScreenResolution = QGuiApplication::primaryScreen()->geometry();
-    controllerInterface = new ControllerInterface(state, rhxController, boardSerialNumber, useOpenCL, dataFileReader, this);
-    state->setupGlobalSettingsLoadSave(controllerInterface);
-    parser = new CommandParser(state, controllerInterface, this);
-    controlWindow = new ControlWindow(state, parser, controllerInterface);
 
-    connect(controlWindow, SIGNAL(sendExecuteCommand(QString)), parser, SLOT(executeCommandSlot(QString)));
-    connect(controlWindow, SIGNAL(sendExecuteCommandWithParameter(QString,QString)), parser, SLOT(executeCommandWithParameterSlot(QString, QString)));
-    connect(controlWindow, SIGNAL(sendGetCommand(QString)), parser, SLOT(getCommandSlot(QString)));
-    connect(controlWindow, SIGNAL(sendSetCommand(QString, QString)), parser, SLOT(setCommandSlot(QString, QString)));
-
-    connect(parser, SIGNAL(stimTriggerOn(QString)), controllerInterface, SLOT(manualStimTriggerOn(QString)));
-    connect(parser, SIGNAL(stimTriggerOff(QString)), controllerInterface, SLOT(manualStimTriggerOff(QString)));
-    connect(parser, SIGNAL(stimTriggerPulse(QString)), controllerInterface, SLOT(manualStimTriggerPulse(QString)));
-
-    connect(parser, SIGNAL(updateGUIFromState()), controlWindow, SLOT(updateFromState()));
-    connect(parser, SIGNAL(sendLiveNote(QString)), controllerInterface->saveThread(), SLOT(saveLiveNote(QString)));
-
-    connect(controllerInterface, SIGNAL(TCPErrorMessage(QString)), parser, SLOT(TCPErrorSlot(QString)));
-
-    if (dataFileReader) {
-        connect(controlWindow, SIGNAL(setDataFileReaderSpeed(double)), dataFileReader, SLOT(setPlaybackSpeed(double)));
-        connect(controlWindow, SIGNAL(jumpToStart()), dataFileReader, SLOT(jumpToStart()));
-        connect(controlWindow, SIGNAL(jumpToPosition(QString)), dataFileReader, SLOT(jumpToPosition(QString)));
-        connect(controlWindow, SIGNAL(jumpRelative(double)), dataFileReader, SLOT(jumpRelative(double)));
-        connect(controlWindow, SIGNAL(setStatusBarReadyPlayback()), dataFileReader, SLOT(setStatusBarReady()));
-        connect(dataFileReader, SIGNAL(setStatusBar(QString)), controlWindow, SLOT(updateStatusBar(QString)));
-        connect(dataFileReader, SIGNAL(setTimeLabel(QString)), controlWindow, SLOT(updateTimeLabel(QString)));
-        connect(dataFileReader, SIGNAL(sendSetCommand(QString,QString)), parser, SLOT(setCommandSlot(QString,QString)));
-    }
-
-    connect(controllerInterface, SIGNAL(haveStopped()), controlWindow, SLOT(stopAndReportAnyErrors()));
-    connect(controllerInterface, SIGNAL(setTimeLabel(QString)), controlWindow, SLOT(updateTimeLabel(QString)));
-    connect(controllerInterface, SIGNAL(setTopStatusLabel(QString)), controlWindow, SLOT(updateTopStatusLabel(QString)));
-    connect(controllerInterface, SIGNAL(setHardwareFifoStatus(double)), controlWindow, SLOT(updateHardwareFifoStatus(double)));
-    connect(controllerInterface, SIGNAL(cpuLoadPercent(double)), controlWindow, SLOT(updateMainCpuLoad(double)));
-
-    connect(controllerInterface->saveThread(), SIGNAL(setStatusBar(QString)), controlWindow, SLOT(updateStatusBar(QString)));
-    connect(controllerInterface->saveThread(), SIGNAL(setTimeLabel(QString)), controlWindow, SLOT(updateTimeLabel(QString)));
-    connect(controllerInterface->saveThread(), SIGNAL(sendSetCommand(QString, QString)),
-            parser, SLOT(setCommandSlot(QString, QString)));
-    connect(controllerInterface->saveThread(), SIGNAL(error(QString)), controlWindow, SLOT(queueErrorMessage(QString)));
-
-    controlWindow->show();
-
-    QSettings settings;
-    settings.beginGroup(ControllerTypeSettingsGroup[(int)state->getControllerTypeEnum()]);
-    if (defaultSettingsFileCheckBox->isChecked()) {
-        settings.setValue("loadDefaultSettingsFile", true);
-        QString defaultSettingsFile = QString(settings.value("defaultSettingsFile", "").toString());
-        if (controlWindow->loadSettingsFile(defaultSettingsFile)) {
-            emit controlWindow->setStatusBar("Loaded default settings file " + defaultSettingsFile);
-        } else {
-            emit controlWindow->setStatusBar("Error loading default settings file " + defaultSettingsFile);
+    QObject::connect(
+        defaultSampleRateCheckBox,
+        &QCheckBox::checkStateChanged,
+        [](Qt::CheckState state) {
+            // save the state of the checkbox to QSettings
+            QSettings settings;
+            settings.beginGroup("XDAQ");
+            settings.setValue("useDefaultSettings", state == Qt::Checked);
+            settings.endGroup();
         }
-    } else {
-        settings.setValue("loadDefaultSettingsFile", false);
+    );
+    return defaultSampleRateCheckBox;
+};
+
+auto create_default_settings_file_checkbox = [](QWidget *parent) {
+    auto defaultSettingsFileCheckBox = new QCheckBox(parent);
+    QSettings settings;
+    settings.beginGroup("XDAQ");
+    defaultSettingsFileCheckBox->setChecked(
+        settings.value("loadDefaultSettingsFile", false).toBool()
+    );
+    auto defaultSettingsFile = QString(settings.value("defaultSettingsFile", "").toString());
+    defaultSettingsFileCheckBox->setText(
+        parent->tr("Load default settings file: ") + defaultSettingsFile
+    );
+    QObject::connect(
+        defaultSettingsFileCheckBox,
+        &QCheckBox::checkStateChanged,
+        [](Qt::CheckState state) {
+            QSettings settings;
+            settings.beginGroup("XDAQ");
+            settings.setValue("loadDefaultSettingsFile", state == Qt::Checked);
+            settings.endGroup();
+        }
+    );
+    return defaultSettingsFileCheckBox;
+};
+
+auto get_properties_table(QStringList headers, std::vector<std::vector<QWidget *>> rows)
+{
+    auto num_rows = rows.size();
+    auto num_cols = num_rows > 0 ? rows[0].size() : 0;
+    auto table = new QTableWidget(num_rows, num_cols, nullptr);
+    table->setHorizontalHeaderLabels(headers);
+    table->horizontalHeader()->setSectionsClickable(false);
+    table->verticalHeader()->hide();
+    for (int r = 0; r < num_rows; ++r) {
+        for (int c = 0; c < num_cols; ++c) {
+            table->setCellWidget(r, c, rows[r][c]);
+            rows[r][c]->setContentsMargins(2, 0, 2, 0);
+        }
     }
+    table->resizeColumnsToContents();
+    table->resizeRowsToContents();
+    table->setMinimumSize(calculateTableSize(table));
+    table->horizontalHeader()->setStretchLastSection(true);
+    return table;
+}
+
+auto get_playback_board(QWidget *parent, auto launch)
+{
+    QSettings settings;
+    settings.beginGroup("XDAQ");
+    auto last_playback_file = settings.value("lastPlaybackFile", "").toString();
+    auto last_playback_ports = settings.value("playbackPorts", 255).toUInt();
     settings.endGroup();
+
+    auto app_icon = new QTableWidgetItem(
+        parent->style()->standardIcon(QStyle::SP_MediaPlay).pixmap(40), QObject::tr("Playback")
+    );
+
+    auto open_file_button = new QPushButton(
+        parent->style()->standardIcon(QStyle::SP_DialogOpenButton).pixmap(20),
+        last_playback_file.isEmpty() ? QObject::tr("Select Playback Data File") : last_playback_file
+    );
+
+    auto launch_button = new QPushButton(
+        parent->style()->standardIcon(QStyle::SP_MediaPlay).pixmap(20), parent->tr("Launch")
+    );
+    launch_button->setEnabled(!last_playback_file.isEmpty());
+    // boardTable->setCellWidget(row, 2, launch_button);
+
+    QObject::connect(
+        open_file_button,
+        &QPushButton::clicked,
+        [parent, open_file_button, launch_button]() {
+            QSettings settings;
+            settings.beginGroup("XDAQ");
+            QString playbackFileName = QFileDialog::getOpenFileName(
+                nullptr,
+                parent->tr("Select Intan Data File"),
+                settings.value("playbackDirectory", ".").toString(),  // default directory
+                parent->tr("Intan Data Files (*.rhd *.rhs)")
+            );
+            if (!playbackFileName.isEmpty()) {
+                settings.setValue(
+                    "playbackDirectory",
+                    fs::path(playbackFileName.toStdString()).parent_path().string().c_str()
+                );
+                settings.setValue("lastPlaybackFile", playbackFileName);
+            }
+            settings.endGroup();
+            open_file_button->setText(playbackFileName);
+            launch_button->setEnabled(!playbackFileName.isEmpty());
+        }
+    );
+
+    std::vector<std::vector<QWidget *>> rows;
+    for (int port = 0; port < 8; ++port) {
+        auto label = new QLabel(parent->tr(fmt::format("Port {}", (char) ('A' + port)).c_str()));
+        auto enable_checkbox = new QCheckBox();
+        rows.push_back(
+            {label,
+             enable_checkbox,
+             new QLabel(
+                 parent->tr(fmt::format("Enable playback on port {}", (char) ('A' + port)).c_str())
+             )}
+        );
+        enable_checkbox->setChecked((last_playback_ports & (1 << port)) > 0);
+
+        QObject::connect(
+            enable_checkbox,
+            &QCheckBox::checkStateChanged,
+            [port](Qt::CheckState state) {
+                QSettings settings;
+                settings.beginGroup("XDAQ");
+                auto ports = settings.value("playbackPorts", 255).toUInt();
+                if (state == Qt::Checked) {
+                    ports |= (1 << port);
+                } else {
+                    ports &= ~(1 << port);
+                }
+                settings.setValue("playbackPorts", ports);
+                settings.endGroup();
+            }
+        );
+    }
+    auto launch_properties_widget = get_properties_table(
+        {parent->tr("Property"), parent->tr("Value"), parent->tr("Description")}, rows
+    );
+    auto launch_button_layout = new QVBoxLayout;
+    launch_button_layout->addWidget(launch_button, 0, Qt::AlignLeft);
+    launch_button_layout->addWidget(new QLabel(parent->tr("Launch Properties")));
+    launch_button_layout->addWidget(launch_properties_widget);
+    auto launch_button_widget = new QWidget();
+    launch_button_widget->setLayout(launch_button_layout);
+
+    QObject::connect(
+        launch_button,
+        &QPushButton::clicked,
+        [parent, open_file_button, launch_button, launch]() {
+            auto playbackFileName = open_file_button->text();
+            if (!playbackFileName.isEmpty()) {
+                QSettings settings;
+                settings.beginGroup("XDAQ");
+                bool canReadFile = true;
+                QString report;
+                auto dataFileReader = new DataFileReader(
+                    playbackFileName,
+                    canReadFile,
+                    report,
+                    settings.value("playbackPorts", 255).toUInt()
+                );
+
+                if (!canReadFile) {
+                    ScrollableMessageBoxDialog msgBox(nullptr, "Unable to Load Data File", report);
+                    msgBox.exec();
+                    settings.endGroup();
+                    return;
+                } else if (!report.isEmpty()) {
+                    ScrollableMessageBoxDialog msgBox(nullptr, "Data File Loaded", report);
+                    msgBox.exec();
+                    QFileInfo fileInfo(playbackFileName);
+                    settings.setValue("playbackDirectory", fileInfo.absolutePath());
+                }
+                settings.endGroup();
+                launch(
+                    [dataFileReader]() {
+                        return new PlaybackRHXController(
+                            dataFileReader->controllerType(),
+                            dataFileReader->sampleRate(),
+                            dataFileReader
+                        );
+                    },
+                    dataFileReader
+                );
+            }
+        }
+    );
+
+    return std::make_tuple(app_icon, open_file_button, launch_button_widget);
 }
 
-// Trigger the currently selected board's software.
-void BoardSelectDialog::openSelectedBoard()
+auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info, const XDAQStatus &status)
 {
-    QTableWidgetItem *selectedItem = boardTable->selectedItems().first();
-    startBoard(selectedItem->row());
+    auto app_icon = new QTableWidgetItem(
+        getIcon(info.model, parent->style(), info.model == XDAQModel::Unknown ? 40 : 80),
+        QString::fromStdString(info.id)
+    );
+
+    auto device_widget = new QWidget();
+    {
+        auto main_layout = new QVBoxLayout;
+        main_layout->addWidget(new QLabel(QString::fromStdString(info.plugin)));
+        // Report if an io expander is connected.
+        if (info.model == XDAQModel::Unknown) {
+            main_layout->addWidget(new QLabel(parent->tr("N/A")));
+        } else if (status.expander) {
+            auto expander_layout = new QHBoxLayout;
+            auto icon = new QLabel();
+            icon->setPixmap(parent->style()->standardIcon(QStyle::SP_DialogYesButton).pixmap(20));
+            expander_layout->addWidget(icon);
+            expander_layout->addWidget(new QLabel(parent->tr("I/O Expander Connected")));
+            main_layout->addLayout(expander_layout);
+        } else {
+            auto expander_layout = new QHBoxLayout;
+            auto icon = new QLabel();
+            icon->setPixmap(parent->style()->standardIcon(QStyle::SP_DialogNoButton).pixmap(20));
+            expander_layout->addWidget(icon);
+            expander_layout->addWidget(new QLabel(parent->tr("No I/O Expander Connected")));
+            main_layout->addLayout(expander_layout);
+        }
+
+        // Report the serial number of this board.
+        auto serial_layout = new QHBoxLayout;
+        serial_layout->addWidget(new QLabel(parent->tr("Serial Number")));
+        serial_layout->addWidget(new QLabel(QString::fromStdString(info.serial)));
+        main_layout->addLayout(serial_layout);
+        device_widget->setLayout(main_layout);
+        device_widget->setDisabled(info.model == XDAQModel::Unknown);
+
+        // Show device current mode
+        auto mode_layout = new QHBoxLayout;
+        mode_layout->addWidget(new QLabel(parent->tr("Current Mode")));
+        if (status.mode == "rhd")
+            mode_layout->addWidget(new QLabel(QString::fromStdString("X3R/X6R")));
+        else if (status.mode == "rhs")
+            mode_layout->addWidget(new QLabel(QString::fromStdString("X3SR")));
+        else if (status.mode == "np")
+            mode_layout->addWidget(new QLabel(QString::fromStdString("NeuroPixel")));
+        else if (status.mode == "bootloader")
+            mode_layout->addWidget(new QLabel(QString::fromStdString("Bootloader")));
+
+        main_layout->addLayout(mode_layout);
+    }
+
+    auto launch_widget = new QWidget();
+    {
+        QSettings settings;
+        settings.beginGroup("XDAQ");
+        if (!settings.contains("sample_rate")) settings.setValue("sample_rate", SampleRate30000Hz);
+        if (!settings.contains("stim_step_size"))
+            settings.setValue("stim_step_size", StimStepSize10uA);
+        auto init_sample_rate =
+            static_cast<AmplifierSampleRate>(settings.value("sample_rate").toInt());
+        auto init_stim_step_size =
+            static_cast<StimStepSize>(settings.value("stim_step_size").toInt());
+        settings.endGroup();
+
+        auto launch_button_rhd = new QPushButton(parent->tr("Record (X3R/X6R)"));
+        QObject::connect(launch_button_rhd, &QPushButton::clicked, [launch, info]() {
+            auto config = json::parse(info.device_config);
+            config["mode"] = "rhd";
+
+            QSettings settings;
+            settings.beginGroup("XDAQ");
+            auto sample_rate =
+                static_cast<AmplifierSampleRate>(settings.value("sample_rate").toInt());
+            auto stim_step_size =
+                static_cast<StimStepSize>(settings.value("stim_step_size").toInt());
+            settings.endGroup();
+
+            launch(
+                [=]() {
+                    return new RHXController(
+                        ControllerType::ControllerRecordUSB3,
+                        sample_rate,
+                        info.get_device(config.dump())
+                    );
+                },
+                stim_step_size
+            );
+        });
+        auto launch_button_rhs = new QPushButton(parent->tr("Stim-Record (X3SR)"));
+        QObject::connect(launch_button_rhs, &QPushButton::clicked, [launch, info]() {
+            auto config = json::parse(info.device_config);
+            config["mode"] = "rhs";
+
+            QSettings settings;
+            settings.beginGroup("XDAQ");
+            auto sample_rate =
+                static_cast<AmplifierSampleRate>(settings.value("sample_rate").toInt());
+            auto stim_step_size =
+                static_cast<StimStepSize>(settings.value("stim_step_size").toInt());
+            settings.endGroup();
+            if (AbstractRHXController::getSampleRate(sample_rate) <
+                AbstractRHXController::getSampleRate(SampleRate20000Hz)) {
+                QMessageBox::warning(
+                    nullptr,
+                    "Unsupported Sample Rate",
+                    "Only 20, 25 and 30 kHz is supported using Stim-Record"
+                );
+                return;
+            }
+
+            launch(
+                [=]() {
+                    return new RHXController(
+                        ControllerType::ControllerStimRecord,
+                        sample_rate,
+                        info.get_device(config.dump())
+                    );
+                },
+                stim_step_size
+            );
+        });
+
+        auto sr_selector =
+            create_default_combobox(init_sample_rate, SampleRateString, [](int index) {
+                QSettings settings;
+                settings.beginGroup("XDAQ");
+                settings.setValue("sample_rate", index);
+                settings.endGroup();
+            });
+        auto stim_step_selector =
+            create_default_combobox(init_stim_step_size, StimStepSizeString, [](int index) {
+                QSettings settings;
+                settings.beginGroup("XDAQ");
+                settings.setValue("stim_step_size", index);
+                settings.endGroup();
+            });
+
+        auto launch_properties_widget = get_properties_table(
+            {parent->tr("Property"), parent->tr("Value")},
+            {{new QLabel(parent->tr("Sample Rate")), sr_selector},
+             {new QLabel(parent->tr("Stim Step Size")), stim_step_selector}}
+        );
+
+
+        auto launch_button_layout = new QVBoxLayout;
+        launch_button_layout->addWidget(launch_button_rhd, 0, Qt::AlignLeft);
+        launch_button_layout->addWidget(launch_button_rhs, 0, Qt::AlignLeft);
+        launch_button_layout->addWidget(launch_properties_widget);
+        launch_button_layout->setEnabled(info.model != XDAQModel::Unknown);
+        launch_widget->setLayout(launch_button_layout);
+    }
+
+
+    return std::make_tuple(app_icon, device_widget, launch_widget);
 }
 
-// Enable the 'Open' button when a valid controller's row is selected.
-void BoardSelectDialog::newRowSelected(int row)
+auto get_demo_board(QWidget *parent, auto launch)
 {
-    openButton->setEnabled(true);
+    auto app_icon = new QTableWidgetItem(
+        parent->style()->standardIcon(QStyle::SP_ComputerIcon).pixmap(40), parent->tr("Demo")
+    );
 
     QSettings settings;
     settings.beginGroup("XDAQ");
-
-    if (settings.value("useDefaultSettings", false).toBool()) {
-        defaultSampleRateCheckBox->setChecked(true);
-        defaultSampleRateCheckBox->setVisible(true);
-        int defaultSampleRateIndex = settings.value("defaultSampleRate", 14).toInt();
-        int defaultStimStepSizeIndex = settings.value("defaultStimStepSize", 6).toInt();
-        defaultSampleRateCheckBox->setText(tr("Start software with ") + SampleRateString[defaultSampleRateIndex] +
-                                           tr(" sample rate and ") + StimStepSizeString[defaultStimStepSizeIndex]);
-    } else {
-        defaultSampleRateCheckBox->setChecked(false);
-        defaultSampleRateCheckBox->setVisible(false);
-    }
-
-    if (settings.value("loadDefaultSettingsFile", false).toBool()) {
-        defaultSettingsFileCheckBox->setChecked(true);
-        defaultSettingsFileCheckBox->setVisible(true);
-        QString defaultSettingsFile = QString(settings.value("defaultSettingsFile", "").toString());
-        defaultSettingsFileCheckBox->setText(tr("Load default settings file: ") + defaultSettingsFile);
-    } else {
-        defaultSettingsFileCheckBox->setChecked(false);
-        defaultSettingsFileCheckBox->setVisible(false);
-    }
-
+    if (!settings.contains("demo_sample_rate"))
+        settings.setValue("demo_sample_rate", SampleRate30000Hz);
+    if (!settings.contains("demo_stim_step_size"))
+        settings.setValue("demo_stim_step_size", StimStepSize10uA);
+    auto init_sample_rate =
+        static_cast<AmplifierSampleRate>(settings.value("demo_sample_rate").toInt());
+    auto init_stim_step_size =
+        static_cast<StimStepSize>(settings.value("demo_stim_step_size").toInt());
     settings.endGroup();
+
+    auto sr_selector = create_default_combobox(init_sample_rate, SampleRateString, [](int index) {
+        QSettings settings;
+        settings.beginGroup("XDAQ");
+        settings.setValue("demo_sample_rate", index);
+        settings.endGroup();
+    });
+    auto stim_step_selector =
+        create_default_combobox(init_stim_step_size, StimStepSizeString, [](int index) {
+            QSettings settings;
+            settings.beginGroup("XDAQ");
+            settings.setValue("demo_stim_step_size", index);
+            settings.endGroup();
+        });
+
+    auto launch_properties_widget = get_properties_table(
+        {parent->tr("Property"), parent->tr("Value")},
+        {{new QLabel(parent->tr("Sample Rate")), sr_selector},
+         {new QLabel(parent->tr("Stim Step Size")), stim_step_selector}}
+    );
+
+    auto launch_button_rhd = new QPushButton(parent->tr("Record (X3R/X6R) Demo"));
+    QObject::connect(launch_button_rhd, &QPushButton::clicked, [launch]() {
+        QSettings settings;
+        settings.beginGroup("XDAQ");
+        auto sample_rate =
+            static_cast<AmplifierSampleRate>(settings.value("demo_sample_rate").toInt());
+        auto stim_step_size =
+            static_cast<StimStepSize>(settings.value("demo_stim_step_size").toInt());
+        settings.endGroup();
+
+        launch(
+            [=]() {
+                return new SyntheticRHXController(
+                    ControllerType::ControllerRecordUSB3, sample_rate
+                );
+            },
+            stim_step_size
+        );
+    });
+    auto launch_button_rhs = new QPushButton(parent->tr("Stim-Record (X3SR) Demo"));
+    QObject::connect(launch_button_rhs, &QPushButton::clicked, [launch]() {
+        QSettings settings;
+        settings.beginGroup("XDAQ");
+        auto sample_rate =
+            static_cast<AmplifierSampleRate>(settings.value("demo_sample_rate").toInt());
+        auto stim_step_size =
+            static_cast<StimStepSize>(settings.value("demo_stim_step_size").toInt());
+        settings.endGroup();
+        if (AbstractRHXController::getSampleRate(sample_rate) <
+            AbstractRHXController::getSampleRate(SampleRate20000Hz)) {
+            QMessageBox::warning(
+                nullptr,
+                "Unsupported Sample Rate",
+                "Only 20, 25 and 30 kHz is supported using Stim-Record"
+            );
+            return;
+        }
+        launch(
+            [=]() {
+                return new SyntheticRHXController(
+                    ControllerType::ControllerStimRecord, sample_rate
+                );
+            },
+            stim_step_size
+        );
+    });
+    auto launch_button_layout = new QVBoxLayout;
+    launch_button_layout->addWidget(launch_button_rhd, 0, Qt::AlignLeft);
+    launch_button_layout->addWidget(launch_button_rhs, 0, Qt::AlignLeft);
+    launch_button_layout->addWidget(launch_properties_widget);
+    auto launch_button_widget = new QWidget();
+    launch_button_widget->setLayout(launch_button_layout);
+    // boardTable->setCellWidget(row, 2, launch_button_widget);
+    return std::make_tuple(app_icon, new QWidget(), launch_button_widget);
 }
 
-// Trigger the given row's board's software.
-void BoardSelectDialog::startBoard(int row)
+std::vector<std::shared_ptr<xdaq::DeviceManager>> get_device_managers()
 {
-    openButton->setEnabled(false);
-    playbackButton->setEnabled(false);
-    boardTable->setEnabled(false);
-
-    AmplifierSampleRate sampleRate = SampleRate20000Hz;
-    StimStepSize stimStepSize = StimStepSize500nA;
-    bool rememberSettings = false;
-
-    ControllerType controllerType = ControllerRecordUSB3;
-    auto headstagetype = askHeadstageType();
-    switch(headstagetype){
-        case XDAQHeadstageType::Recording:
-            controllerType = ControllerRecordUSB3;
-            break;
-        case XDAQHeadstageType::StimRecord:
-            controllerType = ControllerStimRecordUSB2;
-            break;
-        default:
-            break;
+    auto app_dir = fs::path(QCoreApplication::applicationDirPath().toStdString());
+#ifdef __APPLE__
+    auto app_manager_dir = app_dir / ".." / "PlugIns" / "managers";
+#else
+    auto app_manager_dir = app_dir / "managers";
+#endif
+    if (!fs::exists(app_manager_dir)) {
+        return {};
     }
-    auto info = controllersInfo[row];
-    info->numSPIPorts = headstagetype == XDAQHeadstageType::StimRecord ? 4 : 8;
+    std::unordered_set<fs::path> search_paths;
+    for (auto &path : fs::directory_iterator(app_manager_dir)) {
+        search_paths.insert(fs::canonical(fs::path(path)));
+    }
 
-    QSettings settings;
-    settings.beginGroup("XDAQ");
-    if (defaultSampleRateCheckBox->isChecked()) {
-        sampleRate = (AmplifierSampleRate) settings.value("defaultSampleRate", 14).toInt();
-        stimStepSize = (StimStepSize) settings.value("defaultStimStepSize", 6).toInt();
-    } else {
-        StartupDialog *startupDialog = new StartupDialog(controllerType, &sampleRate, &stimStepSize, &rememberSettings, true, this);
-        startupDialog->exec();
+    std::vector<std::shared_ptr<xdaq::DeviceManager>> device_managers;
 
-        if (rememberSettings) {
-            settings.setValue("useDefaultSettings", true);
-            settings.setValue("defaultSampleRate", (int) sampleRate);
-            settings.setValue("defaultStimStepSize", (int) stimStepSize);
-        } else {
-            settings.setValue("useDefaultSettings", false);
+    for (const auto &path : search_paths) {
+        try {
+            device_managers.emplace_back(xdaq::get_device_manager(path));
+        } catch (...) {
         }
     }
-    settings.endGroup();
-
-    splash->show();
-    splash->showMessage(splashMessage, splashMessageAlign, splashMessageColor);
-
-    startSoftware(controllerType, sampleRate, stimStepSize, controllersInfo.at(row)->numSPIPorts,
-                  controllersInfo.at(row)->expConnected, controllersInfo.at(row)->serialNumber, LiveMode, info);
-
-    splash->finish(controlWindow);
-    this->accept();
+    return device_managers;
 }
 
-// Allow user to load an Intan data file for playback.
-void BoardSelectDialog::playbackDataFile()
+auto ScanDevice()
 {
-    QSettings settings;
-    QString defaultDirectory = settings.value("playbackDirectory", ".").toString();
-    QString playbackFileName;
-    playbackFileName = QFileDialog::getOpenFileName(this, tr("Select Intan Data File"), defaultDirectory, tr("Intan Data Files (*.rhd *.rhs)"));
+    std::vector<XDAQInfo> controllers_info;
+    std::vector<XDAQStatus> controllers_status;
 
-    if (playbackFileName.isEmpty()) {
-        exit(EXIT_FAILURE);
+    auto plugins = get_device_managers();
+
+    for (auto &plugin : plugins) {
+        auto devices = json::parse(plugin->list_devices());
+
+        for (auto &device : devices) {
+            auto dev = plugin->create_device(device.dump());
+            auto status = json::parse(*dev->get_status());
+            auto info = json::parse(*dev->get_info());
+            auto xdaq_status = parse_status(status);
+            auto xdaq_info = parse_info(info);
+
+            xdaq_info.plugin = json::parse(plugin->info()).at("name");
+            xdaq_info.device_config = device.dump();
+            xdaq_info.get_device = [device, plugin](const std::string &config) {
+                return plugin->create_device(config);
+            };
+
+            controllers_info.emplace_back(xdaq_info);
+            controllers_status.emplace_back(xdaq_status);
+        }
     }
-
-    bool canReadFile = false;
-    QString report;
-    dataFileReader = new DataFileReader(playbackFileName, canReadFile, report);
-    if (!canReadFile) {
-        ScrollableMessageBoxDialog msgBox(this, "Unable to Load Data File", report);
-        msgBox.exec();
-        delete dataFileReader;
-        dataFileReader = nullptr;
-        exit(EXIT_FAILURE);
-    } else if (!report.isEmpty()) {
-        ScrollableMessageBoxDialog msgBox(this, "Data File Loaded", report);
-        msgBox.exec();
-        QFileInfo fileInfo(playbackFileName);
-        settings.setValue("playbackDirectory", fileInfo.absolutePath());
-    }
-
-    splash->show();
-    splash->showMessage(splashMessage, splashMessageAlign, splashMessageColor);
-
-    startSoftware(dataFileReader->controllerType(), dataFileReader->sampleRate(), dataFileReader->stimStepSize(),
-                  dataFileReader->numSPIPorts(), dataFileReader->expanderConnected(), "N/A", PlaybackMode);
-
-    splash->finish(controlWindow);
-    this->accept();
+    return std::make_tuple(controllers_info, controllers_status);
 }
 
-void BoardSelectDialog::advanced()
+auto insert_board(StackedWidget *launch_panel, QTableWidget *boardTable, auto &&board)
 {
-    AdvancedStartupDialog advancedStartupDialog(useOpenCL, this);
-    advancedStartupDialog.exec();
+    auto [app_icon, device_widget, launch_button_widget] = board;
+    auto row = boardTable->rowCount();
+    boardTable->insertRow(row);
+    boardTable->setItem(row, 0, app_icon);
+    boardTable->setCellWidget(row, 1, device_widget);
+    launch_button_widget->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+    launch_panel->addWidget(launch_button_widget);
+    // board_launch_properties.emplace_back(launch_properties);
+}
+
+void InsertBoard(BoardSelectDialog *parent, StackedWidget *launch_panel, QTableWidget *boardTable)
+{
+    insert_board(
+        launch_panel,
+        boardTable,
+        get_playback_board(
+            parent,
+            [parent](
+                std::function<AbstractRHXController *()> open_controller, DataFileReader *data_file
+            ) {
+                QSettings settings;
+                settings.beginGroup("XDAQ");
+                auto use_opencl = settings.value("useOpenCL", true).toBool();
+                settings.endGroup();
+                parent->emit launch(
+                    open_controller,
+                    data_file->stimStepSize(),
+                    data_file,
+                    use_opencl,
+                    false,
+                    true,
+                    false,
+                    2
+                );
+            }
+        )
+    );
+
+    auto [controllers_info, controllers_status] = ScanDevice();
+    for (auto info_status : std::ranges::views::zip(controllers_info, controllers_status)) {
+        auto info = std::get<0>(info_status);
+        auto status = std::get<1>(info_status);
+
+        insert_board(
+            launch_panel,
+            boardTable,
+            get_xdaq_board(
+                parent,
+                [parent, info, status](
+                    std::function<AbstractRHXController *()> open_controller, StimStepSize step_size
+                ) {
+                    QSettings settings;
+                    settings.beginGroup("XDAQ");
+                    auto use_opencl = settings.value("useOpenCL", true).toBool();
+                    settings.endGroup();
+                    parent->emit launch(
+                        std::move(open_controller),
+                        step_size,
+                        nullptr,
+                        use_opencl,
+                        false,
+                        status.expander,
+                        info.model == XDAQModel::One,
+                        (info.model == XDAQModel::Core ? 1 : 2)
+                    );
+                },
+                info,
+                status
+            )
+        );
+    }
+
+    insert_board(
+        launch_panel,
+        boardTable,
+        get_demo_board(
+            parent,
+            [parent](
+                std::function<AbstractRHXController *()> open_controller, StimStepSize step_size
+            ) {
+                QSettings settings;
+                settings.beginGroup("XDAQ");
+                auto use_opencl = settings.value("useOpenCL", true).toBool();
+                settings.endGroup();
+                parent->emit launch(
+                    std::move(open_controller),
+                    step_size,
+                    nullptr,
+                    use_opencl,
+                    false,
+                    true,
+                    false,
+                    2
+                );
+            }
+        )
+    );
+}
+
+// Create a dialog window for user to select which board's software to initialize.
+BoardSelectDialog::BoardSelectDialog(QWidget *parent) : QDialog(parent)
+{
+    auto launch_panel = new StackedWidget(parent);
+    auto boardTable = new QTableWidget(0, 2, parent);
+    // Set up header.
+    boardTable->setHorizontalHeaderLabels({tr("App"), tr("Info")});
+    boardTable->horizontalHeader()->setSectionsClickable(false);
+    boardTable->verticalHeader()->setSectionsClickable(false);
+    boardTable->setFocusPolicy(Qt::ClickFocus);
+
+    InsertBoard(this, launch_panel, boardTable);
+
+    // Make table visible in full (for up to 5 rows... then allow a scroll bar to be used).
+    boardTable->setIconSize(QSize(283, 100));
+    boardTable->resizeColumnsToContents();
+    boardTable->resizeRowsToContents();
+    boardTable->setMinimumSize(calculateTableSize(boardTable));
+    boardTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    boardTable->setSelectionMode(QAbstractItemView::SingleSelection);
+
+    launch_panel->addWidget(new QLabel(tr("Select a board to launch")));
+    launch_panel->setCurrentIndex(launch_panel->count() - 1);
+    connect(boardTable, &QTableWidget::currentCellChanged, [this, launch_panel, boardTable]() {
+        auto current_row = boardTable->currentRow();
+        if (current_row == -1) return;
+        launch_panel->currentWidget()->hide();
+        launch_panel->setCurrentIndex(current_row);
+        launch_panel->resize(launch_panel->currentWidget()->sizeHint());
+        launch_panel->currentWidget()->show();
+        this->resize(this->sizeHint());
+    });
+
+    // Allow the user to open 'Advanced' dialog to allow opting out of OpenCL
+    auto advancedButton = new QPushButton(tr("Advanced"), this);
+    advancedButton->setFixedWidth(advancedButton->sizeHint().width() + 10);
+    connect(advancedButton, &QPushButton::clicked, this, [&]() {
+        QSettings settings;
+        settings.beginGroup("XDAQ");
+        bool use_opencl = settings.value("useOpenCL", true).toBool();
+        std::uint8_t playback_ports = 255;
+        AdvancedStartupDialog advancedStartupDialog(use_opencl, playback_ports, false, this);
+        advancedStartupDialog.exec();
+        settings.setValue("useOpenCL", use_opencl);
+        // settings.setValue("playbackPorts", playback_ports);
+        settings.endGroup();
+    });
+
+    auto rescanDeviceButton = new QPushButton(tr("Rescan Devices"), this);
+    rescanDeviceButton->setFixedWidth(rescanDeviceButton->sizeHint().width() + 10);
+    connect(rescanDeviceButton, &QPushButton::clicked, this, [this, launch_panel, boardTable]() {
+        while (auto widget = launch_panel->widget(0)) {
+            launch_panel->removeWidget(widget);
+        }
+        boardTable->setRowCount(0);
+        InsertBoard(this, launch_panel, boardTable);
+        launch_panel->resize(launch_panel->currentWidget()->sizeHint());
+        boardTable->resizeColumnsToContents();
+        boardTable->resizeRowsToContents();
+        boardTable->setMinimumSize(calculateTableSize(boardTable));
+        this->resize(this->sizeHint());
+    });
+
+    auto mainLayout = new QVBoxLayout;
+    auto boardsLayout = new QHBoxLayout;
+    auto buttonsLayout = new QHBoxLayout;
+
+    boardsLayout->addWidget(boardTable);
+    boardsLayout->addWidget(launch_panel);
+    buttonsLayout->addWidget(advancedButton, 0, Qt::AlignLeft);
+    buttonsLayout->addWidget(rescanDeviceButton, 1, Qt::AlignLeft);
+
+    mainLayout->addLayout(boardsLayout);
+    // mainLayout->addWidget(create_default_settings_file_checkbox(parent));
+    // mainLayout->addWidget(create_default_sample_rate_checkbox(parent));
+    mainLayout->addLayout(buttonsLayout);
+
+    setWindowTitle("Select XDAQ");
+    setLayout(mainLayout);
 }

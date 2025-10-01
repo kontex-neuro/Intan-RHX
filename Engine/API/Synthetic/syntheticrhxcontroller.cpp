@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -28,8 +28,17 @@
 //
 //------------------------------------------------------------------------------
 
-#include <iostream>
 #include "syntheticrhxcontroller.h"
+
+#include <fmt/format.h>
+
+#include <QDebug>
+#include <chrono>
+#include <expected>
+#include <iostream>
+#include <thread>
+
+#include "synthdatablockgenerator.h"
 
 SyntheticRHXController::SyntheticRHXController(ControllerType type_, AmplifierSampleRate sampleRate_) :
     AbstractRHXController(type_, sampleRate_)
@@ -43,58 +52,107 @@ SyntheticRHXController::~SyntheticRHXController()
 }
 
 // For a physical board, read data block from the USB interface. Fill given dataBlock from USB buffer.
-bool SyntheticRHXController::readDataBlock(RHXDataBlock *dataBlock)
-{
-    lock_guard<mutex> lockOk(okMutex);
-
-    unsigned int numBytesToRead = BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
-
-    if (numBytesToRead > usbBufferSize) {
-        cerr << "Error in SyntheticRHXController::readDataBlock: USB buffer size exceeded.  " <<
-                "Increase value of MAX_NUM_BLOCKS.\n";
-        return false;
-    }
-
-    dataBlock->fillFromUsbBuffer(usbBuffer, 0);
-
-    return true;
-}
+// bool SyntheticRHXController::readDataBlock(RHXDataBlock *dataBlock)
+// {
+//     lock_guard<mutex> lockOk(okMutex);
+// 
+//     unsigned int numBytesToRead = BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
+// 
+//     if (numBytesToRead > usbBufferSize) {
+//         std::cerr << "Error in SyntheticRHXController::readDataBlock: USB buffer size exceeded.  " <<
+//                 "Increase value of MAX_NUM_BLOCKS.\n";
+//         return false;
+//     }
+// 
+//     dataBlock->fillFromUsbBuffer(usbBuffer, 0);
+// 
+//     return true;
+// }
 
 // For a physical board, read a certain number of USB data blocks, and append them to queue.
 // Return true if data blocks were available.
-bool SyntheticRHXController::readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue)
+std::expected<std::vector<RHXDataBlock>, std::string> SyntheticRHXController::runAndReadDataBlocks(int numBlocks) 
 {
-    lock_guard<mutex> lockOk(okMutex);
+    std::lock_guard<std::mutex> lockOk(okMutex);
 
     unsigned int numWordsToRead = numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
 
     if (numWordsInFifo() < numWordsToRead)
-        return false;
+        return std::unexpected{"Not enough data to read"};
 
     unsigned int numBytesToRead = BytesPerWord * numWordsToRead;
 
     if (numBytesToRead > usbBufferSize) {
-        cerr << "Error in SyntheticRHXController::readDataBlocks: USB buffer size exceeded.  " <<
-                "Increase value of MAX_NUM_BLOCKS.\n";
-        return false;
+        return std::unexpected{"USB buffer size exceeded. Increase value of MAX_NUM_BLOCKS."};
     }
-
+    std::vector<RHXDataBlock> data_blocks;
     for (int i = 0; i < numBlocks; ++i) {
-        RHXDataBlock* dataBlock = new RHXDataBlock(type, numDataStreams);
-        dataBlock->fillFromUsbBuffer(usbBuffer, i);
-        dataQueue.push_back(dataBlock);
+        data_blocks.emplace_back(type, numDataStreams);
+        data_blocks.back().fillFromUsbBuffer(usbBuffer, i);
     }
-
-    return true;
+    return data_blocks;
 }
 
 // For a physical board, read a certain number of USB data blocks, and write the raw bytes to a buffer.
 // Return total number of bytes read.
 long SyntheticRHXController::readDataBlocksRaw(int numBlocks, uint8_t *buffer)
 {
-    lock_guard<mutex> lockOk(okMutex);
+    std::lock_guard<std::mutex> lockOk(okMutex);
 
     return dataGenerator->readSynthDataBlocksRaw(numBlocks, buffer, numDataStreams);
+}
+
+struct SyntheticDataStream final : public SyntheticRHXController::DataStream {
+    SyntheticDataStream(
+        xdaq::DataStream::receive_callback &&recv_event,
+        std::size_t chunk_size,
+        SyntheticRHXController& dev
+    ) : dev(dev)
+    {
+        thread = std::thread([this, chunk_size, on_receive=std::move(recv_event)]() mutable {
+            while (running) {
+                auto const read_buffer = new unsigned char[chunk_size];
+                const auto read = this->dev.readDataBlocksRaw(1, read_buffer);
+                if (read < 0)
+                    on_receive(
+                        xdaq::DataStream::Events::Error{.error = fmt::format("Read error {}", read)}
+                    );
+                else if (read > 0)
+                    on_receive(xdaq::DataStream::Events::OwnedData{
+                        .buffer = std::unique_ptr<unsigned char[], void (*)(unsigned char[])>(
+                            read_buffer, [](unsigned char d[]) { delete[] d; }
+                        ),
+                        .length = (std::size_t) read
+                    });
+                else std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            on_receive(xdaq::DataStream::Events::Stop{});
+        });
+    }
+
+    ~SyntheticDataStream() override { stop(); }
+
+    void stop() override
+    {
+        running = false;
+        if (thread.joinable()) thread.join();
+    }
+
+    std::thread thread;
+    std::atomic_bool running = true;
+    SyntheticRHXController& dev;
+};
+
+std::optional<std::unique_ptr<SyntheticRHXController::DataStream>>
+SyntheticRHXController::start_read_stream(
+    std::uint32_t addr, typename xdaq::DataStream::receive_callback &&receive_event,
+    std::size_t chunk_size
+)
+{
+    unsigned int data_block_size =
+        BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
+    return {std::make_unique<SyntheticDataStream>(std::move(receive_event), data_block_size, *this)
+    };
 }
 
 // Set the delay for sampling the MISO line on a particular SPI port (PortA - PortH), in integer clock steps, where each
@@ -102,10 +160,10 @@ long SyntheticRHXController::readDataBlocksRaw(int numBlocks, uint8_t *buffer)
 // since cable delay calculations are based on the clock frequency!
 void SyntheticRHXController::setCableDelay(BoardPort port, int delay)
 {
-    lock_guard<mutex> lockOk(okMutex);
+    std::lock_guard<std::mutex> lockOk(okMutex);
 
     if ((delay < 0) || (delay > 15)) {
-        cerr << "Warning in SyntheticRHXController::setCableDelay: delay out of range: " << delay << '\n';
+        std::cerr << "Warning in SyntheticRHXController::setCableDelay: delay out of range: " << delay << '\n';
         if (delay < 0) delay = 0;
         else if (delay > 15) delay = 15;
     }
@@ -136,7 +194,7 @@ void SyntheticRHXController::setCableDelay(BoardPort port, int delay)
         cableDelay[7] = delay;
         break;
     default:
-        cerr << "Error in SyntheticRHXController::setCableDelay: unknown port.\n";
+        std::cerr << "Error in SyntheticRHXController::setCableDelay: unknown port.\n";
     }
 }
 
@@ -147,7 +205,7 @@ void SyntheticRHXController::setDataSource(int stream, BoardDataSource dataSourc
     if (type != ControllerRecordUSB2) return;
 
     if ((stream < 0) || (stream > 7)) {
-        cerr << "Error in SyntheticRHXController::setDataSource: stream out of range.\n";
+        std::cerr << "Error in SyntheticRHXController::setDataSource: stream out of range.\n";
         return;
     }
     boardDataSources[stream] = dataSource;
@@ -156,7 +214,7 @@ void SyntheticRHXController::setDataSource(int stream, BoardDataSource dataSourc
 // Set the per-channel sampling rate of the RHD/RHS chips connected to the FPGA.
 bool SyntheticRHXController::setSampleRate(AmplifierSampleRate newSampleRate)
 {
-    lock_guard<mutex> lockOk(okMutex);
+    std::lock_guard<std::mutex> lockOk(okMutex);
     sampleRate = newSampleRate;
     return true;
 }
@@ -164,10 +222,10 @@ bool SyntheticRHXController::setSampleRate(AmplifierSampleRate newSampleRate)
 // Enable or disable one of the 32 available USB data streams (0-31).
 void SyntheticRHXController::enableDataStream(int stream, bool enabled)
 {
-    lock_guard<mutex> lockOk(okMutex);
+    std::lock_guard<std::mutex> lockOk(okMutex);
 
     if (stream < 0 || stream > (maxNumDataStreams() - 1)) {
-        cerr << "Error in SyntheticRHXController::enableDataStream: stream out of range.\n";
+        std::cerr << "Error in SyntheticRHXController::enableDataStream: stream out of range.\n";
         return;
     }
 
@@ -187,7 +245,7 @@ void SyntheticRHXController::enableDataStream(int stream, bool enabled)
 // Return 4-bit "board mode" input.
 int SyntheticRHXController::getBoardMode()
 {
-    lock_guard<mutex> lockOk(okMutex);
+    std::lock_guard<std::mutex> lockOk(okMutex);
     return boardMode(type);
 }
 
@@ -213,8 +271,9 @@ int SyntheticRHXController::getNumSPIPorts(bool &expanderBoardDetected)
 // and its 256-channel capacity (limited by USB2 bus speed) is exceeded.  A value of -1 is returned, or a value
 // of -2 if RHD2216 devices are present so that the user can be reminded that RHD2216 devices consume 32 channels
 // of USB bus bandwidth.
-int SyntheticRHXController::findConnectedChips(vector<ChipType> &chipType, vector<int> &portIndex, vector<int> &commandStream,
-                                               vector<int> &numChannelsOnPort)
+int SyntheticRHXController::findConnectedChips(std::vector<ChipType> &chipType, std::vector<int> &portIndex, std::vector<int> &commandStream,
+                                               std::vector<int> &numChannelsOnPort, bool synthMaxChannels, bool /* returnToFastSettle */,
+                                               bool /* usePreviousDelay */, int /* selectedPort */, int /* lastDetectedChip */, int /* lastDetectedNumStreams */)
 {
     int maxNumStreams = maxNumDataStreams();
     int maxSPIPorts = maxNumSPIPorts();
@@ -242,48 +301,102 @@ int SyntheticRHXController::findConnectedChips(vector<ChipType> &chipType, vecto
         setCableDelay(PortH, 1);
     }
 
-    if (type == ControllerRecordUSB2 || type == ControllerRecordUSB3) {
-        chipType[0] = RHD2132Chip;
-        enableDataStream(0, true);
-        if (type == ControllerRecordUSB2) {
-            setDataSource(0, PortA1);
+    // When highestCapacity is false, the default synthetic data of 32 channels on Ports A and B will be set up.
+    // When highestCapacity is true, the maximum # of channels per port will be set up.
+    //bool highestCapacity = false;
+    //bool highestCapacity = true;
+
+    if (synthMaxChannels) {
+        if (type == ControllerRecordUSB2 || type == ControllerRecordUSB3) {
+            // For USB Interface Board, 128 channels on A and 128 channels on B
+            // For Recording Controller, 128 channels on each port A-H
+            int numPorts = type == ControllerRecordUSB2 ? 2 : 8;
+            for (int thisPort = 0; thisPort < numPorts; ++thisPort) {
+                int offset = thisPort * 4;
+                for (int thisStream = 0; thisStream < 4; ++thisStream) {
+                    // Even streams, RHD2164. Odd streams, RHD2164MISOBChip
+                    int streamIndex = offset + thisStream;
+                    chipType[streamIndex] = (thisStream % 2 == 0) ? RHD2164Chip : RHD2164MISOBChip; // Even - RHD2164. Odd - RHD2164MISOBChip
+                    enableDataStream(streamIndex, true);
+                    portIndex[streamIndex] = thisPort;
+                    commandStream[streamIndex] = streamIndex;
+                }
+                if (type == ControllerRecordUSB2) {
+                    setDataSource(0, PortA1);
+                    setDataSource(1, PortA1Ddr);
+                    setDataSource(2, PortA2);
+                    setDataSource(3, PortA2Ddr);
+                    setDataSource(4, PortB1);
+                    setDataSource(5, PortB1Ddr);
+                    setDataSource(6, PortB2);
+                    setDataSource(7, PortB2Ddr);
+                }
+                numChannelsOnPort[thisPort] = 128;
+            }
         }
-        portIndex[0] = 0;  // Port A
-        commandStream[0] = 0;
-        numChannelsOnPort[0] = 32;
 
-        chipType[1] = RHD2132Chip;
-        enableDataStream(1, true);
-        if (type == ControllerRecordUSB2) {
-            setDataSource(1, PortB1);
+        else if (type == ControllerStimRecord) {
+            // For Stim/Recording Controller, 32 channels on each port A-D
+            for (int thisPort = 0; thisPort < 4; ++thisPort) {
+                int offset = thisPort * 2;
+                for (int thisStream = 0; thisStream < 2; ++thisStream) {
+                    int streamIndex = offset + thisStream;
+                    chipType[streamIndex] = RHS2116Chip;
+                    enableDataStream(streamIndex, true);
+                    portIndex[streamIndex] = thisPort;
+                    commandStream[streamIndex] = streamIndex;
+                }
+                numChannelsOnPort[thisPort] = 32;
+            }
         }
-        portIndex[1] = 1;  // Port B
-        commandStream[1] = 1;
-        numChannelsOnPort[1] = 32;
+    }
 
-        for (int stream = 2; stream < maxNumStreams; stream++) enableDataStream(stream, false);
-    } else if (type == ControllerStimRecordUSB2) {
-        chipType[0] = RHS2116Chip;
-        chipType[1] = RHS2116Chip;
-        enableDataStream(0, true);
-        enableDataStream(1, true);
-        portIndex[0] = 0;  // Port A
-        portIndex[1] = 0;  // Port A
-        commandStream[0] = 0;
-        commandStream[1] = 1;
-        numChannelsOnPort[0] = 32;
+    else {
+        if (type == ControllerRecordUSB2 || type == ControllerRecordUSB3) {
+            chipType[0] = RHD2132Chip;
+            enableDataStream(0, true);
+            if (type == ControllerRecordUSB2) {
+                setDataSource(0, PortA1);
+            }
+            portIndex[0] = 0;  // Port A
+            commandStream[0] = 0;
+            numChannelsOnPort[0] = 32;
 
-        chipType[2] = RHS2116Chip;
-        chipType[3] = RHS2116Chip;
-        enableDataStream(2, true);
-        enableDataStream(3, true);
-        portIndex[2] = 1;  // Port B
-        portIndex[3] = 1;  // Port B
-        commandStream[2] = 2;
-        commandStream[3] = 3;
-        numChannelsOnPort[1] = 32;
+            chipType[1] = RHD2132Chip;
+            enableDataStream(1, true);
+            if (type == ControllerRecordUSB2) {
+                setDataSource(1, PortB1);
+            }
+            portIndex[1] = 1;  // Port B
+            commandStream[1] = 1;
+            numChannelsOnPort[1] = 32;
 
-        for (int stream = 4; stream < maxNumStreams; stream++) enableDataStream(stream, false);
+            for (int stream = 2; stream < maxNumStreams; stream++) enableDataStream(stream, false);
+        }
+
+        else if (type == ControllerStimRecord) {
+            chipType[0] = RHS2116Chip;
+            chipType[1] = RHS2116Chip;
+            enableDataStream(0, true);
+            enableDataStream(1, true);
+            portIndex[0] = 0;  // Port A
+            portIndex[1] = 0;  // Port A
+            commandStream[0] = 0;
+            commandStream[1] = 1;
+            numChannelsOnPort[0] = 32;
+
+            chipType[2] = RHS2116Chip;
+            chipType[3] = RHS2116Chip;
+            enableDataStream(2, true);
+            enableDataStream(3, true);
+            portIndex[2] = 1;  // Port B
+            portIndex[3] = 1;  // Port B
+            commandStream[2] = 2;
+            commandStream[3] = 3;
+            numChannelsOnPort[1] = 32;
+
+            for (int stream = 4; stream < maxNumStreams; stream++) enableDataStream(stream, false);
+        }
     }
 
     return 1;

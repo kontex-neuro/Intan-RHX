@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -32,13 +32,12 @@
 
 XPUController::XPUController(SystemState *state_, bool useOpenCL_, QObject *parent) :
     QObject(parent),
+    useOpenCL(useOpenCL_),
     state(state_),
-    usedXPUIndex(-1),
-    useOpenCL(useOpenCL_)
+    usedXPUIndex(-1)
 {
     state->writeToLog("Entered XPUController ctor");
     connect(state, SIGNAL(stateChanged()), this, SLOT(updateFromState()));
-    state->writeToLog("Connected XPUController to state");
 
     gpuInterface = new GPUInterface(state, this);
     state->writeToLog("Created GPUInterface");
@@ -73,19 +72,14 @@ void XPUController::updateNumStreams(int numStreams)
 
 void XPUController::runDiagnostic()
 {
-    state->writeToLog("Entered runDiagnostic()");
 
     state->gpuList.clear();
-    state->writeToLog("Cleared gpuList");
 
     cpuInterface->speedTest();
-    state->writeToLog("Completed cpuInterface->speedTest()");
     if (useOpenCL) {
         gpuInterface->speedTest();
-        state->writeToLog("Completed gpuInterface->speedTest()");
     }
     compare();
-    state->writeToLog("Completed compare()");
 }
 
 void XPUController::compare()
@@ -96,7 +90,6 @@ void XPUController::compare()
 
     int bestIndex = -1;
 
-    state->writeToLog("Beginning of compare while loop");
     while (rankIndex <= state->gpuList.size() + 1) {
         float bestTime = std::numeric_limits<float>::max();
         if (state->cpuInfo.diagnosticTime < bestTime && state->cpuInfo.diagnosticTime > prevBestTime) {
@@ -123,21 +116,22 @@ void XPUController::compare()
             prevBestTime = state->gpuList[bestIndex - 1].diagnosticTime;
         }
     }
-    state->writeToLog("End of compare while loop");
 
     updateFromState();
 }
 
 void XPUController::updateFromState()
 {
-    state->writeToLog("Beginning of updateFromState()");
     // If used XPU has changed in state, then reflect that here.
     if (state->usedXPUIndex() != usedXPUIndex) {
         activeInterface->cleanupMemory();
         usedXPUIndex = state->usedXPUIndex();
-        activeInterface = (usedXPUIndex == 0) ? activeInterface = cpuInterface : activeInterface = gpuInterface;
+        if (usedXPUIndex == 0) {
+            activeInterface = cpuInterface;
+        } else {
+            activeInterface = gpuInterface;
+        }
         activeInterface->setupMemory();
     }
     activeInterface->updateFromState();
-    state->writeToLog("End of updateFromState()");
 }

@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -47,15 +47,19 @@ public:
     void updateForLoad();
     void updateForStop();
 
+    QCheckBox *fastSettleCheckBox;
+
 signals:
     void sendExecuteCommand(QString);
     void sendNoteCommand(QString);
 
+public slots:
+    void rescanPorts(bool usePreviousDelay=false, int selectedPort=0);
+    void enableFastSettle(bool enable);
+
 private slots:
-    void rescanPorts();
     void manualCableDelayControl();
     void configDigOutControl();
-    void enableFastSettle(bool enable);
     void enableExternalFastSettle(bool enable);
     void setExternalFastSettleChannel(int channel);
     void addLiveNote();
@@ -73,7 +77,6 @@ private:
     QPushButton *setCableDelayButton;
     QPushButton *digOutButton;
 
-    QCheckBox *fastSettleCheckBox;
     QCheckBox *externalFastSettleCheckBox;
     QSpinBox *externalFastSettleSpinBox;
 
@@ -85,9 +88,11 @@ private:
     QPushButton *liveNotesButton;
     QLabel *lastLiveNoteLabel;
 
-    vector<SignalGroup*> spiPort;
-    vector<bool> manualDelayEnabledOld;
-    vector<int> manualDelayOld;
+    std::vector<SignalGroup*> spiPort;
+    std::vector<bool> manualDelayEnabledOld;
+    std::vector<int> manualDelayOld;
+    std::vector<bool> auxDigOutEnabledOld;
+    std::vector<int> auxDigOutChannelOld;
     bool fastSettleEnabledOld;
     bool externalFastSettleEnabledOld;
     int externalFastSettleChannelOld;

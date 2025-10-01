@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -33,8 +33,6 @@
 #include "rhxglobals.h"
 #include "abstractrhxcontroller.h"
 #include "synthdatablockgenerator.h"
-
-using namespace std;
 
 AbstractSynthSource::AbstractSynthSource(RandomNumber* randomGenerator_, double sampleRate) :
     tStepMsec(1.0e3 / sampleRate),
@@ -228,7 +226,7 @@ SynthDataBlockGenerator::SynthDataBlockGenerator(ControllerType type_, double sa
 {
     int bufferSizeInWords = MaxNumBlocksToRead *
             RHXDataBlock::dataBlockSizeInWords(type, AbstractRHXController::maxNumDataStreams(type));
-    cout << "SynthDataBlockGenerator: Allocating " << BytesPerWord * bufferSizeInWords / 1.0e6 << " MBytes for synthetic USB data generator.\n";
+    std::cout << "SynthDataBlockGenerator: Allocating " << BytesPerWord * bufferSizeInWords / 1.0e6 << " MBytes for synthetic USB data generator." << std::endl;
     usbWords = nullptr;
     usbWords = new uint16_t [bufferSizeInWords];
     dataBlockPeriodInNsec = 1.0e9 * ((double)RHXDataBlock::samplesPerDataBlock(type)) / sampleRate;
@@ -381,7 +379,7 @@ void SynthDataBlockGenerator::createSynthDataBlock(int numBlocks, int numDataStr
                     }
                 }
                 break;
-            case ControllerStimRecordUSB2:
+            case ControllerStimRecord:
                 // Write auxiliary command 1-3 results.
                 for (int channel = 1; channel < 4; ++channel) {
                     for (int stream = 0; stream < numDataStreams; ++stream) {
@@ -420,8 +418,8 @@ void SynthDataBlockGenerator::createSynthDataBlock(int numBlocks, int numDataStr
                 pWrite++;
             }
 
-            // Write stimulation data (ControllerStimRecordUSB2 only).
-            if (type == ControllerStimRecordUSB2) {
+            // Write stimulation data (ControllerStimRecord only).
+            if (type == ControllerStimRecord) {
                 // Write stimulation on/off data.
                 for (int stream = 0; stream < numDataStreams; ++stream) {
                     *pWrite = 0U;
@@ -447,8 +445,8 @@ void SynthDataBlockGenerator::createSynthDataBlock(int numBlocks, int numDataStr
                 }
             }
 
-            // Write Analog Out data (ControllerStimRecordUSB2 only).
-            if (type == ControllerStimRecordUSB2) {
+            // Write Analog Out data (ControllerStimRecord only).
+            if (type == ControllerStimRecord) {
                 for (int i = 0; i < 8; ++i) {
                     *pWrite = (uint16_t) 32768U;
                     pWrite++;

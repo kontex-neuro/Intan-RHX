@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -50,13 +50,12 @@
     #include "CL/cl.h"
 #endif
 
-using namespace std;
-
 class SignalSources;
 class Channel;
 class BooleanItem;
 class XMLInterface;
 class ControllerInterface;
+class DataFileReader;
 
 struct CPUInfo {
     cl_platform_id platformId;
@@ -91,7 +90,7 @@ class SystemState : public QObject
     Q_OBJECT
 public:
     SystemState(const AbstractRHXController* controller_, StimStepSize stimStepSize_,
-        int numSPIPorts_, bool expanderConnected_, bool enableVStim, int on_board_adda);
+        int numSPIPorts_, bool expanderConnected_, bool testMode_, DataFileReader* dataFileReader_, bool enableVStim, int on_board_adda);
     ~SystemState();
 
     AmplifierSampleRate getSampleRateEnum() const;
@@ -147,10 +146,11 @@ public:
     int numSPIPorts;  // no direct relation to commands - should leave as is
     int on_board_adda;
     BooleanItem* expanderConnected;
+    BooleanItem *testMode;
     int highDPIScaleFactor;  // scale factor for high-DPI monitors (e.g., Retina displays)
     QRect availableScreenResolution;
 
-    vector<ChipType> chipType;  // set when SPI ports are scanned for connected headstages
+    std::vector<ChipType> chipType;  // set when SPI ports are scanned for connected headstages
 
     bool running;  // streaming data from the board
     bool sweeping;  // rewinding or fast-forwarding (but not fast-forwarding in data file playback mode)
@@ -275,6 +275,9 @@ public:
     DoubleRangeItem *desiredImpedanceFreq;
     DoubleRangeItem *actualImpedanceFreq;
     StateFilenameItem *impedanceFilename;
+
+    // Referencing
+    BooleanItem *useMedianReference;
 
     // Filtering
     BooleanItem *dspEnabled;
@@ -402,6 +405,17 @@ public:
     SingleItemList globalItems;
     FilenameItemList stateFilenameItems;
     bool enableVStim;
+    BooleanItem *usePreviousDelay;
+    IntRangeItem *previousDelaySelectedPort;
+    IntRangeItem *lastDetectedChip;
+    IntRangeItem *lastDetectedNumStreams;
+    BooleanItem *testAuxIns;
+    StringItem *testingPort;
+
+    int64_t getPlaybackBlocks();
+    void setLastTimestamp(int timestamp) { lastTimestamp = timestamp; }
+    int getLastTimestamp() const { return lastTimestamp; }
+
 signals:
     void stateChanged();
     void headstagesChanged();
@@ -423,11 +437,15 @@ private:
 
     int timerId;
 
+    int lastTimestamp;
+
     XMLInterface* globalSettingsInterface;
 
     void queueStateChangedSignal();
 
     QElapsedTimer logTimer;
+
+    DataFileReader* dataFileReader;
 };
 
 #endif // SYSTEMSTATE_H

@@ -4,12 +4,12 @@
 #
 #-------------------------------------------------
 
-QT       += core gui xml multimedia network widgets
+CONFIG += c++17
+
+QT += core gui xml multimedia network widgets
 
 TARGET = IntanRHX
 TEMPLATE = app
-
-DEFINES += QT_DEPRECATED_WARNINGS
 
 INCLUDEPATH += $$PWD/
 INCLUDEPATH += $$PWD/Engine/Processing/
@@ -103,8 +103,8 @@ SOURCES += main.cpp \
     GUI/Dialogs/triggerrecorddialog.cpp \
     GUI/Dialogs/waveformselectdialog.cpp \
     GUI/Widgets/abstractfigure.cpp \
+    GUI/Widgets/abstractpanel.cpp \
     GUI/Widgets/anoutfigure.cpp \
-    GUI/Widgets/controlpanelKONTEXtab.cpp \
     GUI/Widgets/controlpanelaudioanalogtab.cpp \
     GUI/Widgets/controlpanelbandwidthtab.cpp \
     GUI/Widgets/controlpanelconfiguretab.cpp \
@@ -129,6 +129,7 @@ SOURCES += main.cpp \
     GUI/Widgets/statusbars.cpp \
     GUI/Widgets/stimfigure.cpp \
     GUI/Widgets/tcpdisplay.cpp \
+    GUI/Widgets/testcontrolpanel.cpp \
     GUI/Widgets/voltagespinbox.cpp \
     GUI/Widgets/waveformdisplaycolumn.cpp \
     GUI/Widgets/waveformdisplaymanager.cpp \
@@ -222,9 +223,8 @@ HEADERS += \
     GUI/Dialogs/triggerrecorddialog.h \
     GUI/Dialogs/waveformselectdialog.h \
     GUI/Widgets/abstractfigure.h \
+    GUI/Widgets/abstractpanel.h \
     GUI/Widgets/anoutfigure.h \
-    GUI/Widgets/controlpanelKONTEXtab.h \
-    GUI/Widgets/controlpanelKONTEXtab.h \
     GUI/Widgets/controlpanelaudioanalogtab.h \
     GUI/Widgets/controlpanelbandwidthtab.h \
     GUI/Widgets/controlpanelconfiguretab.h \
@@ -249,6 +249,7 @@ HEADERS += \
     GUI/Widgets/statusbars.h \
     GUI/Widgets/stimfigure.h \
     GUI/Widgets/tcpdisplay.h \
+    GUI/Widgets/testcontrolpanel.h \
     GUI/Widgets/voltagespinbox.h \
     GUI/Widgets/waveformdisplaycolumn.h \
     GUI/Widgets/waveformdisplaymanager.h \
@@ -266,25 +267,42 @@ DISTFILES += kernel.cl
 
 INCLUDEPATH += $$PWD/includes/
 
+unix {
+  # Catch common issues on Linux/MacOS
+  QMAKE_CXXFLAGS += -Werror=empty-body \
+                    -Werror=pointer-arith \
+                    -Werror=missing-declarations \
+                    -Werror=return-type \
+                    -Werror=misleading-indentation \
+                    -Werror=format-security \
+                    -Werror=suggest-override \
+                    -Werror=implicit-fallthrough \
+                    -Werror=reorder
+
+  # Ignore some overly pedantic warnings
+  QMAKE_CXXFLAGS += -Wno-unused-parameter
+}
+
 # Windows
 win32: {
-LIBS += -L$$PWD/libraries/Windows/ -lOpenCL # OpenCL library
-LIBS += -L$$PWD/libraries/Windows/ -lokFrontPanel # Opal Kelly Front Panel library
-LIBS += -L$$PWD/libraries/Windows/ -ldelayimp # Microsoft's Delay Import library
-QMAKE_LFLAGS += /DELAYLOAD:okFrontPanel.dll # Use delayimp to only load okFrontPanel.dll when necessary,
+    LIBS += -L$$PWD/libraries/Windows/ -lOpenCL # OpenCL library
+    LIBS += -L$$PWD/libraries/Windows/ -lokFrontPanel # Opal Kelly Front Panel library
+    LIBS += -L$$PWD/libraries/Windows/ -ldelayimp # Microsoft's Delay Import library
+    QMAKE_LFLAGS += /DELAYLOAD:okFrontPanel.dll # Use delayimp to only load okFrontPanel.dll when necessary,
                                             # so we can give an error message when okFrontPanel.dll is missing
 }
 
 # Mac
 mac: {
-LIBS += -framework OpenCL # Mac OS X built-in OpenCL library
-LIBS += -L$$PWD/libraries/Mac/ -lokFrontPanel # Opal Kelly Front Panel library
+    LIBS += -framework OpenCL # Mac OS X built-in OpenCL library
+    LIBS += -L$$PWD/libraries/Mac/ -lokFrontPanel # Opal Kelly Front Panel library
 }
 
 # Linux
 unix:!macx: {
-LIBS += -L$$PWD/libraries/Linux/ -lOpenCL # OpenCL library
-LIBS += -L$$PWD/libraries/Linux/ -lokFrontPanel # Opal Kelly Front Panel library
-QMAKE_LFLAGS += '-Wl,-rpath,\'\$$ORIGIN\'' # Flag that at runtime, look for shared libraries (like
+    LIBS += -L$$PWD/libraries/Linux/ -lOpenCL # OpenCL library
+    LIBS += -L$$PWD/libraries/Linux/ -lokFrontPanel # Opal Kelly Front Panel library
+    LIBS += -lm
+    QMAKE_LFLAGS += '-Wl,-rpath,\'\$$ORIGIN\'' # Flag that at runtime, look for shared libraries (like
                                            # libokFrontPanel.so) at the same directory as the binary
 }

@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -118,12 +118,12 @@ QStringList Channel::getAttributes(XMLGroup xmlGroup) const
                 addAttribute = true;
                 break;
             case TypeDependencyNonStim:
-                if (state->getControllerTypeEnum() != ControllerStimRecordUSB2) {
+                if (state->getControllerTypeEnum() != ControllerStimRecord) {
                     addAttribute = true;
                 }
                 break;
             case TypeDependencyStim:
-                if (state->getControllerTypeEnum() == ControllerStimRecordUSB2) {
+                if (state->getControllerTypeEnum() == ControllerStimRecord) {
                     addAttribute = true;
                 }
                 break;
@@ -148,7 +148,7 @@ QStringList Channel::getTcpBandNames() const
             if (outputToTcpHigh->getValue()) tcpBandNames.append(nativeChannelName->getValue() + "|HIGH");
             if (outputToTcpSpike->getValue()) tcpBandNames.append(nativeChannelName->getValue() + "|SPK");
             // We're treating spike differently through tcp, so don't append the SPK name here
-            if (state->getControllerTypeEnum() == ControllerStimRecordUSB2) {
+            if (state->getControllerTypeEnum() == ControllerStimRecord) {
                 if (outputToTcpDc->getValue()) tcpBandNames.append(nativeChannelName->getValue() + "|DC");
                 if (outputToTcpStim->getValue()) tcpBandNames.append(nativeChannelName->getValue() + "|STIM");
             }
@@ -261,7 +261,7 @@ void Channel::clearTCPDataOutput()
         outputToTcpLow->setValue(false);
         outputToTcpHigh->setValue(false);
         outputToTcpSpike->setValue(false);
-        if (state->getControllerTypeEnum() == ControllerStimRecordUSB2) {
+        if (state->getControllerTypeEnum() == ControllerStimRecord) {
             outputToTcpDc->setValue(false);
             outputToTcpStim->setValue(false);
         }
@@ -305,7 +305,7 @@ void SignalList::addChannel(const Channel *channel)
 
 int SignalList::getAmplifierIndexFromStreamChannel(int stream, int channel) const
 {
-    map<int, int>::const_iterator p = amplifierIndices.find(RHXDataBlock::maxChannelsPerStream() * stream + channel);
+    std::map<int, int>::const_iterator p = amplifierIndices.find(RHXDataBlock::maxChannelsPerStream() * stream + channel);
     if (p == amplifierIndices.end()) {
         return -1;
     }
@@ -314,28 +314,28 @@ int SignalList::getAmplifierIndexFromStreamChannel(int stream, int channel) cons
 
 void SignalList::print()
 {
-    cout << "SignalList:" << '\n';
+    std::cout << "SignalList:" << '\n';
 
-    cout << amplifier.size() << " amplifier signals:" << '\n';
-    for (int i = 0; i < (int) amplifier.size(); ++i) cout << amplifier[i] << '\n';
+    std::cout << amplifier.size() << " amplifier signals:" << '\n';
+    for (int i = 0; i < (int) amplifier.size(); ++i) std::cout << amplifier[i] << '\n';
 
-    cout << auxInput.size() << " aux input signals:" << '\n';
-    for (int i = 0; i < (int) auxInput.size(); ++i) cout << auxInput[i] << '\n';
+    std::cout << auxInput.size() << " aux input signals:" << '\n';
+    for (int i = 0; i < (int) auxInput.size(); ++i) std::cout << auxInput[i] << '\n';
 
-    cout << supplyVoltage.size() << " supply voltage signals:" << '\n';
-    for (int i = 0; i < (int) supplyVoltage.size(); ++i) cout << supplyVoltage[i] << '\n';
+    std::cout << supplyVoltage.size() << " supply voltage signals:" << '\n';
+    for (int i = 0; i < (int) supplyVoltage.size(); ++i) std::cout << supplyVoltage[i] << '\n';
 
-    cout << boardAdc.size() << " analog in signals:" << '\n';
-    for (int i = 0; i < (int) boardAdc.size(); ++i) cout << boardAdc[i] << '\n';
+    std::cout << boardAdc.size() << " analog in signals:" << '\n';
+    for (int i = 0; i < (int) boardAdc.size(); ++i) std::cout << boardAdc[i] << '\n';
 
-    cout << boardDac.size() << " analog out signals:" << '\n';
-    for (int i = 0; i < (int) boardDac.size(); ++i) cout << boardDac[i] << '\n';
+    std::cout << boardDac.size() << " analog out signals:" << '\n';
+    for (int i = 0; i < (int) boardDac.size(); ++i) std::cout << boardDac[i] << '\n';
 
-    cout << boardDigitalIn.size() << " digital in signals:" << '\n';
-    for (int i = 0; i < (int) boardDigitalIn.size(); ++i) cout << boardDigitalIn[i] << '\n';
+    std::cout << boardDigitalIn.size() << " digital in signals:" << '\n';
+    for (int i = 0; i < (int) boardDigitalIn.size(); ++i) std::cout << boardDigitalIn[i] << '\n';
 
-    cout << boardDigitalOut.size() << " digital out signals:" << '\n';
-    for (int i = 0; i < (int) boardDigitalOut.size(); ++i) cout << boardDigitalOut[i] << '\n';
+    std::cout << boardDigitalOut.size() << " digital out signals:" << '\n';
+    for (int i = 0; i < (int) boardDigitalOut.size(); ++i) std::cout << boardDigitalOut[i] << '\n';
 
-    cout << '\n';
+    std::cout << '\n';
 }

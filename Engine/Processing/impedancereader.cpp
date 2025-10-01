@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -28,16 +28,19 @@
 //
 //------------------------------------------------------------------------------
 
-#include <QProgressDialog>
-#include <QMessageBox>
-#include <QString>
-#include <QFile>
-#include <QTextStream>
-#include <cmath>
-#include <deque>
-#include <iostream>
-#include "signalsources.h"
 #include "impedancereader.h"
+
+#include <QFile>
+#include <QMessageBox>
+#include <QProgressDialog>
+#include <QString>
+#include <QTextStream>
+#include <chrono>
+#include <cmath>
+#include <future>
+#include <iostream>
+
+#include "signalsources.h"
 
 ImpedanceReader::ImpedanceReader(SystemState* state_, AbstractRHXController* rhxController_) :
     state(state_),
@@ -86,7 +89,7 @@ bool ImpedanceReader::measureImpedances()
     }
 
     // Create a progress bar to let user know how long this will take.
-    int maxProgress = (controllerType == ControllerStimRecordUSB2) ? 50 : 98;
+    int maxProgress = (controllerType == ControllerStimRecord) ? 50 : 98;
     QProgressDialog progress(QObject::tr("Measuring Electrode Impedances"), QString(), 0, maxProgress);
     progress.setWindowTitle(QObject::tr("Progress"));
     progress.setMinimumDuration(0);
@@ -95,9 +98,11 @@ bool ImpedanceReader::measureImpedances()
 
     // Create a command list for the AuxCmd1 slot.
     RHXRegisters chipRegisters(controllerType, state->sampleRate->getNumericValue(), state->getStimStepSizeEnum());
-    vector<unsigned int> commandList;
+    std::vector<unsigned int> commandList;
+
     int commandSequenceLength = chipRegisters.createCommandListZcheckDac(commandList, state->actualImpedanceFreq->getValue(),
                                                                          128.0);
+
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 1);
     rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
 
@@ -114,12 +119,13 @@ bool ImpedanceReader::measureImpedances()
     int numBlocks = ceil((numPeriods + 2) * period / (double) RHXDataBlock::samplesPerDataBlock(controllerType)); // + 2 periods to give time to settle initially
     if (numBlocks < 2) numBlocks = 2;   // need first block for command to switch channels to take effect
 
+
      chipRegisters.setDspCutoffFreq(state->desiredDspCutoffFreq->getValue());
     chipRegisters.setLowerBandwidth(state->desiredLowerBandwidth->getValue(), 0);
     chipRegisters.setUpperBandwidth(state->desiredUpperBandwidth->getValue());
     chipRegisters.enableDsp(state->dspEnabled->getValue());
     chipRegisters.enableZcheck(true);
-    if (controllerType == ControllerStimRecordUSB2) {
+    if (controllerType == ControllerStimRecord) {
         commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, false);
     } else {
         commandSequenceLength = chipRegisters.createCommandListRHDRegisterConfig(commandList, false,
@@ -140,7 +146,7 @@ bool ImpedanceReader::measureImpedances()
     // Create matrices of doubles of size (numStreams x numChannelsPerStream x 3) to store complex amplitudes
     // of all amplifier channels (32 or 16 on each data stream) at three different Cseries values
     int numChannelsPerStream = RHXDataBlock::channelsPerStream(controllerType);
-    vector<vector<vector<ComplexPolar> > > measuredImpedance;
+    std::vector<std::vector<std::vector<ComplexPolar> > > measuredImpedance;
     measuredImpedance.resize(rhxController->getNumEnabledDataStreams());
     for (int i = 0; i < rhxController->getNumEnabledDataStreams(); ++i) {
         measuredImpedance[i].resize(numChannelsPerStream);
@@ -148,6 +154,28 @@ bool ImpedanceReader::measureImpedances()
             measuredImpedance[i][j].resize(3);
         }
     }
+
+    // Data files used to examine data used in impedance measurement, only necessary for testing
+//    QFile cap0File("cap0.dat");
+//    cap0File.open(QIODevice::WriteOnly);
+//    QDataStream cap0Stream(&cap0File);
+//    cap0Stream.setVersion(QDataStream::Qt_5_11);
+//    cap0Stream.setByteOrder(QDataStream::LittleEndian);
+//    cap0Stream.setFloatingPointPrecision(QDataStream::DoublePrecision);
+
+//    QFile cap1File("cap1.dat");
+//    cap1File.open(QIODevice::WriteOnly);
+//    QDataStream cap1Stream(&cap1File);
+//    cap1Stream.setVersion(QDataStream::Qt_5_11);
+//    cap1Stream.setByteOrder(QDataStream::LittleEndian);
+//    cap1Stream.setFloatingPointPrecision(QDataStream::DoublePrecision);
+
+//    QFile cap2File("cap2.dat");
+//    cap2File.open(QIODevice::WriteOnly);
+//    QDataStream cap2Stream(&cap2File);
+//    cap2Stream.setVersion(QDataStream::Qt_5_11);
+//    cap2Stream.setByteOrder(QDataStream::LittleEndian);
+//    cap2Stream.setFloatingPointPrecision(QDataStream::DoublePrecision);
 
     // We execute three complete electrode impedance measurements: one each with
     // Cseries set to 0.1 pF, 1 pF, and 10 pF.  Then we select the best measurement
@@ -170,70 +198,102 @@ bool ImpedanceReader::measureImpedances()
             progress.setValue(numChannelsPerStream * capRange + channel + 2);
 
             chipRegisters.setZcheckChannel(channel);
-            if (controllerType == ControllerStimRecordUSB2) {
-                commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, false);
+            if (controllerType == ControllerStimRecord) {
+                //commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, false);
+                chipRegisters.createCommandListRHSRegisterConfig(commandList, false);
             } else {
-                commandSequenceLength = chipRegisters.createCommandListRHDRegisterConfig(commandList, false,
-                                                                                         RHXDataBlock::samplesPerDataBlock(controllerType));
+                //commandSequenceLength = chipRegisters.createCommandListRHDRegisterConfig(commandList, false,
+                                                                                         //RHXDataBlock::samplesPerDataBlock(controllerType));
+                chipRegisters.createCommandListRHDRegisterConfig(commandList, false,
+                                                                 RHXDataBlock::samplesPerDataBlock(controllerType));
             }
 
             // Upload version with no ADC calibration to AuxCmd3 RAM bank
             rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd3, 3);
 
-            rhxController->run();
-            while (rhxController->isRunning()) {
+            auto future =
+                std::async(&AbstractRHXController::runAndReadDataBlocks, rhxController, numBlocks);
+            while (future.wait_for(std::chrono::milliseconds(1)) == std::future_status::timeout)
                 qApp->processEvents();
+            auto data = future.get();
+            if(!data.has_value()){
+                std::cerr << "Error reading data blocks";
+                return false;
             }
-            deque<RHXDataBlock*> dataQueue;
-            rhxController->readDataBlocks(numBlocks, dataQueue);
 
             for (int stream = 0; stream < rhxController->getNumEnabledDataStreams(); ++stream) {
                 if (state->chipType[stream] != RHD2164MISOBChip) {
+                    // Measure impedances, and pass measureComplexAmplitude() a file to write to. Only necessary for testing.
+                    // Otherwise, just call measureComplexAmplitude() without this file for all capRange and channel values.
+//                    if (channel == 0 && stream == 0) {
+//                        if (capRange == 0) {
+//                            measuredImpedance[stream][channel][capRange] =
+//                                    measureComplexAmplitude(dataQueue, stream, channel, state->sampleRate->getNumericValue(),
+//                                                            state->actualImpedanceFreq->getValue(), numPeriods, &cap0Stream);
+//                        } else if (capRange == 1) {
+//                            measuredImpedance[stream][channel][capRange] =
+//                                    measureComplexAmplitude(dataQueue, stream, channel, state->sampleRate->getNumericValue(),
+//                                                            state->actualImpedanceFreq->getValue(), numPeriods, &cap1Stream);
+//                        } else {
+//                            measuredImpedance[stream][channel][capRange] =
+//                                    measureComplexAmplitude(dataQueue, stream, channel, state->sampleRate->getNumericValue(),
+//                                                            state->actualImpedanceFreq->getValue(), numPeriods, &cap2Stream);
+//                        }
+//                    }
+
+//                    else {
+//                    measuredImpedance[stream][channel][capRange] =
+//                            measureComplexAmplitude(dataQueue, stream, channel, state->sampleRate->getNumericValue(),
+//                                                    state->actualImpedanceFreq->getValue(), numPeriods);
+//                    }
                     measuredImpedance[stream][channel][capRange] =
-                            measureComplexAmplitude(dataQueue, stream, channel, state->sampleRate->getNumericValue(),
+                            measureComplexAmplitude(data.value(), stream, channel, state->sampleRate->getNumericValue(),
                                                     state->actualImpedanceFreq->getValue(), numPeriods);
                 }
-            }
-            while (!dataQueue.empty()) {
-                delete dataQueue.back();
-                dataQueue.pop_back();
             }
 
             // If an RHD2164 chip is plugged in, we have to set the Zcheck select register to channels 32-63
             // and repeat the previous steps.
             if (rhd2164ChipPresent) {
                 chipRegisters.setZcheckChannel(channel + 32);  // Address channels 32-63.
-                commandSequenceLength =
-                        chipRegisters.createCommandListRHDRegisterConfig(commandList, false,
-                                                                         RHXDataBlock::samplesPerDataBlock(controllerType));
+                //commandSequenceLength =
+                        //chipRegisters.createCommandListRHDRegisterConfig(commandList, false,
+                                                                         //RHXDataBlock::samplesPerDataBlock(controllerType));
+                chipRegisters.createCommandListRHDRegisterConfig(commandList, false,
+                                                                 RHXDataBlock::samplesPerDataBlock(controllerType));
                 // Upload version with no ADC calibration to AuxCmd3 RAM Bank 1.
                 rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd3, 3);
-
-                rhxController->run();
-                while (rhxController->isRunning()) {
+                auto future = std::async(
+                    &AbstractRHXController::runAndReadDataBlocks, rhxController, numBlocks
+                );
+                while (future.wait_for(std::chrono::milliseconds(1)) == std::future_status::timeout)
                     qApp->processEvents();
+                auto data = future.get();
+                if (!data.has_value()) {
+                    std::cerr << "Error reading data blocks";
+                    return false;
                 }
-                rhxController->readDataBlocks(numBlocks, dataQueue);
 
                 for (int stream = 0; stream < rhxController->getNumEnabledDataStreams(); ++stream) {
                     if (state->chipType[stream] == RHD2164MISOBChip) {
                         measuredImpedance[stream][channel][capRange] =
-                                measureComplexAmplitude(dataQueue, stream, channel, state->sampleRate->getNumericValue(),
+                                measureComplexAmplitude(data.value(), stream, channel, state->sampleRate->getNumericValue(),
                                                         state->actualImpedanceFreq->getValue(), numPeriods);
                     }
-                }
-                while (!dataQueue.empty()) {
-                    delete dataQueue.back();
-                    dataQueue.pop_back();
                 }
             }
         }
     }
 
+    // Close data files used to examine data used in impedance measurement, only necessary for testing
+//    cap0File.close();
+//    cap1File.close();
+//    cap2File.close();
+
     const double DacVoltageAmplitude = 128.0 * (1.225 / 256.0); // this assumes the DAC amplitude was set to 128
 
     double parasiticCapacitance;  // Estimate of on-chip parasitic capicitance, including effective amplifier input capacitance.
-    if (controllerType == ControllerStimRecordUSB2) {
+    if (controllerType == ControllerStimRecord) {
         parasiticCapacitance = 12.0e-12;  // 12 pF
     } else {
         parasiticCapacitance = 15.0e-12;  // 15 pF
@@ -293,7 +353,7 @@ bool ImpedanceReader::measureImpedances()
                 // Factor out on-chip parasitic capacitance from impedance measurement.
                 impedance = factorOutParallelCapacitance(impedance, state->actualImpedanceFreq->getValue(), parasiticCapacitance);
 
-                if (controllerType == ControllerStimRecordUSB2) {
+                if (controllerType == ControllerStimRecord) {
                     // Multiply by a factor of 10%: empirical tests indicate that RHS chips usually underestimate impedance
                     // by about 10%
                     impedance.magnitude = 1.1 * impedance.magnitude;
@@ -385,18 +445,21 @@ ComplexPolar ImpedanceReader::factorOutParallelCapacitance(ComplexPolar impedanc
     return result;
 }
 
-ComplexPolar ImpedanceReader::measureComplexAmplitude(const deque<RHXDataBlock*> &dataQueue, int stream, int chipChannel,
-                                                      double sampleRate, double frequency, int numPeriods) const
+ComplexPolar ImpedanceReader::measureComplexAmplitude(const std::vector<RHXDataBlock> &data, int stream, int chipChannel,
+                                                      double sampleRate, double frequency, int numPeriods, QDataStream *outStream) const
 {
     int samplesPerDataBlock = RHXDataBlock::samplesPerDataBlock(state->getControllerTypeEnum());
-    int numBlocks = (int) dataQueue.size();
+    int numBlocks = (int) data.size();
 
     // Copy waveform data from data blocks.
-    vector<double> waveform(samplesPerDataBlock * numBlocks);
+    std::vector<double> waveform(samplesPerDataBlock * numBlocks);
     int index = 0;
     for (int block = 0; block < numBlocks; ++block) {
         for (int t = 0; t < samplesPerDataBlock; ++t) {
-            waveform[index++] = 0.195 * (double)(dataQueue[block]->amplifierData(stream, chipChannel, t) - 32768);
+            waveform[index++] = 0.195 * (double)(data[block].amplifierData(stream, chipChannel, t) - 32768);
+            if (outStream) {
+                *outStream << 0.195 * (double)(data[block].amplifierData(stream, chipChannel, t) - 32768);
+            }
         }
     }
 
@@ -418,7 +481,7 @@ ComplexPolar ImpedanceReader::measureComplexAmplitude(const deque<RHXDataBlock*>
     return amplitudeOfFreqComponent(waveform, startIndex, endIndex, sampleRate, frequency);
 }
 
-void ImpedanceReader::applyNotchFilter(vector<double> &waveform, double fNotch, double bandwidth, double sampleRate) const
+void ImpedanceReader::applyNotchFilter(std::vector<double> &waveform, double fNotch, double bandwidth, double sampleRate) const
 {
     double d = exp(-1.0 * Pi * bandwidth / sampleRate);
     double b = (1.0 + d * d) * cos(TwoPi * fNotch / sampleRate);
@@ -439,7 +502,7 @@ void ImpedanceReader::applyNotchFilter(vector<double> &waveform, double fNotch, 
     }
 }
 
-ComplexPolar ImpedanceReader::amplitudeOfFreqComponent(const vector<double> &waveform, int startIndex, int endIndex,
+ComplexPolar ImpedanceReader::amplitudeOfFreqComponent(const std::vector<double> &waveform, int startIndex, int endIndex,
                                                        double sampleRate, double frequency)
 {
     const double K = TwoPi * frequency / sampleRate;  // precalculate for speed
@@ -524,7 +587,7 @@ void ImpedanceReader::runDemoImpedanceMeasurement()
     int numChannelsPerStream = RHXDataBlock::channelsPerStream(controllerType);
 
     // Create a progress bar to let user know how long this will take.
-    int maxProgress = (controllerType == ControllerStimRecordUSB2) ? 50 : 98;
+    int maxProgress = (controllerType == ControllerStimRecord) ? 50 : 98;
     QProgressDialog progress(QObject::tr("Measuring Electrode Impedances"), QString(), 0, maxProgress);
     progress.setWindowTitle(QObject::tr("Progress"));
     progress.setMinimumDuration(0);

@@ -63,6 +63,8 @@ set(GUISources
     GUI/Widgets/abstractfigure.h
     GUI/Widgets/anoutfigure.cpp
     GUI/Widgets/anoutfigure.h
+    GUI/Widgets/abstractpanel.cpp
+    GUI/Widgets/abstractpanel.h
     GUI/Widgets/controlpanel.cpp
     GUI/Widgets/controlpanel.h
     GUI/Widgets/controlpanelKONTEXtab.cpp
@@ -117,6 +119,8 @@ set(GUISources
     GUI/Widgets/stimfigure.h
     GUI/Widgets/tcpdisplay.cpp
     GUI/Widgets/tcpdisplay.h
+    GUI/Widgets/testcontrolpanel.cpp
+    GUI/Widgets/testcontrolpanel.h
     GUI/Widgets/voltagespinbox.cpp
     GUI/Widgets/voltagespinbox.h
     GUI/Widgets/waveformdisplaycolumn.cpp

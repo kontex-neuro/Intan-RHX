@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -46,8 +46,8 @@ SpikePlot::SpikePlot(SystemState* state_, QWidget *parent) :
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     setFocusPolicy(Qt::StrongFocus);
 
-    samplesPreDetect = 90;
-    samplesPostDetect = 180;
+    samplesPreDetect = 300;
+    samplesPostDetect = 600;
 
     latestRmsCalculation = 0.0;
     latestSpikeRateCalculation = 0;
@@ -61,7 +61,7 @@ SpikePlot::SpikePlot(SystemState* state_, QWidget *parent) :
 SpikePlot::~SpikePlot()
 {
     if (!spikeHistoryMap.empty()) {
-        map<string, SpikePlotHistory*>::const_iterator it = spikeHistoryMap.begin();
+        std::map<std::string, SpikePlotHistory*>::const_iterator it = spikeHistoryMap.begin();
         while (it != spikeHistoryMap.end()) {
             delete it->second;
             ++it;
@@ -69,7 +69,7 @@ SpikePlot::~SpikePlot()
     }
 }
 
-void SpikePlot::setWaveform(const string& waveName)
+void SpikePlot::setWaveform(const std::string& waveName)
 {
     channel = state->signalSources->channelByName(waveName);
     if (channel) {
@@ -78,7 +78,7 @@ void SpikePlot::setWaveform(const string& waveName)
         state->spikeScopeChannel->setValue("N/A");
     }
 
-    map<string, SpikePlotHistory*>::const_iterator it = spikeHistoryMap.find(waveName);
+    std::map<std::string, SpikePlotHistory*>::const_iterator it = spikeHistoryMap.find(waveName);
     if (it == spikeHistoryMap.end()) {  // If data structure for this waveform does not already exist...
         spikeHistoryMap[waveName] = new SpikePlotHistory;  // ...add new spike history data structure.
         it = spikeHistoryMap.find(waveName);
@@ -135,6 +135,8 @@ void SpikePlot::paintEvent(QPaintEvent * /* event */)
     // Vector for waveform plot points
     int snippetLength = samplesPreDetect + samplesPostDetect;
     QPointF *polyline = new QPointF[snippetLength];
+
+    double tScale = state->tScaleSpikeScope->getNumericValue();
 
     if (history) {
         bool showArtifacts = state->artifactsShown->getValue();
@@ -213,11 +215,34 @@ void SpikePlot::paintEvent(QPaintEvent * /* event */)
     // Draw vertical axis lines.
     int tMax = qFloor(ct.xMaxReal());
     for (int t = qCeil(ct.xMinReal()); t <= tMax; ++t) {
-        if (t == 0) {
-            painter.setPen(Qt::white);
-        } else {
-            painter.setPen(Qt::darkGray);
+        (t == 0) ? painter.setPen(Qt::white) : painter.setPen(Qt::darkGray);
+
+        // For tScale of 2, 4, or 6 ms, draw a vertical line every 1 ms.
+        // For tScale of 10 ms, draw a vertical line every 2 ms.
+        // For tScale of 16 or 20 ms, draw a vertical line every 4 ms.
+        int divisor = 1;
+        switch ((int) tScale) {
+        case 2:
+        case 4:
+        case 6:
+            divisor = 1;
+            break;
+
+        case 10:
+            divisor = 2;
+            break;
+
+        case 16:
+        case 20:
+            divisor = 4;
+            break;
         }
+
+        // Only draw a vertical line at the far-left border t, the far-right border t, or a t divisible by divisor.
+        // For example, don't draw t = 3 ms with tScale of 20 ms (divisor = 4), but do draw t = 4 ms.
+        if (t != ct.xMinReal() && t != ct.xMaxReal() && t % divisor != 0)
+            continue;  // This t line is not important enough to draw, so move on to next iteration of for loop.
+
         plotDecorator.drawVerticalAxisLine(ct, t);
 
         // Write time axis labels.
@@ -376,7 +401,7 @@ bool SpikePlot::updateWaveforms(WaveformFifo* waveformFifo, int numSamples)
         spikeId = (int) waveformFifo->getDigitalData(WaveformFifo::ReaderDisplay, spikeRaster, t);
         if (spikeId != SpikeIdNoSpike && (t - samplesPreDetect >= -numWordsInMemory)) {
             if (showArtifacts || spikeId != SpikeIdLikelyArtifact) {
-                vector<float> newSnippet(samplesPreDetect + samplesPostDetect);
+                std::vector<float> newSnippet(samplesPreDetect + samplesPostDetect);
                 int index = 0;
                 for (int i = t - samplesPreDetect; i < t + samplesPostDetect; ++i) {
                     newSnippet[index++] = waveformFifo->getGpuAmplifierData(WaveformFifo::ReaderDisplay, waveformAddress, i);
@@ -395,7 +420,7 @@ bool SpikePlot::updateWaveforms(WaveformFifo* waveformFifo, int numSamples)
     latestRmsCalculation = 0.0;
     latestSpikeRateCalculation = 0;
     if (numWordsInMemory > 0) {
-        int numWordsForRms = min(numWordsInMemory, (int)ceil(state->sampleRate->getNumericValue()));  // Last one second of data.
+        int numWordsForRms = std::min(numWordsInMemory, (int)ceil(state->sampleRate->getNumericValue()));  // Last one second of data.
         int numSamples = 0;
         int numSpikes = 0;
         double sumOfSquares = 0.0;

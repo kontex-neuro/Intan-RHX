@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -44,6 +44,7 @@
 #include "setfileformatdialog.h"
 #include "triggerrecorddialog.h"
 #include "controlpanel.h"
+#include "testcontrolpanel.h"
 #include "multicolumndisplay.h"
 #include "tcpdisplay.h"
 #include "commandparser.h"
@@ -63,7 +64,7 @@ class ControlWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    ControlWindow(SystemState* state_, CommandParser* parser_, ControllerInterface* controllerInterface_);
+    ControlWindow(SystemState* state_, CommandParser* parser_, ControllerInterface* controllerInterface_, AbstractRHXController* rhxController_);
     ~ControlWindow();
 
     void dragEnterEvent(QDragEnterEvent *event) override;
@@ -76,6 +77,12 @@ public:
     bool loadSettingsFile(QString filename);
     void restoreDisplaySettings();
 
+    void updateForLoad();
+    void updateForStop();
+    QString getDisplaySettingsString();
+
+    XMLInterface* stimParametersInterface;
+
 signals:
     void sendSetCommand(QString parameter, QString value);
     void sendGetCommand(QString parameter);
@@ -83,17 +90,19 @@ signals:
     void sendExecuteCommandWithParameter(QString action, QString parameter);
     void sendNoteCommand(QString noteString);
     void setTimeLabel(QString text);
-    void setStatusBar(QString text);
+    void setStatusBarText(QString text);
     void setStatusBarReadyPlayback();
     void jumpToStart();
+    void jumpToEnd();
     void jumpToPosition(QString target);
     void jumpRelative(double jumpInSeconds);
     void setDataFileReaderSpeed(double playbackSpeed);
+    void setDataFileReaderLive(bool isLive);
 
 public slots:
     void updateFromState();
     void updateForChangeHeadstages();
-    void updateTimeLabel(QString text) { timeLabel->setText("<b>" + text + "</b>"); }
+    void updateTimeLabel(QString text) { if (state->testMode->getValue()) return; timeLabel->setText("<b>" + text + "</b>"); }
     void updateTopStatusLabel(QString text) { topStatusLabel->setText(text); }
     void updateStatusBar(QString text) { statusBarLabel->setText(text); }
     void queueErrorMessage(QString errorMessage) { queuedErrorMessage = errorMessage; }
@@ -136,6 +145,7 @@ private slots:
 
     void fastPlaybackSlot();
     void jumpToStartSlot();
+    void jumpToEndSlot();
     void jumpBack1SecSlot();
     void jumpBack10SecSlot();
     void jumpToPositionSlot();
@@ -190,6 +200,7 @@ protected:
 private:
     SystemState* state;
     ControllerInterface* controllerInterface;
+    AbstractRHXController* rhxController;
     CommandParser* parser;
 
     QToolButton *showControlPanelButton;
@@ -225,6 +236,7 @@ private:
     QAction *rewindAction;
     QAction *fastForwardAction;
     QAction *fastPlaybackAction;
+    QAction *jumpToEndAction;
     QAction *jumpToStartAction;
     QAction *jumpBack1SecAction;
     QAction *jumpBack10SecAction;
@@ -295,7 +307,7 @@ private:
 
     StatusBars* statusBars;
 
-    ControlPanel *controlPanel;
+    AbstractPanel *controlPanel;
 
     MultiColumnDisplay *multiColumnDisplay;
 
@@ -306,8 +318,6 @@ private:
     QHBoxLayout *showHideRow;
 
     QSpacerItem *showHideStretch;
-
-    XMLInterface* stimParametersInterface;
 
     StimParametersClipboard *stimClipboard;
 
@@ -323,8 +333,6 @@ private:
     void updateForFilename(bool valid);
     void updateLiveNotesDialog();
     void updateForRun();
-    void updateForLoad();
-    void updateForStop();
 
     void createActions();
     void createMenus();

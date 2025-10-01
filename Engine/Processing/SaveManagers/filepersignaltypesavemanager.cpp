@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -30,8 +30,6 @@
 
 #include <iostream>
 #include "filepersignaltypesavemanager.h"
-
-using namespace std;
 
 // One file per signal type file format
 FilePerSignalTypeSaveManager::FilePerSignalTypeSaveManager(WaveformFifo* waveformFifo_, SystemState* state_) :
@@ -65,7 +63,6 @@ FilePerSignalTypeSaveManager::FilePerSignalTypeSaveManager(WaveformFifo* wavefor
 
 FilePerSignalTypeSaveManager::~FilePerSignalTypeSaveManager()
 {
-    closeAllSaveFiles();
 }
 
 bool FilePerSignalTypeSaveManager::openAllSaveFiles()
@@ -158,7 +155,7 @@ bool FilePerSignalTypeSaveManager::openAllSaveFiles()
             // Write amplifier custom names as comma-separated list, zero-terminated string.
             for (unsigned long i = 0; i < saveList.amplifier.size(); ++i) {
                 Channel* channel = state->signalSources->channelByName(saveList.amplifier[i]);
-                string customName = "";
+                std::string customName = "";
                 if (channel) customName = channel->getCustomName().toStdString();
                 spikeFile->writeStringAsCharArray(customName);
                 if (i != saveList.amplifier.size() - 1) {
@@ -184,7 +181,7 @@ bool FilePerSignalTypeSaveManager::openAllSaveFiles()
             spikeFile->writeUInt32(samplesPostDetect);
 
         }
-        if (type == ControllerStimRecordUSB2) {
+        if (type == ControllerStimRecord) {
             stimFile = new SaveFile(subdirPath + "stim" + DataFileExtension, bufferSize);
             if (!stimFile->isOpen()) {
                 closeAllSaveFiles();
@@ -199,7 +196,7 @@ bool FilePerSignalTypeSaveManager::openAllSaveFiles()
             }
         }
     }
-    if (type != ControllerStimRecordUSB2) {
+    if (type != ControllerStimRecord) {
         if (!saveList.auxInput.empty() && !saveAuxInsWithAmps) {
             auxInputFile = new SaveFile(subdirPath + "auxiliary" + DataFileExtension, bufferSize);
             if (!auxInputFile->isOpen()) {
@@ -222,7 +219,7 @@ bool FilePerSignalTypeSaveManager::openAllSaveFiles()
             return false;
         }
     }
-    if (type == ControllerStimRecordUSB2 && !saveList.boardDac.empty()) {
+    if (type == ControllerStimRecord && !saveList.boardDac.empty()) {
         analogOutputFile = new SaveFile(subdirPath + "analogout" + DataFileExtension, bufferSize);
         if (!analogOutputFile->isOpen()) {
             closeAllSaveFiles();
@@ -339,11 +336,11 @@ void FilePerSignalTypeSaveManager::closeAllSaveFiles()
 int64_t FilePerSignalTypeSaveManager::writeToSaveFiles(int numSamples, int timeIndex)
 {
     int maxColumns = 1;
-    maxColumns = max(maxColumns, (int) saveList.amplifier.size());
-    maxColumns = max(maxColumns, (int) saveList.auxInput.size());
-    maxColumns = max(maxColumns, (int) saveList.supplyVoltage.size());
-    maxColumns = max(maxColumns, (int) saveList.boardAdc.size());
-    maxColumns = max(maxColumns, (int) saveList.boardDac.size());
+    maxColumns = std::max(maxColumns, (int) saveList.amplifier.size());
+    maxColumns = std::max(maxColumns, (int) saveList.auxInput.size());
+    maxColumns = std::max(maxColumns, (int) saveList.supplyVoltage.size());
+    maxColumns = std::max(maxColumns, (int) saveList.boardAdc.size());
+    maxColumns = std::max(maxColumns, (int) saveList.boardDac.size());
     float* vArray = new float [maxColumns * numSamples];
     uint16_t* uint16Array = new uint16_t [maxColumns * numSamples];
 
@@ -418,7 +415,7 @@ int64_t FilePerSignalTypeSaveManager::writeToSaveFiles(int numSamples, int timeI
         }
     }
 
-    if (type == ControllerStimRecordUSB2) {
+    if (type == ControllerStimRecord) {
         // Save DC amplifier data.
         if (state->saveDCAmplifierWaveforms->getValue()) {
             waveformFifo->copyAnalogDataArray(WaveformFifo::ReaderDisk, vArray, dcAmplifierWaveform, timeIndex, numSamples);
@@ -434,7 +431,7 @@ int64_t FilePerSignalTypeSaveManager::writeToSaveFiles(int numSamples, int timeI
         numBytesWritten += stimFile->getNumBytesWritten();
     }
 
-    if (type != ControllerStimRecordUSB2) {
+    if (type != ControllerStimRecord) {
         // Save auxiliary input data.
         if (!saveList.auxInput.empty() && !saveAuxInsWithAmps) {
             waveformFifo->copyAnalogDataArray(WaveformFifo::ReaderDisk, vArray, auxInputWaveform, timeIndex, numSamples);
@@ -460,7 +457,7 @@ int64_t FilePerSignalTypeSaveManager::writeToSaveFiles(int numSamples, int timeI
         numBytesWritten += analogInputFile->getNumBytesWritten();
     }
 
-    if (type == ControllerStimRecordUSB2) {
+    if (type == ControllerStimRecord) {
         // Save board DAC data.
         if (!saveList.boardDac.empty()) {
             waveformFifo->copyAnalogDataArray(WaveformFifo::ReaderDisk, vArray, boardDacWaveform, timeIndex, numSamples);
@@ -501,7 +498,7 @@ double FilePerSignalTypeSaveManager::bytesPerMinute() const
     bytes += 2.0 * saveList.auxInput.size();
     bytes += 2.0 * saveList.supplyVoltage.size();
     bytes += 2.0 * saveList.boardAdc.size();
-    if (type == ControllerStimRecordUSB2) {
+    if (type == ControllerStimRecord) {
         if (state->saveDCAmplifierWaveforms->getValue()) {
             bytes += 2.0 * saveList.amplifier.size();
         }

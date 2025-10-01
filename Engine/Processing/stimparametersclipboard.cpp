@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -54,9 +54,9 @@ void StimParametersClipboard::paste(QList<Channel*> selectedChannels) const
         return;
     }
 
-    for (QList<Channel*>::const_iterator i = selectedChannels.begin(); i != selectedChannels.end(); ++i) {
-        (*i)->stimParameters->populateParametersFrom(stimParameters);
-        controllerInterface->uploadStimParameters(*i);
+    for (auto &i : selectedChannels) {
+        i->stimParameters->populateParametersFrom(stimParameters);
+        controllerInterface->uploadStimParameters(i);
     }
 
     state->forceUpdate();

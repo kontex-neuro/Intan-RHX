@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -37,8 +37,6 @@
 #include "abstractrhxcontroller.h"
 #include "savemanager.h"
 
-using namespace std;
-
 SaveManager::SaveManager(WaveformFifo* waveformFifo_, SystemState* state_) :
     waveformFifo(waveformFifo_),
     state(state_),
@@ -61,27 +59,28 @@ int64_t SaveManager::writeIntanFileHeader(SaveFile* saveFile)
 {
     int64_t numBytesInitial = saveFile->getNumBytesWritten();
 
-    if (type == ControllerStimRecordUSB2) {
+    if (type == ControllerStimRecord) {
         saveFile->writeUInt32(DataFileMagicNumberRHS);
     } else {
         saveFile->writeUInt32(DataFileMagicNumberRHD);
     }
-    saveFile->writeInt16(DataFileMainVersionNumber);
-    saveFile->writeInt16(DataFileSecondaryVersionNumber);
+
+    saveFile->writeInt16(SOFTWARE_MAIN_VERSION_NUMBER);
+    saveFile->writeInt16(SOFTWARE_SECONDARY_VERSION_NUMBER);
 
     saveFile->writeDouble(state->sampleRate->getNumericValue());
     saveFile->writeInt16(state->dspEnabled->getValue());
     saveFile->writeDouble(state->actualDspCutoffFreq->getValue());
     saveFile->writeDouble(state->actualLowerBandwidth->getValue());
 
-    if (type == ControllerStimRecordUSB2) {
+    if (type == ControllerStimRecord) {
         saveFile->writeDouble(state->actualLowerSettleBandwidth->getValue());
     }
     saveFile->writeDouble(state->actualUpperBandwidth->getValue());
 
     saveFile->writeDouble(state->desiredDspCutoffFreq->getValue());
     saveFile->writeDouble(state->desiredLowerBandwidth->getValue());
-    if (type == ControllerStimRecordUSB2) {
+    if (type == ControllerStimRecord) {
         saveFile->writeDouble(state->desiredLowerSettleBandwidth->getValue());
     }
     saveFile->writeDouble(state->desiredUpperBandwidth->getValue());
@@ -91,7 +90,7 @@ int64_t SaveManager::writeIntanFileHeader(SaveFile* saveFile)
     saveFile->writeDouble(state->desiredImpedanceFreq->getValue());
     saveFile->writeDouble(state->actualImpedanceFreq->getValue());
 
-    if (type == ControllerStimRecordUSB2) {
+    if (type == ControllerStimRecord) {
         saveFile->writeInt16(state->useFastSettle->getValue());
         saveFile->writeInt16(state->chargeRecoveryMode->getValue());
 
@@ -104,7 +103,7 @@ int64_t SaveManager::writeIntanFileHeader(SaveFile* saveFile)
     saveFile->writeQString(state->note2->getValueString());
     saveFile->writeQString(state->note3->getValueString());
 
-    if (type == ControllerStimRecordUSB2) {
+    if (type == ControllerStimRecord) {
         saveFile->writeInt16(state->saveDCAmplifierWaveforms->getValue());
     } else {
         saveFile->writeInt16(0);
@@ -122,7 +121,7 @@ int64_t SaveManager::writeIntanFileHeader(SaveFile* saveFile)
 void SaveManager::writeLiveNote(const QString& note, int64_t numSamplesRecorded)
 {
     if (!liveNotesFile) {  // If live notes file has not yet been created, do so now.
-        liveNotesFile = new SaveFile(liveNotesFileName, 128);
+        liveNotesFile = new SaveFile((liveNotesFileName.chopped(4) + saveFileDateTimeStamp() + ".txt"), 128);
         if (!state->note1->getValueString().isEmpty()) {
             writeLiveNoteEntry(0, state->note1->getValueString());
         }
@@ -148,8 +147,9 @@ void SaveManager::writeLiveNoteEntry(uint64_t timestamp, const QString& note)
         QTime recordTime(0, 0);
         QString timeString = recordTime.addSecs(timeInSeconds).toString("HH:mm:ss");
         liveNotesFile->writeQStringAsAsciiText(timestampString + ", " + timeString + ", " + note + "\r\n");
+        liveNotesFile->forceFlush();
     } else {
-        cerr << "SaveManager::writeLiveNoteEntry: live notes file " << liveNotesFileName.toStdString() << " is not open.\n";
+        std::cerr << "SaveManager::writeLiveNoteEntry: live notes file " << liveNotesFileName.toStdString() << " is not open.\n";
     }
 }
 
@@ -186,7 +186,7 @@ QString SaveManager::getDateTimeStamp()
 
 QString SaveManager::intanFileExtension() const
 {
-    if (type == ControllerStimRecordUSB2) return QString(".rhs");
+    if (type == ControllerStimRecord) return QString(".rhs");
     else return QString(".rhd");
 }
 
@@ -340,7 +340,7 @@ void SaveManager::convertBoardAdcValue(uint16_t* dest, const float* voltage, int
     }
 }
 
-// ControllerStimRecordUSB2 only
+// ControllerStimRecord only
 uint16_t SaveManager::convertBoardDacValue(float voltage) const   // voltage in volts
 {
     int result = ((int) round(voltage / 312.5e-6F)) + 32768;
@@ -349,7 +349,7 @@ uint16_t SaveManager::convertBoardDacValue(float voltage) const   // voltage in 
     return (uint16_t) result;
 }
 
-// ControllerStimRecordUSB2 only
+// ControllerStimRecord only
 void SaveManager::convertBoardDacValue(uint16_t* dest, const float* voltage, int numSamples) const  // voltage in volts
 {
     int result;
@@ -379,7 +379,7 @@ void SaveManager::getAllWaveformPointers()
         spikeWaveform[i] = waveformFifo->getDigitalWaveformPointer(saveList.amplifier[i] + "|SPK");
     }
 
-    if (type == ControllerStimRecordUSB2) {
+    if (type == ControllerStimRecord) {
         dcAmplifierWaveform.resize(saveList.amplifier.size());
         stimFlagsWaveform.resize(saveList.amplifier.size());
         posStimAmplitudes.resize(saveList.amplifier.size());

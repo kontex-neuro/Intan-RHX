@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -32,9 +32,8 @@
 #define RHXDATABLOCK_H
 
 #include <cstdint>
+#include <fstream>
 #include "rhxglobals.h"
-
-using namespace std;
 
 const int USBHeaderSizeInBytes = 8;
 const uint64_t HeaderRecordUSB2 = 0xc691199927021942UL;
@@ -46,7 +45,8 @@ class RHXDataBlock
 public:
     RHXDataBlock(ControllerType type_, int numDataStreams_);
     ~RHXDataBlock();
-    RHXDataBlock(const RHXDataBlock &obj);  // copy constructor
+    RHXDataBlock(const RHXDataBlock &obj){ *this = obj; }
+    RHXDataBlock& operator=(const RHXDataBlock &obj);
 
     uint32_t timeStamp(int t) const;
     int amplifierData(int stream, int channel, int t) const;
@@ -77,6 +77,9 @@ public:
 
     void fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex);
 
+    void print(int stream) const;
+    void write(std::ofstream &saveOut, int numDataStreams) const;
+
     static bool checkUsbHeader(const uint8_t* usbBuffer, int index, ControllerType type_);
     bool checkUsbHeader(const uint8_t* usbBuffer, int index) const;
     int getChipID(int stream, int auxCmdSlot, int &register59Value) const;
@@ -88,21 +91,21 @@ private:
     ControllerType type;
     int numDataStreams;
 
-    uint32_t* timeStampInternal;
-    int* amplifierDataInternal;
-    int* auxiliaryDataInternal;
-    int* boardAdcDataInternal;
-    int* ttlInInternal;
-    int* ttlOutInternal;
+    uint32_t* timeStampInternal = nullptr;
+    int* amplifierDataInternal = nullptr;
+    int* auxiliaryDataInternal = nullptr;
+    int* boardAdcDataInternal = nullptr;
+    int* ttlInInternal = nullptr;
+    int* ttlOutInternal = nullptr;
 
     // Stim/Record Controller only:
-    int* dcAmplifierDataInternal;
-    int* complianceLimitInternal;
-    int* stimOnInternal;
-    int* stimPolInternal;
-    int* ampSettleInternal;
-    int* chargeRecovInternal;
-    int* boardDacDataInternal;
+    int* dcAmplifierDataInternal = nullptr;
+    int* complianceLimitInternal = nullptr;
+    int* stimOnInternal = nullptr;
+    int* stimPolInternal = nullptr;
+    int* ampSettleInternal = nullptr;
+    int* chargeRecovInternal = nullptr;
+    int* boardDacDataInternal = nullptr;
 
     void allocateMemory();
 
@@ -122,6 +125,8 @@ private:
         unsigned int result = (x2 << 8) | (x1 << 0);
         return (int)result;
     }
+
+    void writeWordLittleEndian(std::ofstream &outputStream, int dataWord) const;
 };
 
 #endif // RHXDATABLOCK_H

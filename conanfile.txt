@@ -1,0 +1,17 @@
+[tool_requires]
+cmake/[>=3.25.0 <3.30.0]
+ninja/[>=1.12.0]
+
+[requires]
+fmt/10.2.1
+libxdaq/0.5.1
+nlohmann_json/3.11.3
+spdlog/1.13.0
+
+[generators]
+CMakeDeps
+CMakeToolchain
+VirtualRunEnv
+
+[layout]
+cmake_layout

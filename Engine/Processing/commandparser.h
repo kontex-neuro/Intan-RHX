@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -37,16 +37,20 @@
 #include "impedancereader.h"
 #include "controllerinterface.h"
 
+class ControlWindow;
+
 class CommandParser : public QObject
 {
     Q_OBJECT
 public:
     explicit CommandParser(SystemState *state_, ControllerInterface *controllerInterface_, QObject *parent = nullptr);
+    ControlWindow *controlWindow;
 
 signals:
     void updateGUIFromState();
     void TCPReturnSignal(QString result);
     void TCPErrorSignal(QString error);
+    void TCPWarningSignal(QString warning);
     void sendLiveNote(QString note);
     void stimTriggerOn(QString keyName);
     void stimTriggerOff(QString keyName);
@@ -119,6 +123,9 @@ private:
     void setTCPSpikeDataConnectionStatusCommand(const QString&);
     void getTCPSpikeDataConnectionStatusCommand();
 
+    void getCurrentTimestampCommand();
+    void getCurrentTimeSecondsCommand();
+
     void measureImpedanceCommand();
     void saveImpedanceCommand();
     void rescanPortsCommand();
@@ -135,6 +142,14 @@ private:
     void uploadBandwidthSettingsCommand();
 
     void setSpikeDetectionThresholdsCommand();
+
+    void loadSettingsFileCommand(QString fileName);
+    void saveSettingsFileCommand(QString fileName);
+    void loadStimulationSettingsFileCommand(QString fileName);
+    void saveStimulationSettingsFileCommand(QString fileName);
+
+    bool isDependencyRelated(QString parameter) const;
+    QString validateStimParams(StimParameters *stimParams) const;
 };
 
 #endif // COMMANDPARSER_H

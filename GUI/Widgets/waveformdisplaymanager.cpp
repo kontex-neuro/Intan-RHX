@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -32,16 +32,15 @@
 #include "waveformdisplaymanager.h"
 
 WaveformDisplayManager::WaveformDisplayManager(SystemState* state_, int maxWidthInPixels_, int numRefreshZones_) :
-    state(state_),
-    needsFullReset(true),
     needsFullRedraw(true),
+    needsFullReset(true),
+    numColumns(0),
+    state(state_),
     finishedRedraws(0),
     finishedResets(0),
-    numColumns(0),
     maxWidthInPixels(maxWidthInPixels_),
     numRefreshZones(numRefreshZones_)
 {
-    state->writeToLog("Beginning of WaveformDisplayManager ctor");
     sampleRate = state->sampleRate->getNumericValue();
     tScaleInMsec = (int) state->tScale->getNumericValue();
 
@@ -49,15 +48,13 @@ WaveformDisplayManager::WaveformDisplayManager(SystemState* state_, int maxWidth
     sweepFirstTime = true;
     validDataIndex = 0;
 
-    state->writeToLog("About to call calculateParameters()");
     calculateParameters();
-    state->writeToLog("Completed calculateParameters(). End of ctor");
 }
 
 WaveformDisplayManager::~WaveformDisplayManager()
 {
     if (!data.empty()) {
-        map<string, WaveformDisplayDataStore*>::const_iterator it = data.begin();
+        std::map<std::string, WaveformDisplayDataStore*>::const_iterator it = data.begin();
         while (it != data.end()) {
             delete it->second;
             ++it;
@@ -67,22 +64,14 @@ WaveformDisplayManager::~WaveformDisplayManager()
 
 void WaveformDisplayManager::calculateParameters()
 {
-    state->writeToLog("Beginning of calculateParameters()");
     zoneWidthInPixels = floor((double)maxWidthInPixels / (double)numRefreshZones);
-    state->writeToLog("zoneWidthInPixels: " + QString::number(zoneWidthInPixels));
     widthInPixels = numRefreshZones * zoneWidthInPixels;
-    state->writeToLog("widthInPixels: " + QString::number(widthInPixels));
     samplesPerZone = round(sampleRate * ((double)tScaleInMsec / 1000.0) / (double)numRefreshZones);
-    state->writeToLog("samplesPerZone: " + QString::number(samplesPerZone));
     pixelsPerSample = (float)zoneWidthInPixels / (float)samplesPerZone;
-    state->writeToLog("pixelsPerSample: " + QString::number(pixelsPerSample));
     useVerticalLines = pixelsPerSample < 1.0F;
     length = useVerticalLines ? widthInPixels : (samplesPerZone * numRefreshZones);
-    state->writeToLog("length: " + QString::number(length));
     zoneLength = length / numRefreshZones;
-    state->writeToLog("zoneLength: " + QString::number(zoneLength));
     resetAll();
-    state->writeToLog("Completed resetAll(). End of calculateParameters()");
 
 //    cout << EndOfLine;
 //    cout << "WaveformDisplayManager::calculateParameters:" << EndOfLine;
@@ -97,12 +86,12 @@ void WaveformDisplayManager::calculateParameters()
 
 bool WaveformDisplayManager::addWaveform(const QString& waveName, bool isStim, bool isRaster)
 {
-    string name = waveName.toStdString();
+    std::string name = waveName.toStdString();
     if (data.find(name) != data.end()) return false;  // No repeats!  Do not read from the Waveform FIFO twice!
 
     WaveformDisplayDataStore* ds = new WaveformDisplayDataStore;
     ds->isRaster = isRaster;
-    ds->hasStimFlags = isStim && !isRaster;
+    ds->hasStimFlags = (isStim && !isRaster) && !state->testMode->getValue();
     QString filterText = waveName.section('|', 1, 1);
     if (filterText == "WIDE") ds->yScaleType = WidebandYScale;
     else if (filterText == "LOW") ds->yScaleType = LowpassYScale;
@@ -115,7 +104,7 @@ bool WaveformDisplayManager::addWaveform(const QString& waveName, bool isStim, b
     else if (waveName.left(8) == "DIGITAL-") ds->yScaleType = DigitalIOYScale;
     else {
         ds->yScaleType = UnknownYScale;
-        cout << "Warning: Unknown Y Scale for waveform " << name << '\n';
+        std::cout << "Warning: Unknown Y Scale for waveform " << name << '\n';
     }
 
     data[name] = ds;
@@ -125,7 +114,7 @@ bool WaveformDisplayManager::addWaveform(const QString& waveName, bool isStim, b
 
 bool WaveformDisplayManager::removeWaveform(const QString& waveName)
 {
-    string name = waveName.toStdString();
+    std::string name = waveName.toStdString();
     if (data.find(name) == data.end()) return false;
     delete data.at(name);
     data.erase(name);
@@ -147,7 +136,7 @@ void WaveformDisplayManager::prepForLoadingNewData()
     }
 
     // Mark all WaveformDisplayDataStore objects with hasAlreadyLoaded = false.
-    map<string, WaveformDisplayDataStore*>::const_iterator it = data.begin();
+    std::map<std::string, WaveformDisplayDataStore*>::const_iterator it = data.begin();
     while (it != data.end()) {
         it->second->hasAlreadyLoaded = false;
         ++it;
@@ -165,7 +154,19 @@ void WaveformDisplayManager::prepForLoadingOldData(int startTime)
     }
 
     // Mark all WaveformDisplayDataStore objects with hasAlreadyLoaded = false.
-    map<string, WaveformDisplayDataStore*>::const_iterator it = data.begin();
+    std::map<std::string, WaveformDisplayDataStore*>::const_iterator it = data.begin();
+    while (it != data.end()) {
+        it->second->hasAlreadyLoaded = false;
+        ++it;
+    }
+}
+
+void WaveformDisplayManager::prepForLoadingDataDirect()
+{
+    validDataIndex = 0;
+    sweepFirstTime = false;
+
+    std::map<std::string, WaveformDisplayDataStore*>::const_iterator it = data.begin();
     while (it != data.end()) {
         it->second->hasAlreadyLoaded = false;
         ++it;
@@ -179,7 +180,7 @@ YScaleUsed WaveformDisplayManager::finishLoading()
     YScaleUsed yScaleUsed;
 
     // If WaveformDisplayDataStore object has not loaded new data, mark it as out of date
-    map<string, WaveformDisplayDataStore*>::const_iterator it = data.begin();
+    std::map<std::string, WaveformDisplayDataStore*>::const_iterator it = data.begin();
     while (it != data.end()) {
         if (!(it->second->hasAlreadyLoaded)) {
             it->second->isOutOfDate = true;
@@ -199,9 +200,9 @@ YScaleUsed WaveformDisplayManager::finishLoading()
 
 void WaveformDisplayManager::loadNewData(const WaveformFifo* waveformFifo, const QString& waveName) const
 {
-    map<string, WaveformDisplayDataStore*>::const_iterator it = data.find(waveName.toStdString());
+    std::map<std::string, WaveformDisplayDataStore*>::const_iterator it = data.find(waveName.toStdString());
     if (it == data.end()) {
-        cout << "WaveformDisplayManager::loadNewData: Could not find waveName " << waveName.toStdString() << '\n';
+        std::cout << "WaveformDisplayManager::loadNewData: Could not find waveName " << waveName.toStdString() << '\n';
         return;
     }
     WaveformDisplayDataStore* ds = it->second;
@@ -212,8 +213,8 @@ void WaveformDisplayManager::loadNewData(const WaveformFifo* waveformFifo, const
     if (ds->isOutOfDate) {  // If display data is out of date, load old data from waveform FIFO to catch up.
         int displayStartPos, displayEndPos, startTime;
         if (state->rollMode->getValue()) {  // Roll mode
-            displayStartPos = max(zoneLength, validDataIndex + zoneLength);  // No need to load first display zone; we just shift it away.
-            displayStartPos = min(displayStartPos, length);
+            displayStartPos = std::max(zoneLength, validDataIndex + zoneLength);  // No need to load first display zone; we just shift it away.
+            displayStartPos = std::min(displayStartPos, length);
             displayEndPos = length;
             if (useVerticalLines) {
                 startTime = -(displayEndPos - displayStartPos) * samplesPerZone / zoneWidthInPixels;
@@ -223,7 +224,7 @@ void WaveformDisplayManager::loadNewData(const WaveformFifo* waveformFifo, const
             loadDataSegment(waveformFifo, waveName, ds, displayStartPos, displayEndPos, startTime);
         } else {  // Sweep mode
             displayStartPos = 0;
-            displayEndPos = max(0, validDataIndex - zoneLength);
+            displayEndPos = std::max(0, validDataIndex - zoneLength);
             startTime = -displayEndPos * samplesPerZone / zoneWidthInPixels;
             loadDataSegment(waveformFifo, waveName, ds, displayStartPos, displayEndPos, startTime);
             if (!sweepFirstTime) {
@@ -279,9 +280,9 @@ void WaveformDisplayManager::loadNewData(const WaveformFifo* waveformFifo, const
 
 void WaveformDisplayManager::loadOldData(const WaveformFifo* waveformFifo, const QString& waveName, int startTime) const
 {
-    map<string, WaveformDisplayDataStore*>::const_iterator it = data.find(waveName.toStdString());
+    std::map<std::string, WaveformDisplayDataStore*>::const_iterator it = data.find(waveName.toStdString());
     if (it == data.end()) {
-        cout << "WaveformDisplayManager::loadOldData: Could not find waveName " << waveName.toStdString() << '\n';
+        std::cout << "WaveformDisplayManager::loadOldData: Could not find waveName " << waveName.toStdString() << '\n';
         return;
     }
     WaveformDisplayDataStore* ds = it->second;
@@ -293,6 +294,64 @@ void WaveformDisplayManager::loadOldData(const WaveformFifo* waveformFifo, const
     loadDataSegment(waveformFifo, waveName, ds, 0, validDataIndex, startTime);
     ds->isOutOfDate = false;
     ds->hasAlreadyLoaded = true;
+}
+
+void WaveformDisplayManager::loadDataDirect(QVector<double> &ampData, const QString& waveName)
+{
+    std::map<std::string, WaveformDisplayDataStore*>::const_iterator it = data.find(waveName.toStdString());
+    if (it == data.end()) {
+        std::cout << "WaveformDisplayManager::loadDataDirect: Could not find waveName " << waveName.toStdString() << '\n';
+    }
+    WaveformDisplayDataStore* ds = it->second;
+    if (!ds) return;
+
+    loadDataSegmentDirect(ampData, ds); // data, datastore
+    ds->hasAlreadyLoaded = true;
+}
+
+void WaveformDisplayManager::loadDataSegmentDirect(QVector<double> &ampData, WaveformDisplayDataStore* ds)
+{
+    int displaySpan = widthInPixels;
+    int startTime = 0;
+    int displayStartPos = 0;
+    int displayEndPos = displaySpan;
+
+    if (useVerticalLines) { // Samples per pixel > 1
+        int sampleSpan = (displaySpan / zoneWidthInPixels) * samplesPerZone;
+        int pixelsToGo = displaySpan;
+        int samplesToGo = sampleSpan;
+        int timeIndex = startTime;
+
+        MinMax<float> y;
+        // Always assume old data not present
+        y.swap();
+
+        for (int x = displayStartPos; x < displayEndPos; ++x) {
+            y.swap();
+            int samples = round((double)samplesToGo / (double)pixelsToGo);
+            getMinMaxData(y, ampData, timeIndex, samples);
+            ds->yMinMaxData[x] = y;
+            timeIndex += samples;
+            samplesToGo -= samples;
+            --pixelsToGo;
+        }
+    }
+
+    else { // Samples per pixel <= 1
+        // NOTE: This shouldn't happen for a decently high sample rate and reasonably sized screen. However,
+        // if there is a need to implement this, mimic 'waveformFifo->copyAnalogData(WaveformFifo::ReaderDisplay, &ds->yData[displayStartPos], waveform, startTime, displaySpan);'
+        QMessageBox::critical(nullptr, "Plotting Test Waveforms Error", "Software unable to plot for the sample rate " +
+                              state->sampleRate->getValue() + " with a pixels per sample of: " + QString::number(pixelsPerSample) + ". " +
+                              "This should be avoidable by resizing the ControlWindow to be less wide.");
+        //copyToDsDirect(ampData, &ds->yData[displayStartPos], startTime, displaySpan);
+    }
+}
+
+void WaveformDisplayManager::getMinMaxData(MinMax<float> &init, QVector<double> &ampData, int timeIndex, int samples) const
+{
+    for (int i = timeIndex; i < timeIndex + samples; ++i) {
+        init.update(ampData[i]);
+    }
 }
 
 void WaveformDisplayManager::loadDataSegment(const WaveformFifo* waveformFifo, const QString& waveName,
@@ -388,7 +447,7 @@ void WaveformDisplayManager::loadDataSegment(const WaveformFifo* waveformFifo, c
 
 float WaveformDisplayManager::getYScaleFactor(const QString& waveName) const
 {
-    map<string, WaveformDisplayDataStore*>::const_iterator it = data.find(waveName.toStdString());
+    std::map<std::string, WaveformDisplayDataStore*>::const_iterator it = data.find(waveName.toStdString());
     if (it == data.end()) return 0.0F;
     WaveformDisplayDataStore* ds = it->second;
     if (!ds) return 0.0F;
@@ -447,7 +506,7 @@ void WaveformDisplayManager::clearActiveSectionOfRect(QPainter &painter, QRect f
 
 void WaveformDisplayManager::draw(QPainter &painter, const QString& waveName, QPoint position, QColor color)
 {
-    map<string, WaveformDisplayDataStore*>::const_iterator it = data.find(waveName.toStdString());
+    std::map<std::string, WaveformDisplayDataStore*>::const_iterator it = data.find(waveName.toStdString());
     if (it == data.end()) return;
     WaveformDisplayDataStore* ds = it->second;
     if (!ds) return;
@@ -561,8 +620,8 @@ void WaveformDisplayManager::draw(QPainter &painter, const QString& waveName, QP
                         if (ds->stimFlags[i] != 0 && ds->stimFlags[i] != StimPolFlagOnly) {  // Draw stim flags.
                             if (i <= validDataIndex || !sweepFirstTime) {
                                 painter.setPen(stimFlagsColor(ds->stimFlags[i], BackgroundColor));
-                                for (float w = 0; w < pixelsPerSample; ++w) {
-                                    painter.drawLine(QPointF(x + w, YStimMarkerTop), QPointF(x + w, YStimMarkerBot));
+                                for (int w = 0; w < pixelsPerSample; ++w) {
+                                    painter.drawLine(QPointF(x + (float) w, YStimMarkerTop), QPointF(x + (float) w, YStimMarkerBot));
                                 }
                             }
                         }
@@ -625,8 +684,8 @@ void WaveformDisplayManager::draw(QPainter &painter, const QString& waveName, QP
                     if (ds->hasStimFlags) {
                         if (ds->stimFlags[i] != 0 && ds->stimFlags[i] != StimPolFlagOnly) {  // Draw stim flags.
                             painter.setPen(stimFlagsColor(ds->stimFlags[i], BackgroundColor));
-                            for (float w = 0; w < pixelsPerSample; ++w) {
-                                painter.drawLine(QPointF(x + w, YStimMarkerTop), QPointF(x + w, YStimMarkerBot));
+                            for (int w = 0; w < pixelsPerSample; ++w) {
+                                painter.drawLine(QPointF(x + (float) w, YStimMarkerTop), QPointF(x + (float) w, YStimMarkerBot));
                             }
                         }
                     }
@@ -720,7 +779,7 @@ void WaveformDisplayManager::resetAll()
     validDataIndex = state->rollMode->getValue() ? length : 0;
 
     if (data.empty()) return;
-    map<string, WaveformDisplayDataStore*>::const_iterator it = data.begin();
+    std::map<std::string, WaveformDisplayDataStore*>::const_iterator it = data.begin();
     while (it != data.end()) {
         reset(it->second);
         ++it;

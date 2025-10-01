@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -294,14 +294,20 @@ int DisplayListManager::findSelectedWaveform(const QList<DisplayedWaveform>& lis
     int length = list.size();
 
     for (int i = 0; i < length; ++i) {
-        if (y >= list[i].yTop && y <= list[i].yBottom) return i;
+        if (y >= list[i].yTop && y <= list[i].yBottom) {
+            if (list[i].waveformType == WaveformDivider || list[i].waveformType == UnknownWaveform) {
+                // Return with no waveform found if WaveformDivider or UnknownWaveform cases apply.
+                return -1;
+            }
+            return i;
+        }
     }
     if (y < list[0].yTop) return -1;
     if (y > list[length - 1].yBottom) return -(length + 1);
     for (int i = 0; i < length - 1; ++i) {
         if (y > list[i].yBottom && y < list[i + 1].yTop) return -(i + 2);
     }
-    cerr << "DisplayListManager::findSelectedWaveform: This line should never be reached." << '\n';
+    std::cerr << "DisplayListManager::findSelectedWaveform: This line should never be reached." << '\n';
     return 0;  // This line should never be reached - included so the compiler doesn't complain.
 }
 
@@ -671,7 +677,7 @@ void DisplayListManager::selectAdjacentWaveforms(WaveIndex waveIndex, int sectio
     if (sectionExtent == -1) sectionExtent = numDisplayedWaveforms(waveIndex.inPinned);
     selectWaveform(wave->waveName);
 
-    int firstSelected;
+    int firstSelected = 0;
     for (int i = 0; i < sectionExtent; ++i) {
         if (displayedWaveform(i, waveIndex.inPinned)->isSelected()) {
             firstSelected = i;
@@ -776,7 +782,7 @@ void DisplayListManager::updateOrderInState(const QString& portName, int numFilt
 {
     SignalGroup* group = state->signalSources->groupByName(portName);
     if (!group) {
-        cerr << "DisplayListManager::updateOrderInState: Signal group not found: " << portName.toStdString() << '\n';
+        std::cerr << "DisplayListManager::updateOrderInState: Signal group not found: " << portName.toStdString() << '\n';
         return;
     }
     int numAmplifierChannels = group->numChannels(AmplifierSignal);
@@ -790,7 +796,7 @@ void DisplayListManager::updateOrderInState(const QString& portName, int numFilt
                 for (int i = 0; i < waveformsInFirstSection; ++i) {
                     Channel* channel = displayList.at(i).channel;
                     if (!channel) {
-                        cerr << "DisplayListManager::updateOrderInState: Channel not found: " <<
+                        std::cerr << "DisplayListManager::updateOrderInState: Channel not found: " <<
                                 displayList.at(i).waveNameWithoutFilter().toStdString() << '\n';
                         return;
                     }
@@ -801,7 +807,7 @@ void DisplayListManager::updateOrderInState(const QString& portName, int numFilt
                 for (int i = 0; i < waveformsInFirstSection; i += numFiltersDisplayed) {
                     Channel* channel = displayList.at(i).channel;
                     if (!channel) {
-                        cerr << "MultiWaveformPlot::updateOrderInState: Channel not found: " <<
+                        std::cerr << "MultiWaveformPlot::updateOrderInState: Channel not found: " <<
                                 displayList.at(i).waveNameWithoutFilter().toStdString() << '\n';
                         return;
                     }
@@ -820,7 +826,7 @@ void DisplayListManager::updateOrderInState(const QString& portName, int numFilt
             if (type == WaveformDivider) continue;
             Channel* channel = state->signalSources->channelByName(displayList.at(i).waveName);
             if (!channel) {
-                cerr << "MultiWaveformPlot::updateOrderInState: Channel not found: " <<
+                std::cerr << "MultiWaveformPlot::updateOrderInState: Channel not found: " <<
                         displayList.at(i).waveName.toStdString() << '\n';
                 return;
             }
@@ -839,9 +845,9 @@ void DisplayListManager::updateOrderInState(const QString& portName, int numFilt
     // Note: Any function calling this function should also call state->forceUpdate().
 }
 
-vector<bool> DisplayListManager::selectionRecord() const
+std::vector<bool> DisplayListManager::selectionRecord() const
 {
-    vector<bool> record;
+    std::vector<bool> record;
 
     for (int i = 0; i < state->signalSources->numPortGroups(); ++i) {
         SignalGroup* group = state->signalSources->portGroupByIndex(i);
@@ -864,7 +870,7 @@ vector<bool> DisplayListManager::selectionRecord() const
     return record;
 }
 
-bool DisplayListManager::selectionRecordsAreEqual(const vector<bool>& a, const vector<bool>& b) const
+bool DisplayListManager::selectionRecordsAreEqual(const std::vector<bool>& a, const std::vector<bool>& b) const
 {
     if (a.size() != b.size()) return false;
     for (int i = 0; i < (int) a.size(); ++i) {

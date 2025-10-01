@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -28,9 +28,11 @@
 //
 //------------------------------------------------------------------------------
 
-#include <QAudioDeviceInfo>
+#include <QMediaDevices>
 #include "signalsources.h"
 #include "audiothread.h"
+
+#include <QMediaDevices>
 
 AudioThread::AudioThread(SystemState *state_, WaveformFifo *waveformFifo_, const double sampleRate_, QObject *parent) :
     QThread(parent),
@@ -51,9 +53,7 @@ AudioThread::AudioThread(SystemState *state_, WaveformFifo *waveformFifo_, const
 
 void AudioThread::initialize()
 {
-    state->writeToLog("Audio Thread initialize begin");
     // Initialize variables.
-    mDevice = QAudioDeviceInfo::defaultOutputDevice();
     currentValue = 0.0F;
     nextValue = 0.0F;
     interpRatio = 0.0;
@@ -80,30 +80,27 @@ void AudioThread::initialize()
     }
 
     // Initialize buffer.
-    finalSoundBytesBuffer = new char[NumSoundBytes];
+    finalSoundBytesBuffer.resize(NumSoundBytes);
     for (int i = 0; i < NumSoundBytes; ++i) {
-        finalSoundBytesBuffer[i] = (char) 0;
+        finalSoundBytesBuffer[i] = 0;
     }
 
     // Set up audio format.
     mFormat.setSampleRate(44100);
     mFormat.setChannelCount(1);
-    mFormat.setSampleSize(16);
-    mFormat.setCodec("audio/pcm");
-    mFormat.setByteOrder(QAudioFormat::LittleEndian);
-    mFormat.setSampleType(QAudioFormat::SignedInt);
-    QAudioDeviceInfo info(mDevice);
-    if (!info.isFormatSupported(mFormat)) {
-        qWarning() << "Default format not supported - trying to use nearest";
-        mFormat = info.nearestFormat(mFormat);
+    mFormat.setSampleFormat(QAudioFormat::Int16);
+
+    QAudioDevice defaultDevice(QMediaDevices::defaultAudioOutput());
+    if (!defaultDevice.isFormatSupported(mFormat)) {
+        qWarning() << "Default format not supported - trying to use preferred";
+        mFormat = defaultDevice.preferredFormat();
+        mFormat.setChannelCount(1);
     }
 
     // Create audio IO and output device.
-    buf = new QByteArray();
-    s = new QDataStream(buf, QIODevice::ReadWrite);
-    mAudioOutput = new QAudioOutput(mDevice, mFormat);
-    connect(mAudioOutput, SIGNAL(stateChanged(QAudio::State)), this, SLOT(catchError()));
-    state->writeToLog("Audio Thread initialize end");
+    mAudioSink = std::make_unique<QAudioSink>(defaultDevice, mFormat);
+    mAudioSink->setBufferSize(NumSoundBytes);
+    connect(mAudioSink.get(), SIGNAL(stateChanged(QAudio::State)), this, SLOT(catchError()));
 }
 
 void AudioThread::run()
@@ -114,14 +111,21 @@ void AudioThread::run()
 
             // Any 'start up' code goes here.
             initialize();
+            QBuffer m_buffer;
+            m_buffer.setBuffer(&finalSoundBytesBuffer);
+            m_buffer.open(QIODevice::ReadOnly);
 
+            QDataStream *s = nullptr;
             while (keepGoing && !stopThread) {
+
+                // Start audio (if it's not started already)
+                if (mAudioSink->state() != QAudio::ActiveState) {
+                    mAudioSink->start(&m_buffer);
+                }
 
                 // Wait for samples to arrive from WaveformFifo (enough where, when scaled to 44.1 kHz audio, NumSoundSamples can be written)
                 if (waveformFifo->requestReadNewData(WaveformFifo::ReaderAudio, rawBlockSampleSize)) {
-                    s->device()->seek(0);
-                    s->writeRawData(finalSoundBytesBuffer, NumSoundBytes);
-                    s->device()->seek(0);
+                    m_buffer.seek(0);
 
                     // Populate rawData from WaveformFifo
                     if (!fillBufferFromWaveformFifo()) {
@@ -132,12 +136,6 @@ void AudioThread::run()
                     // Populate finalSoundBytesBuffer from rawData
                     processAudioData();
 
-                    // Start audio (if it's not started already)
-                    if (mAudioOutput->state() != QAudio::ActiveState) {
-                        mAudioOutput->start(s->device());
-                    }
-                    qApp->processEvents();
-
                 } else {
                     // Probably could sleep here for a while
                     qApp->processEvents();
@@ -145,14 +143,11 @@ void AudioThread::run()
            }
 
            // Any 'finish up' code goes here.
-           mAudioOutput->stop();
+           mAudioSink->stop();
 
            delete [] rawData;
            delete [] interpFloats;
            delete [] interpInts;
-           delete [] finalSoundBytesBuffer;
-           delete s;
-           delete buf;
 
            running = false;
         } else {
@@ -221,12 +216,10 @@ bool AudioThread::fillBufferFromWaveformFifo()
 
 void AudioThread::processAudioData()
 {
-    state->writeToLog("Process audio data start");
     // Do floating point interpolation.
     originalSamplesCopied = 0;
     soundSamplesCopied = 0;
     while (originalSamplesCopied < rawBlockSampleSize) {
-        qApp->processEvents();
         currentValue = nextValue;
         nextValue = rawData[originalSamplesCopied];
 
@@ -276,35 +269,30 @@ void AudioThread::processAudioData()
     }
 
     // Fill buffer with final data.
-    char *ptr = finalSoundBytesBuffer;
+    char *ptr = finalSoundBytesBuffer.data();
     for (int i = 0; i < NumSoundSamples; ++i) {
         qToLittleEndian<int16_t>(interpInts[i], ptr);
         ptr += 2;
     }
-    state->writeToLog("Process audio data end");
 }
 
 void AudioThread::catchError()
 {
-    QAudio::Error errorValue = mAudioOutput->error();
+    QAudio::Error errorValue = mAudioSink->error();
     switch (errorValue) {
     case QAudio::NoError:
         break;
     case QAudio::OpenError:
-        qDebug() << "Open Error";
-        state->writeToLog("Open Error");
+        qDebug().noquote() << "rhx-audio: Open Error";
         break;
     case QAudio::IOError:
-        qDebug() << "IO Error";
-        state->writeToLog("IO Error");
+        qDebug().noquote() << "rhx-audio: IO Error";
         break;
     case QAudio::UnderrunError:
-        qDebug() << "Underrun Error";
-        state->writeToLog("Underrun Error");
+        qDebug().noquote() << "rhx-audio: Underrun Error";
         break;
     case QAudio::FatalError:
-        qDebug() << "Fatal Error";
-        state->writeToLog("Fatal Error");
+        qDebug().noquote() << "rhx-audio: Fatal Error";
         break;
     }
 }

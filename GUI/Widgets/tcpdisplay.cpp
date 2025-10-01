@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------------
 //
 //  Intan Technologies RHX Data Acquisition Software
-//  Version 3.1.0
+//  Version 3.4.0
 //
-//  Copyright (c) 2020-2022 Intan Technologies
+//  Copyright (c) 2020-2025 Intan Technologies
 //
 //  This file is part of the Intan Technologies RHX Data Acquisition Software.
 //
@@ -57,6 +57,7 @@ TCPDisplay::TCPDisplay(SystemState* state_, QWidget *parent) :
     spikeOutputHostLineEdit = new QLineEdit(state->tcpSpikeDataCommunicator->address, this);
 
     connect(waveformOutputHostLineEdit, SIGNAL(textEdited(QString)), this, SLOT(waveformOutputHostEdited()));
+    connect(spikeOutputHostLineEdit, SIGNAL(textEdited(QString)), this, SLOT(spikeOutputHostEdited()));
 
     commandsPortSpinBox = new QSpinBox(this);
     commandsPortSpinBox->setRange(0,9999);
@@ -104,7 +105,7 @@ TCPDisplay::TCPDisplay(SystemState* state_, QWidget *parent) :
     filterSelectComboBox->addItem("LOW");
     filterSelectComboBox->addItem("HIGH");
     filterSelectComboBox->addItem("SPK");
-    if (state->getControllerTypeEnum() == ControllerStimRecordUSB2) {
+    if (state->getControllerTypeEnum() == ControllerStimRecord) {
         filterSelectComboBox->addItem("DC");
         filterSelectComboBox->addItem("STIM");
     }
@@ -214,7 +215,6 @@ TCPDisplay::TCPDisplay(SystemState* state_, QWidget *parent) :
 
     QHBoxLayout *logRow = new QHBoxLayout;
     logRow->addLayout(commandsColumn);
-    logRow->addLayout(errorsColumn);
 
     QVBoxLayout *column = new QVBoxLayout;
     column->addLayout(commandsAddressRow);
@@ -262,8 +262,12 @@ TCPDisplay::TCPDisplay(SystemState* state_, QWidget *parent) :
     tabWidget->addTab(commandsFrame, tr("Commands"));
     tabWidget->addTab(dataOutputFrame, tr("Data Output"));
 
-    QHBoxLayout *mainLayout = new QHBoxLayout;
-    mainLayout->addWidget(tabWidget);
+    QHBoxLayout *mainRow = new QHBoxLayout;
+    mainRow->addWidget(tabWidget);
+
+    QVBoxLayout *mainLayout = new QVBoxLayout;
+    mainLayout->addLayout(mainRow);
+    mainLayout->addLayout(errorsColumn);
 
     updateCommandWidgets();
     updateDataOutputWidgets();
@@ -290,9 +294,14 @@ void TCPDisplay::updateFromState()
 
 void TCPDisplay::processNewCommandConnection()
 {
+    static bool firstCommandConnection = true;
     if (state->tcpCommandCommunicator->connectionAvailable()) {
         state->tcpCommandCommunicator->establishConnection();
-        connect(state->tcpCommandCommunicator, SIGNAL(readyRead()), this, SLOT(readClientCommand()), Qt::QueuedConnection);
+        if (firstCommandConnection) {
+            connect(state->tcpCommandCommunicator, SIGNAL(readyRead()), this, SLOT(readClientCommand()), Qt::QueuedConnection);
+        }
+        firstCommandConnection = false;
+        //connect(state->tcpCommandCommunicator, SIGNAL(readyRead()), this, SLOT(readClientCommand()), Qt::QueuedConnection); // Possible to connect multiple times, causing repeated slot executions
     }
 }
 
@@ -454,7 +463,7 @@ void TCPDisplay::updateDataOutputWidgets()
              state->tcpSpikeDataCommunicator->status == TCPCommunicator::Pending) {
         // If waveform port is disconnected but spike port is pending, report it, red
 
-        dataOutputStatus->setText(tr("Waveform Port Pending, Spike Port Disconnected"));
+        dataOutputStatus->setText(tr("Waveform Port Disconnected, Spike Port Pending"));
         dataOutputStatus->setStyleSheet("QLabel { color : red; }");
         waveformOutputConnectButton->setEnabled(true);
         spikeOutputConnectButton->setEnabled(false);
@@ -649,7 +658,7 @@ void TCPDisplay::updateTables()
         for (int channel = 0; channel < thisGroup->numChannels(); ++channel) {
             Channel *thisChannel = thisGroup->channelByIndex(channel);
             if (thisChannel->getSignalType() == AmplifierSignal) {
-                if (state->getControllerTypeEnum() == ControllerStimRecordUSB2) {
+                if (state->getControllerTypeEnum() == ControllerStimRecord) {
                     maxTcpChannels += 6;
                 } else {
                     maxTcpChannels += 4;
@@ -666,7 +675,7 @@ void TCPDisplay::updateTables()
 void TCPDisplay::updatePresentChannelsTable()
 {
     // Scan through all channels.
-    vector<string> presentChannelsVector;
+    std::vector<std::string> presentChannelsVector;
     for (int group = 0; group < state->signalSources->numGroups(); ++group) {
         SignalGroup* thisGroup = state->signalSources->groupByIndex(group);
         for (int channel = 0; channel < thisGroup->numChannels(); ++channel) {
@@ -701,7 +710,7 @@ void TCPDisplay::updatePresentChannelsTable()
         if (thisChannel->getSignalType() == AmplifierSignal) {
             if (thisChannel->getOutputToTcp() && thisChannel->getOutputToTcpLow() &&
                     thisChannel->getOutputToTcpHigh() && thisChannel->getOutputToTcpSpike()) {
-                if (state->getControllerTypeEnum() == ControllerStimRecordUSB2) {
+                if (state->getControllerTypeEnum() == ControllerStimRecord) {
                     if (thisChannel->getOutputToTcpDc() && thisChannel->getOutputToTcpStim()) {
                         fullyOutput = true;
                     }
@@ -725,7 +734,7 @@ void TCPDisplay::updatePresentChannelsTable()
 void TCPDisplay::updateChannelsToStreamTable()
 {
     // Scan through all channels.
-    vector<string> channelsToStreamVector;
+    std::vector<std::string> channelsToStreamVector;
     for (int group = 0; group < state->signalSources->numGroups(); ++group) {
         SignalGroup* thisGroup = state->signalSources->groupByIndex(group);
         for (int channel = 0; channel < thisGroup->numChannels(); ++channel) {
@@ -742,7 +751,7 @@ void TCPDisplay::updateChannelsToStreamTable()
                     channelsToStreamVector.insert(channelsToStreamVector.end(), thisChannel->getNativeNameString() + "|HIGH");
                 if (thisChannel->getOutputToTcpSpike())
                     channelsToStreamVector.insert(channelsToStreamVector.end(), thisChannel->getNativeNameString() + "|SPK");
-                if (state->getControllerTypeEnum() == ControllerStimRecordUSB2) {
+                if (state->getControllerTypeEnum() == ControllerStimRecord) {
                     if (thisChannel->getOutputToTcpDc())
                         channelsToStreamVector.insert(channelsToStreamVector.end(), thisChannel->getNativeNameString() + "|DC");
                     if (thisChannel->getOutputToTcpStim())
@@ -820,6 +829,7 @@ void TCPDisplay::parseCommands(const QString& commands)
                 emit sendSetCommand(words.at(1), words.at(2));
             } else {
                 QString errorMessage = "Error - Command " + QString::number(i + 1) + ": Set commands require a parameter and a value";
+                errorTextEdit->append(errorMessage);
                 state->tcpCommandCommunicator->writeQString(errorMessage);
             }
         } else if (words.at(0).toLower() == "get") {
@@ -828,6 +838,7 @@ void TCPDisplay::parseCommands(const QString& commands)
                 emit sendGetCommand(words.at(1));
             } else {
                 QString errorMessage = "Error - Command " + QString::number(i + 1) + ": Get commands require a parameter";
+                errorTextEdit->append(errorMessage);
                 state->tcpCommandCommunicator->writeQString(errorMessage);
             }
         } else if (words.at(0).toLower() == "execute") {
@@ -838,6 +849,7 @@ void TCPDisplay::parseCommands(const QString& commands)
                 emit sendExecuteCommandWithParameter(words.at(1), words.at(2));
             } else {
                 QString errorMessage = "Error - Command " + QString::number(i + 1) + ": Execute commands require an action";
+                errorTextEdit->append(errorMessage);
                 state->tcpCommandCommunicator->writeQString(errorMessage);
             }
         } else if (words.at(0).toLower() == "livenotes") {
@@ -846,7 +858,7 @@ void TCPDisplay::parseCommands(const QString& commands)
         } else {
             // Unrecognized command
             QString errorMessage = "Error - Command " + QString::number(i + 1) + ": Unrecognized command";
-            qDebug() << "UNRECOGNIZED COMMAND.... words size: " << words.size() << " first word: " << words.at(0);
+            errorTextEdit->append(errorMessage);
             state->tcpCommandCommunicator->writeQString(errorMessage);
         }
     }
@@ -861,4 +873,9 @@ void TCPDisplay::TCPError(QString errorString)
 {
     errorTextEdit->append(errorString);
     state->tcpCommandCommunicator->writeQString(errorString);
+}
+
+void TCPDisplay::TCPWarning(QString warningString)
+{
+    errorTextEdit->append(warningString);
 }
