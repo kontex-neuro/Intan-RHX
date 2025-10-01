@@ -153,7 +153,10 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
     set_source_files_properties(${ICON_PATH} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
     set_target_properties(XDAQ-RHX PROPERTIES
         BUNDLE True
-        MACOSX_BUNDLE_ICONFILE ${ICON_NAME}
+        MACOSX_BUNDLE_ICON_FILE "${ICON_NAME}"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "io.kontex.XDAQ-RHX"
+        MACOSX_BUNDLE_BUNDLE_NAME "XDAQ-RHX"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
     )
     deployqt("$<TARGET_FILE_NAME:XDAQ-RHX>.app")
 endif()
