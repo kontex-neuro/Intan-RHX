@@ -44,9 +44,11 @@
 #include <QSettings>
 #include <QSizePolicy>
 #include <QStackedWidget>
+#include <QTabWidget>
 #include <QTableWidget>
 #include <QWidget>
 #include <QtGlobal>
+#include <bitset>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -78,6 +80,8 @@ QIcon getIcon(XDAQModel model, QStyle *style, int size)
         return QIcon(":/images/xdaq_core.png");
     else if (model == XDAQModel::One)
         return QIcon(":/images/xdaq_one.png");
+    else if (model == XDAQModel::AIO)
+        return QIcon(":/images/xdaq_one.png");  // TODO: Add AIO image
     else
         return QIcon(style->standardIcon(QStyle::SP_MessageBoxQuestion).pixmap(size));
 }
@@ -320,6 +324,16 @@ auto get_playback_board(QWidget *parent, auto launch)
 
 auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info, const XDAQStatus &status)
 {
+    std::string settings_scope;
+    settings_scope = "XDAQ";
+    switch (info.model) {
+    case XDAQModel::Core: settings_scope += "/Core"; break;
+    case XDAQModel::One: settings_scope += "/One"; break;
+    case XDAQModel::AIO: settings_scope += "/AIO"; break;
+    default: break;
+    }
+    settings_scope += "/" + info.serial;
+
     auto app_icon = new QTableWidgetItem(
         getIcon(info.model, parent->style(), info.model == XDAQModel::Unknown ? 40 : 80),
         QString::fromStdString(info.id)
@@ -374,100 +388,352 @@ auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info, const XD
     auto launch_widget = new QWidget();
     {
         QSettings settings;
-        settings.beginGroup("XDAQ");
-        if (!settings.contains("sample_rate")) settings.setValue("sample_rate", SampleRate30000Hz);
-        if (!settings.contains("stim_step_size"))
-            settings.setValue("stim_step_size", StimStepSize10uA);
-        auto init_sample_rate =
-            static_cast<AmplifierSampleRate>(settings.value("sample_rate").toInt());
-        auto init_stim_step_size =
-            static_cast<StimStepSize>(settings.value("stim_step_size").toInt());
-        settings.endGroup();
+        settings.beginGroup(settings_scope);
+        if (!settings.contains("rhd/sample_rate"))
+            settings.setValue("rhd/sample_rate", SampleRateString[SampleRate30000Hz]);
+        if (!settings.contains("rhs/sample_rate"))
+            settings.setValue("rhs/sample_rate", SampleRateString[SampleRate30000Hz]);
+        if (!settings.contains("rhs/stim_step_size"))
+            settings.setValue("rhs/stim_step_size", StimStepSizeString[StimStepSize10uA]);
 
-        auto launch_button_rhd = new QPushButton(parent->tr("Record (X3R/X6R)"));
-        QObject::connect(launch_button_rhd, &QPushButton::clicked, [launch, info]() {
-            auto config = json::parse(info.device_config);
-            config["mode"] = "rhd";
-
+        const static auto dump_qsettings = [](QString group) {
             QSettings settings;
-            settings.beginGroup("XDAQ");
-            auto sample_rate =
-                static_cast<AmplifierSampleRate>(settings.value("sample_rate").toInt());
-            auto stim_step_size =
-                static_cast<StimStepSize>(settings.value("stim_step_size").toInt());
-            settings.endGroup();
-
-            launch(
-                [=]() {
-                    return new RHXController(
-                        ControllerType::ControllerRecordUSB3,
-                        sample_rate,
-                        info.get_device(config.dump())
-                    );
-                },
-                stim_step_size
-            );
-        });
-        auto launch_button_rhs = new QPushButton(parent->tr("Stim-Record (X3SR)"));
-        QObject::connect(launch_button_rhs, &QPushButton::clicked, [launch, info]() {
-            auto config = json::parse(info.device_config);
-            config["mode"] = "rhs";
-
-            QSettings settings;
-            settings.beginGroup("XDAQ");
-            auto sample_rate =
-                static_cast<AmplifierSampleRate>(settings.value("sample_rate").toInt());
-            auto stim_step_size =
-                static_cast<StimStepSize>(settings.value("stim_step_size").toInt());
-            settings.endGroup();
-            if (AbstractRHXController::getSampleRate(sample_rate) <
-                AbstractRHXController::getSampleRate(SampleRate20000Hz)) {
-                QMessageBox::warning(
-                    nullptr,
-                    "Unsupported Sample Rate",
-                    "Only 20, 25 and 30 kHz is supported using Stim-Record"
+            settings.beginGroup(group);
+            fmt::print("[{}]\n", group.toStdString());
+            for (const auto &key : settings.allKeys()) {
+                fmt::print(
+                    "{}={}\n", key.toStdString(), settings.value(key).toString().toStdString()
                 );
-                return;
+            }
+            settings.endGroup();
+        };
+        dump_qsettings("XDAQ");
+        std::vector<QString> rhd_sample_rates;
+        for (int i = 0; i <= SampleRate30000Hz; ++i)
+            rhd_sample_rates.push_back(SampleRateString[i]);
+        auto rhd_sr_selector = create_default_combobox(
+            std::ranges::find(rhd_sample_rates, settings.value("rhd/sample_rate").toString()) -
+                rhd_sample_rates.begin(),
+            rhd_sample_rates,
+            [rhd_sample_rates, settings_scope](int index) {
+                QSettings settings;
+                settings.setValue(settings_scope + "/rhd/sample_rate", rhd_sample_rates[index]);
+            }
+        );
+        std::vector<std::vector<QWidget *>> rhd_rows{
+            {{new QLabel(parent->tr("Sample Rate")), rhd_sr_selector}}
+        };
+        constexpr static auto get_port_name = [](int idx, bool rhs) {
+            if (rhs) {
+                if (idx & 1) {
+                    return fmt::format("HDMI {} RHX {} 16-31", idx / 2, (char) ('A' + idx / 2));
+                } else {
+                    return fmt::format("HDMI {} RHX {} 0-15", idx / 2, (char) ('A' + idx / 2));
+                }
+            } else {
+                if (idx & 1) {
+                    return fmt::format("HDMI {} RHX {} 128-255", idx / 2, (char) ('A' + idx));
+                } else {
+                    return fmt::format("HDMI {} RHX {} 0-127", idx / 2, (char) ('A' + idx));
+                }
+            }
+        };
+        if (info.generation == 2) {
+            std::bitset<8> enabled;
+            int rhd_available_ports = info.max_rhd_channels / 128;
+            for (int port = 0; port < 8; ++port) {
+                const auto port_name = get_port_name(port, false);
+                auto e = settings.value("rhd/" + port_name, false).toBool();
+                if (e && (enabled.count() >= rhd_available_ports)) {
+                    e = false;
+                    settings.setValue("rhd/" + port_name, false);
+                }
+                enabled[port] = e;
+            }
+            if (enabled.count() == 0) {
+                for (int port = 0; port < 8; ++port) {
+                    if ((info.model == XDAQModel::Core) && (port & 1)) continue;
+                    if (enabled.count() < rhd_available_ports) {
+                        const auto port_name = get_port_name(port, false);
+                        settings.setValue("rhd/" + port_name, true);
+                        enabled[port] = true;
+                    }
+                }
+            }
+            std::vector<QCheckBox *> checkboxes;
+            for (int port = 0; port < 8; ++port) {
+                if ((info.model == XDAQModel::Core) && (port & 1)) continue;
+                const auto port_name = get_port_name(port, false);
+                auto label = new QLabel(parent->tr(port_name.c_str()));
+
+                auto enable_checkbox = new QCheckBox();
+                enable_checkbox->setCheckState(enabled[port] ? Qt::Checked : Qt::Unchecked);
+                enable_checkbox->setStyleSheet("QCheckBox::indicator { width: 20px; height: 20px; }"
+                );
+                rhd_rows.push_back({label, enable_checkbox});
+                checkboxes.push_back(enable_checkbox);
             }
 
-            launch(
-                [=]() {
-                    return new RHXController(
-                        ControllerType::ControllerStimRecord,
-                        sample_rate,
-                        info.get_device(config.dump())
+            for (int port = 0, count = 0; port < 8; ++port) {
+                if ((info.model == XDAQModel::Core) && (port & 1)) continue;
+                const auto port_name = get_port_name(port, false);
+                auto target = checkboxes[count];
+                ++count;
+                QObject::connect(
+                    target,
+                    &QCheckBox::checkStateChanged,
+                    [info, settings_scope, port_name, checkboxes, target](Qt::CheckState state) {
+                        int rhd_available_ports = info.max_rhd_channels / 128;
+                        for (auto cb : checkboxes) {
+                            if (cb->checkState() == Qt::Checked) {
+                                --rhd_available_ports;
+                            }
+                        }
+                        QSettings settings;
+                        if (state == Qt::Checked) {
+                            if (rhd_available_ports < 0) {
+                                fmt::print("no more available ports {}\n", rhd_available_ports);
+                                target->setCheckState(Qt::Unchecked);
+                                return;
+                            }
+                            settings.setValue(settings_scope + "/rhd/" + port_name, true);
+                        } else {
+                            settings.setValue(settings_scope + "/rhd/" + port_name, false);
+                        }
+                    }
+                );
+            }
+        }
+        auto rhd_properties_widget =
+            get_properties_table({parent->tr("Property"), parent->tr("Value")}, rhd_rows);
+        const std::vector<QString> rhs_sample_rates = {
+            SampleRateString[SampleRate20000Hz],
+            SampleRateString[SampleRate25000Hz],
+            SampleRateString[SampleRate30000Hz],
+        };
+        if (std::ranges::find(rhs_sample_rates, settings.value("rhs/sample_rate").toString()) ==
+            rhs_sample_rates.end()) {
+            settings.setValue("rhs/sample_rate", SampleRateString[SampleRate30000Hz]);
+        }
+        auto rhs_sr_selector = create_default_combobox(
+            std::ranges::find(rhs_sample_rates, settings.value("rhs/sample_rate").toString()) -
+                rhs_sample_rates.begin(),
+            rhs_sample_rates,
+            [rhs_sample_rates, settings_scope](int index) {
+                QSettings settings;
+                settings.setValue(settings_scope + "/rhs/sample_rate", rhs_sample_rates[index]);
+            }
+        );
+        std::vector<QString> rhs_stim_step_sizes;
+        for (int i = 0; i <= StimStepSizeMax; ++i)
+            rhs_stim_step_sizes.push_back(StimStepSizeString[i]);
+
+        if (std::ranges::find(
+                rhs_stim_step_sizes, settings.value("rhs/stim_step_size").toString()
+            ) == rhs_stim_step_sizes.end()) {
+            settings.setValue("rhs/stim_step_size", StimStepSizeString[StimStepSize10uA]);
+        }
+        auto stim_step_selector = create_default_combobox(
+            std::ranges::find(
+                rhs_stim_step_sizes, settings.value("rhs/stim_step_size").toString()
+            ) - rhs_stim_step_sizes.begin(),
+            StimStepSizeString,
+            [settings_scope](int index) {
+                QSettings settings;
+                settings.setValue(
+                    settings_scope + "/rhs/stim_step_size", StimStepSizeString[index]
+                );
+            }
+        );
+        std::vector<std::vector<QWidget *>> rhs_rows{
+            {new QLabel(parent->tr("Sample Rate")), rhs_sr_selector},
+            {new QLabel(parent->tr("Stim Step Size")), stim_step_selector}
+        };
+        if (info.generation == 2) {
+            std::bitset<8> enabled;
+            int rhs_available_ports = info.max_rhs_channels / 16;
+            for (int port = 0; port < 8; ++port) {
+                const auto port_name = get_port_name(port, true);
+
+                auto e = settings.value("rhs/" + port_name, false).toBool();
+                if (e && (enabled.count() >= rhs_available_ports)) {
+                    e = false;
+                    settings.setValue("rhs/" + port_name, false);
+                }
+                enabled[port] = e;
+            }
+            if (enabled.count() == 0) {
+                for (int port = 0; port < 8; ++port) {
+                    if (enabled.count() < rhs_available_ports) {
+                        const auto port_name = get_port_name(port, true);
+                        settings.setValue("rhs/" + port_name, true);
+                        enabled[port] = true;
+                    }
+                }
+            }
+            std::vector<QCheckBox *> checkboxes;
+            for (int port = 0; port < 8; ++port) {
+                if ((info.model == XDAQModel::Core) && (port >= 4)) continue;
+                const auto port_name = get_port_name(port, true);
+                auto enable_checkbox = new QCheckBox();
+                enable_checkbox->setCheckState(enabled[port] ? Qt::Checked : Qt::Unchecked);
+                enable_checkbox->setStyleSheet("QCheckBox::indicator { width: 20px; height: 20px; }"
+                );
+                rhs_rows.push_back({new QLabel(parent->tr(port_name.c_str())), enable_checkbox});
+                checkboxes.push_back(enable_checkbox);
+            }
+
+            for (int port = 0, count = 0; port < 8; ++port) {
+                if ((info.model == XDAQModel::Core) && (port >= 4)) continue;
+                const auto port_name = get_port_name(port, true);
+                auto target = checkboxes[count];
+                ++count;
+                QObject::connect(
+                    target,
+                    &QCheckBox::checkStateChanged,
+                    [info, settings_scope, port_name, checkboxes, port, target](Qt::CheckState state
+                    ) {
+                        int rhs_available_ports = info.max_rhs_channels / 16;
+                        for (auto cb : checkboxes) {
+                            if (cb->checkState() == Qt::Checked) {
+                                --rhs_available_ports;
+                            }
+                        }
+                        QSettings settings;
+                        if (state == Qt::Checked) {
+                            if (rhs_available_ports < 0) {
+                                fmt::print("no more available ports {}\n", rhs_available_ports);
+                                target->setCheckState(Qt::Unchecked);
+                                return;
+                            }
+                            settings.setValue(settings_scope + "/rhs/" + port_name, true);
+                        } else {
+                            settings.setValue(settings_scope + "/rhs/" + port_name, false);
+                        }
+                    }
+                );
+            }
+        }
+        auto rhs_properties_widget =
+            get_properties_table({parent->tr("Property"), parent->tr("Value")}, rhs_rows);
+
+        auto tab = new QTabWidget();
+        tab->addTab(rhd_properties_widget, parent->tr("Record"));
+        tab->addTab(rhs_properties_widget, parent->tr("Stim-Record"));
+        auto launch_mode = settings.value("launch_mode", "rhd").toString();
+        QPushButton *launch_button;
+        if (launch_mode == "rhd") {
+            tab->setCurrentIndex(0);
+            launch_button = new QPushButton(parent->tr("Launch (Record)"));
+        } else {
+            tab->setCurrentIndex(1);
+            launch_button = new QPushButton(parent->tr("Launch (Stim-Record)"));
+        }
+        QObject::connect(
+            tab,
+            &QTabWidget::currentChanged,
+            [launch_button, settings_scope, tab](int index) {
+                QSettings settings;
+                if (index == 0) {
+                    settings.setValue(settings_scope + "/launch_mode", "rhd");
+                    launch_button->setText(QObject::tr("Launch (Record)"));
+                } else {
+                    settings.setValue(settings_scope + "/launch_mode", "rhs");
+                    launch_button->setText(QObject::tr("Launch (Stim-Record)"));
+                }
+            }
+        );
+
+        QObject::connect(
+            launch_button,
+            &QPushButton::clicked,
+            [launch, info, tab, settings_scope, rhd_sample_rates, rhs_stim_step_sizes]() {
+                auto config = json::parse(info.device_config);
+                QSettings settings;
+                settings.beginGroup(settings_scope);
+                auto launch_mode = settings.value("launch_mode", "rhd").toString();
+                settings.beginGroup(launch_mode);
+                std::bitset<8> enabled;
+                if (info.generation == 2) {
+                    for (int port = 0; port < 8; ++port) {
+                        const auto port_name = get_port_name(port, launch_mode == "rhs");
+                        auto e = settings.value(port_name, false).toBool();
+                        enabled[port] = e;
+                    }
+                }
+
+                auto sample_rate = settings.value("sample_rate").toString();
+                auto sample_rate_it = std::ranges::find(rhd_sample_rates, sample_rate);
+                if (sample_rate_it == rhd_sample_rates.end()) {
+                    QMessageBox::warning(
+                        nullptr,
+                        "Invalid Sample Rate",
+                        fmt::format("Sample rate {} is not supported", sample_rate.toStdString())
+                            .c_str()
                     );
-                },
-                stim_step_size
-            );
-        });
+                    return;
+                }
+                auto sample_rate_enum =
+                    static_cast<AmplifierSampleRate>(sample_rate_it - rhd_sample_rates.begin());
 
-        auto sr_selector =
-            create_default_combobox(init_sample_rate, SampleRateString, [](int index) {
-                QSettings settings;
-                settings.beginGroup("XDAQ");
-                settings.setValue("sample_rate", index);
-                settings.endGroup();
-            });
-        auto stim_step_selector =
-            create_default_combobox(init_stim_step_size, StimStepSizeString, [](int index) {
-                QSettings settings;
-                settings.beginGroup("XDAQ");
-                settings.setValue("stim_step_size", index);
-                settings.endGroup();
-            });
+                if (launch_mode == "rhd") {
+                    config["mode"] = "rhd";
 
-        auto launch_properties_widget = get_properties_table(
-            {parent->tr("Property"), parent->tr("Value")},
-            {{new QLabel(parent->tr("Sample Rate")), sr_selector},
-             {new QLabel(parent->tr("Stim Step Size")), stim_step_selector}}
+                    launch(
+                        [=]() {
+                            auto device = info.get_device(config.dump());
+                            if (info.generation == 2) {
+                                device->set_register_sync(0x1004u, enabled.to_ulong());
+                            }
+                            return new RHXController(
+                                ControllerType::ControllerRecordUSB3,
+                                sample_rate_enum,
+                                std::move(device)
+                            );
+                        },
+                        StimStepSize::StimStepSizeUnrecognized
+                    );
+                } else {
+                    config["mode"] = "rhs";
+
+                    auto stim_step_size = settings.value("stim_step_size").toString();
+                    auto stim_step_size_it = std::ranges::find(rhs_stim_step_sizes, stim_step_size);
+                    if (stim_step_size_it == rhs_stim_step_sizes.end()) {
+                        QMessageBox::warning(
+                            nullptr,
+                            "Invalid Stim Step Size",
+                            fmt::format(
+                                "Stim step size {} is not supported", stim_step_size.toStdString()
+                            )
+                                .c_str()
+                        );
+                        return;
+                    }
+                    auto stim_step_size_enum =
+                        static_cast<StimStepSize>(stim_step_size_it - rhs_stim_step_sizes.begin());
+
+                    launch(
+                        [=]() {
+                            auto device = info.get_device(config.dump());
+                            if (info.generation == 2) {
+                                device->set_register_sync(0x1004u, enabled.to_ulong());
+                            }
+                            return new RHXController(
+                                ControllerType::ControllerStimRecord,
+                                sample_rate_enum,
+                                std::move(device)
+                            );
+                        },
+                        stim_step_size_enum
+                    );
+                }
+            }
         );
 
 
         auto launch_button_layout = new QVBoxLayout;
-        launch_button_layout->addWidget(launch_button_rhd, 0, Qt::AlignLeft);
-        launch_button_layout->addWidget(launch_button_rhs, 0, Qt::AlignLeft);
-        launch_button_layout->addWidget(launch_properties_widget);
+        launch_button_layout->addWidget(launch_button);
+        launch_button_layout->addWidget(tab);
         launch_button_layout->setEnabled(info.model != XDAQModel::Unknown);
         launch_widget->setLayout(launch_button_layout);
     }
@@ -691,7 +957,7 @@ void InsertBoard(BoardSelectDialog *parent, StackedWidget *launch_panel, QTableW
                         use_opencl,
                         false,
                         status.expander,
-                        info.model == XDAQModel::One,
+                        info.model != XDAQModel::Core,
                         (info.model == XDAQModel::Core ? 1 : 2)
                     );
                 },

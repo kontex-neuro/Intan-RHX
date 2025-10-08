@@ -9,7 +9,7 @@
 
 using json = nlohmann::json;
 
-enum class XDAQModel { Unknown = 0, Core = 1, One = 3 };
+enum class XDAQModel { Unknown, Core, One, AIO };
 
 struct XDAQInfo {
     std::string plugin;

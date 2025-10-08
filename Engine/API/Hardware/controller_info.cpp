@@ -22,17 +22,16 @@ XDAQInfo parse_info(const json &device_info)
     } else if (model.contains("One")) {
         info.model = XDAQModel::One;
     } else if (model.contains("AIO")) {
-        info.model = XDAQModel::One;
+        info.model = XDAQModel::AIO;
     } else {
         info.model = XDAQModel::Unknown;
     }
 
-    if (model.contains("1")) {
+    if (model == "Core" || model == "One") {
         info.generation = 1;
-    } else if (model.contains("2")) {
+    } else {
         info.generation = 2;
     }
-
 
     info.max_rhd_channels = device_info.contains("RHD") ? device_info["RHD"].get<int>() : 0;
     info.max_rhs_channels = device_info.contains("RHS") ? device_info["RHS"].get<int>() : 0;
