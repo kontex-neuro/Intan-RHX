@@ -86,9 +86,7 @@ QIcon getIcon(XDAQModel model, QStyle *style, int size)
         return QIcon(style->standardIcon(QStyle::SP_MessageBoxQuestion).pixmap(size));
 }
 
-// Return a QSize (that should be the minimum size of the table) which allows all columns to be
-// visible, and up to 5 rows to be visible before a scroll bar is added.
-QSize calculateTableSize(QTableWidget *boardTable)
+QSize calculateTableSize(QTableWidget *boardTable, const int min_rows, const int max_rows)
 {
     int width = boardTable->verticalHeader()->width();
     for (int column = 0; column < boardTable->columnCount(); column++) {
@@ -96,9 +94,8 @@ QSize calculateTableSize(QTableWidget *boardTable)
     }
     width += 4;
 
-    // Make the minimum height to be 5 rows.
-    int numRows = 5;
-    if (boardTable->rowCount() <= 5) numRows = boardTable->rowCount();
+    int numRows = min_rows;  // Set minimum height by rows
+    if (boardTable->rowCount() <= max_rows) numRows = boardTable->rowCount();
     int height = boardTable->horizontalHeader()->height();
     for (int row = 0; row < numRows; row++) {
         height += boardTable->rowHeight(row);
@@ -183,7 +180,7 @@ auto get_properties_table(QStringList headers, std::vector<std::vector<QWidget *
     }
     table->resizeColumnsToContents();
     table->resizeRowsToContents();
-    table->setMinimumSize(calculateTableSize(table));
+    table->setMinimumSize(calculateTableSize(table, 10, 10));
     table->horizontalHeader()->setStretchLastSection(true);
     return table;
 }
@@ -1011,7 +1008,7 @@ BoardSelectDialog::BoardSelectDialog(QWidget *parent) : QDialog(parent)
     boardTable->setIconSize(QSize(283, 100));
     boardTable->resizeColumnsToContents();
     boardTable->resizeRowsToContents();
-    boardTable->setMinimumSize(calculateTableSize(boardTable));
+    boardTable->setMinimumSize(calculateTableSize(boardTable, 4, 6));
     boardTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     boardTable->setSelectionMode(QAbstractItemView::SingleSelection);
 
@@ -1053,7 +1050,7 @@ BoardSelectDialog::BoardSelectDialog(QWidget *parent) : QDialog(parent)
         launch_panel->resize(launch_panel->currentWidget()->sizeHint());
         boardTable->resizeColumnsToContents();
         boardTable->resizeRowsToContents();
-        boardTable->setMinimumSize(calculateTableSize(boardTable));
+        boardTable->setMinimumSize(calculateTableSize(boardTable, 4, 6));
         this->resize(this->sizeHint());
     });
 
