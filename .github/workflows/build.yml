@@ -2,6 +2,10 @@ name: Build Installer
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'xdaq-v*'
+
 
 jobs:
   build:
