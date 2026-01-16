@@ -32,6 +32,7 @@ find_package(nlohmann_json REQUIRED)
 find_package(OpenCL REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Multimedia Network Widgets Xml)
 find_package(xdaq REQUIRED)
+find_package(cpr REQUIRED)
 
 
 
@@ -102,6 +103,7 @@ target_link_libraries(XDAQ-RHX PRIVATE
     nlohmann_json::nlohmann_json
     fmt::fmt
     xdaq::xdaq_device
+    cpr::cpr
 )
 
 # Copy for development
