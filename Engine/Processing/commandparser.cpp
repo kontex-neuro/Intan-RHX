@@ -30,7 +30,6 @@
 
 #include "commandparser.h"
 #include "controlwindow.h"
-#include <cpr/cpr.h>
 #include <fmt/format.h>
 
 CommandParser::CommandParser(SystemState* state_, ControllerInterface *controllerInterface_, QObject *parent) :
@@ -481,17 +480,7 @@ void CommandParser::setRunModeCommand(const QString& value)
             return;
         }
 
-        const auto& ip = "127.0.0.1";
-        const auto& port = 8001;
-        const auto& url = cpr::Url{fmt::format("http://{}:{}/start", ip, port)};
-
-        cpr::Body body{R"(XDAQ-RHX)"};
-        cpr::Header headers{{"Content-Type", "text/plain"}};
-
-        auto response = cpr::Put(url, headers, body);
-        if (response.status_code != 200) {
-            fmt::println("Failed to notify ThorVision to start recording");
-        }
+        controllerInterface->httpClientThread()->startRecording();
 
         state->recording = true;
         state->triggerSet = false;
@@ -527,17 +516,8 @@ void CommandParser::setRunModeCommand(const QString& value)
             return;
         }
 
-        const auto& ip = "127.0.0.1";
-        const auto& port = 8001;
-        const auto& url = cpr::Url{fmt::format("http://{}:{}/stop", ip, port)};
-
-        cpr::Body body{R"(XDAQ-RHX)"};
-        cpr::Header headers{{"Content-Type", "text/plain"}};
-
-        auto response = cpr::Put(url, headers, body); 
-        if (response.status_code != 200) {
-            // emit TCPErrorSignal("Failed to notify external service to start recording");
-            fmt::println("Failed to notify ThorVision to start recording");
+        if (state->recording) {
+            controllerInterface->httpClientThread()->stopRecording();
         }
 
         state->recording = false;
