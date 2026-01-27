@@ -35,7 +35,7 @@ void HttpClientThread::pingHost()
 {
     QNetworkAccessManager manager;
 
-    const QUrl url(QStringLiteral("http://%1:%2/ping").arg(_ip).arg(_port));
+    const QUrl url(QStringLiteral("http://%1:%2/status").arg(_ip).arg(_port));
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "text/plain");
 
