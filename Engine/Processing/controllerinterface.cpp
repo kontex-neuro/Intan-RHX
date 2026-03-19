@@ -1361,7 +1361,7 @@ void ControllerInterface::setStimSequenceParameters(Channel* ampChannel)
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter
     rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
 
-    chipRegisters.createCommandListDummy(commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 255));
+    chipRegisters.createCommandListDummy(commandList, commandSequenceLength, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 255));
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd2, 0);  // RHS - bank doesn't matter
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd3, 0);  // RHS - bank doesn't matter
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd4, 0);  // RHS - bank doesn't matter
@@ -1371,25 +1371,17 @@ void ControllerInterface::setStimSequenceParameters(Channel* ampChannel)
     rhxController->setStimCmdMode(false);
     rhxController->enableAuxCommandsOnOneStream(stream);
 
-    qApp->processEvents();
-    rhxController->run();
-    while (rhxController->isRunning() ) {
-        qApp->processEvents();
+    {
+        auto _ = rhxController->runAndReadDataBlocks((commandSequenceLength+127) / 128);
     }
-    rhxController->flush();
-    qApp->processEvents();
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterRead(commandList);
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter
     rhxController->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
 
-    qApp->processEvents();
-    rhxController->run();
-    while (rhxController->isRunning() ) {
-        qApp->processEvents();
+    {
+        auto _ = rhxController->runAndReadDataBlocks((commandSequenceLength+127) / 128);
     }
-    rhxController->flush();
-    qApp->processEvents();
 
     commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, true);
     rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 0);  // RHS - bank doesn't matter
