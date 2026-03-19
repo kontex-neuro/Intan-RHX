@@ -265,7 +265,15 @@ std::expected<std::vector<RHXDataBlock>, std::string> RHXController::runAndReadD
     };
     auto wait_result = result.wait_for(expected_sample_time + 2s);
     s->reset();
-    while (isRunning()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    auto stop = std::chrono::steady_clock::now();
+    while (isRunning()) {
+        std::this_thread::yield();
+        auto now = std::chrono::steady_clock::now();
+        if (now - stop > 100ms) {
+            setMaxTimeStep(0);
+            return std::unexpected("FPGA still running after expected data acquisition time.");
+        }
+    }
     flush();
 
     if (wait_result == std::future_status::timeout)

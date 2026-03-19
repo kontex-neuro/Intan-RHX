@@ -33,7 +33,9 @@
 
 #include <QObject>
 #include <QThread>
-#include "rhxdatablock.h"
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
 #include "abstractrhxcontroller.h"
 #include "datastreamfifo.h"
 
@@ -64,10 +66,12 @@ signals:
 private:
     AbstractRHXController* controller;
     DataStreamFifo* usbFifo;
-    volatile bool keepGoing;
-    volatile bool running;
-    volatile bool stopThread;
-    volatile int numUsbBlocksToRead;
+    std::atomic_bool keepGoing;
+    std::atomic_bool running;
+    std::atomic_bool stopThread;
+    std::atomic_int numUsbBlocksToRead;
+    std::mutex stateMutex;
+    std::condition_variable stateCv;
 
     uint8_t* usbBuffer;
     int bufferSize;

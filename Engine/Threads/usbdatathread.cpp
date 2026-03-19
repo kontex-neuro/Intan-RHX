@@ -33,8 +33,10 @@
 #include <fmt/core.h>
 
 #include <QElapsedTimer>
+#include <condition_variable>
 #include <cstdint>
 #include <iostream>
+#include <mutex>
 #include <thread>
 
 #include "rhxglobals.h"
@@ -57,7 +59,8 @@ USBDataThread::USBDataThread(
         (BufferSizeInBlocks + 1) * BytesPerWord *
         RHXDataBlock::dataBlockSizeInWords(controller->getType(), controller->maxNumDataStreams());
     memoryNeededGB = sizeof(uint8_t) * bufferSize / (1024.0 * 1024.0 * 1024.0);
-    std::cout << "USBDataThread: Allocating " << bufferSize / 1.0e6 << " MBytes for USB buffer." << std::endl;
+    std::cout << "USBDataThread: Allocating " << bufferSize / 1.0e6 << " MBytes for USB buffer."
+              << std::endl;
     usbBuffer = nullptr;
 
     memoryAllocated = true;
@@ -65,7 +68,8 @@ USBDataThread::USBDataThread(
         usbBuffer = new uint8_t[bufferSize];
     } catch (std::bad_alloc &) {
         memoryAllocated = false;
-        std::cerr << "Error: USBDataThread constructor could not allocate " << memoryNeededGB << " GB of memory." << std::endl;
+        std::cerr << "Error: USBDataThread constructor could not allocate " << memoryNeededGB
+                  << " GB of memory." << std::endl;
     }
 
     // cout << "Ideal thread count: " << QThread::idealThreadCount() << EndOfLine;
@@ -87,6 +91,12 @@ void USBDataThread::run()
 {
     emit hardwareFifoReport(0.0);
     while (!stopThread) {
+        {
+            std::unique_lock<std::mutex> lock(stateMutex);
+            stateCv.wait(lock, [&] { return keepGoing || stopThread; });
+        }
+        if (stopThread) break;
+
         QElapsedTimer fifoReportTimer;
         // QElapsedTimer workTimer, loopTimer, reportTimer;
         if (keepGoing) {
@@ -257,9 +267,9 @@ void USBDataThread::run()
 
             controller->run();
 
-            while (keepGoing && !stopThread) {
-                std::this_thread::yield();
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            {
+                std::unique_lock<std::mutex> lock(stateMutex);
+                stateCv.wait(lock, [&] { return !keepGoing || stopThread; });
             }
             newStream.reset();
 
@@ -273,20 +283,27 @@ void USBDataThread::run()
             controller->flush();  // Flush USB FIFO on Opal Kelly board.
 
             running = false;
-        } else {
-            usleep(100);
         }
     }
 }
 
-void USBDataThread::startRunning() { keepGoing = true; }
+void USBDataThread::startRunning()
+{
+    keepGoing = true;
+    stateCv.notify_all();
+}
 
-void USBDataThread::stopRunning() { keepGoing = false; }
+void USBDataThread::stopRunning()
+{
+    keepGoing = false;
+    stateCv.notify_all();
+}
 
 void USBDataThread::close()
 {
     keepGoing = false;
     stopThread = true;
+    stateCv.notify_all();
 }
 
 bool USBDataThread::isActive() const { return running; }
@@ -294,8 +311,8 @@ bool USBDataThread::isActive() const { return running; }
 void USBDataThread::setNumUsbBlocksToRead(int numUsbBlocksToRead_)
 {
     if (numUsbBlocksToRead_ > BufferSizeInBlocks) {
-        std::cerr << "USBDataThread::setNumUsbBlocksToRead: Buffer is too small to read " << numUsbBlocksToRead_ <<
-                " blocks.  Increase BUFFER_SIZE_IN_BLOCKS." << '\n';
+        std::cerr << "USBDataThread::setNumUsbBlocksToRead: Buffer is too small to read "
+                  << numUsbBlocksToRead_ << " blocks.  Increase BUFFER_SIZE_IN_BLOCKS." << '\n';
     }
     numUsbBlocksToRead = numUsbBlocksToRead_;
 }

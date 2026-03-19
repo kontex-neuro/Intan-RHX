@@ -35,9 +35,7 @@
 #include <QProgressDialog>
 #include <QString>
 #include <QTextStream>
-#include <chrono>
 #include <cmath>
-#include <future>
 #include <iostream>
 
 #include "signalsources.h"
@@ -211,13 +209,9 @@ bool ImpedanceReader::measureImpedances()
             // Upload version with no ADC calibration to AuxCmd3 RAM bank
             rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd3, 3);
 
-            auto future =
-                std::async(&AbstractRHXController::runAndReadDataBlocks, rhxController, numBlocks);
-            while (future.wait_for(std::chrono::milliseconds(1)) == std::future_status::timeout)
-                qApp->processEvents();
-            auto data = future.get();
+            auto data = rhxController->runAndReadDataBlocks(numBlocks);
             if(!data.has_value()){
-                std::cerr << "Error reading data blocks";
+                std::cerr << "Error reading data blocks" << data.error() << "\n";
                 return false;
             }
 
@@ -263,14 +257,9 @@ bool ImpedanceReader::measureImpedances()
                                                                  RHXDataBlock::samplesPerDataBlock(controllerType));
                 // Upload version with no ADC calibration to AuxCmd3 RAM Bank 1.
                 rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd3, 3);
-                auto future = std::async(
-                    &AbstractRHXController::runAndReadDataBlocks, rhxController, numBlocks
-                );
-                while (future.wait_for(std::chrono::milliseconds(1)) == std::future_status::timeout)
-                    qApp->processEvents();
-                auto data = future.get();
+                auto data = rhxController->runAndReadDataBlocks(numBlocks);
                 if (!data.has_value()) {
-                    std::cerr << "Error reading data blocks";
+                    std::cerr << "Error reading data blocks" << data.error() << "\n";
                     return false;
                 }
 
