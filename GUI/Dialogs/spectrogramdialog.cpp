@@ -132,7 +132,15 @@ SpectrogramDialog::SpectrogramDialog(SystemState* state_, QWidget *parent) :
     spectrogramRadioButton->setChecked(true);
     QGroupBox* modeGroup = new QGroupBox(tr("Display Mode"), this);
     modeGroup->setLayout(modeColumn);
-    connect(displayModeButtonGroup, SIGNAL(buttonClicked(int)), this, SLOT(changeDisplayMode(int)));
+
+    connect(displayModeButtonGroup, &QButtonGroup::buttonClicked, [this](QAbstractButton*){
+        auto id = displayModeButtonGroup->checkedId();
+        bool timeScaleOn = (id == 0 );
+        timeScaleLabel->setEnabled(timeScaleOn);
+        timeScaleComboBox->setEnabled(timeScaleOn);
+        digitalDisplayComboBox->setEnabled(timeScaleOn);
+        state->displayModeSpectrogram->setIndex(id);
+    });
 
     QHBoxLayout *deltaTimeFreqRow = new QHBoxLayout;
     deltaTimeFreqRow->addWidget(new QLabel(DeltaSymbol + tr("t:"), this));
