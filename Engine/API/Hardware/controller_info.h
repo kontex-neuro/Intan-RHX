@@ -27,8 +27,9 @@ struct XDAQInfo {
 };
 
 struct XDAQStatus {
+    std::string api;
     std::string version;
-    std::string build;
+    std::string date;
     std::string mode;
     bool expander = false;
 };

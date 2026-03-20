@@ -45,7 +45,8 @@ XDAQStatus parse_status(const json &device_status)
     XDAQStatus status;
 
     status.version = device_status.at("Version");
-    status.build = device_status.at("Build");
+    status.api = device_status.at("API");
+    status.date = device_status.at("Date");
     status.mode = device_status.at("Mode");
     status.expander =
         device_status.contains("Expander") ? device_status["Expander"].get<bool>() : false;

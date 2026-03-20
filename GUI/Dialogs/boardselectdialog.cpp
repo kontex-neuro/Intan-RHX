@@ -378,8 +378,43 @@ auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info, const XD
             mode_layout->addWidget(new QLabel(QString::fromStdString("NeuroPixel")));
         else if (status.mode == "bootloader")
             mode_layout->addWidget(new QLabel(QString::fromStdString("Bootloader")));
-
         main_layout->addLayout(mode_layout);
+
+        // Show version
+        auto version_layout = new QHBoxLayout;
+        version_layout->addWidget(new QLabel(parent->tr("Firmware Version")));
+        version_layout->addWidget(new QLabel(QString::fromStdString(
+            "API" + status.api + " " + status.date + " " + status.version.substr(0, 4)
+        )));
+        main_layout->addLayout(version_layout);
+
+        // show warning if firmware api is outdated
+        std::string target_api = "1";
+        if (status.api != target_api) {
+            auto warning_layout = new QHBoxLayout;
+            warning_layout->setAlignment(Qt::AlignTop);
+
+            auto icon = new QLabel();
+            icon->setPixmap(parent->style()->standardIcon(QStyle::SP_MessageBoxWarning).pixmap(20));
+            icon->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
+            icon->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+            warning_layout->addWidget(icon);
+
+            auto text_label = new QLabel(QString::fromStdString(fmt::format(
+                "Version mismatch: this software requires firmware API{}, "
+                "but your device is running API{}. "
+                "The software may not work correctly. "
+                "Please update your firmware or this software to a compatible version, "
+                "or contact KonteX support.",
+                target_api,
+                status.api
+            )));
+            text_label->setWordWrap(true);
+            text_label->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+            warning_layout->addWidget(text_label, 1);
+
+            main_layout->addLayout(warning_layout);
+        }
     }
 
     auto launch_widget = new QWidget();

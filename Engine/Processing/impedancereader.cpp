@@ -210,6 +210,7 @@ bool ImpedanceReader::measureImpedances()
             rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd3, 3);
 
             auto data = rhxController->runAndReadDataBlocks(numBlocks);
+            qApp->processEvents();
             if(!data.has_value()){
                 std::cerr << "Error reading data blocks" << data.error() << "\n";
                 return false;
@@ -258,6 +259,7 @@ bool ImpedanceReader::measureImpedances()
                 // Upload version with no ADC calibration to AuxCmd3 RAM Bank 1.
                 rhxController->uploadCommandList(commandList, AbstractRHXController::AuxCmd3, 3);
                 auto data = rhxController->runAndReadDataBlocks(numBlocks);
+                qApp->processEvents();
                 if (!data.has_value()) {
                     std::cerr << "Error reading data blocks" << data.error() << "\n";
                     return false;
