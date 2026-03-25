@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 
-project(XDAQ-RHX VERSION 1.4.0 LANGUAGES CXX)
+project(XDAQ-RHX VERSION 1.4.1 LANGUAGES CXX)
 
 if(MSVC)
     add_compile_definitions(NOMINMAX)
