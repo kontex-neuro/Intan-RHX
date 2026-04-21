@@ -23,7 +23,7 @@ struct XDAQInfo {
     int max_rhd_channels = 0;
     int max_rhs_channels = 0;
     std::string device_config = "N/A";
-    std::function<xdaq::DeviceManager::OwnedDevice(const std::string &)> get_device = nullptr;
+    std::function<std::unique_ptr<xdaq::Device>(const std::string &)> get_device = nullptr;
 };
 
 struct XDAQStatus {

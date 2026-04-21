@@ -58,8 +58,14 @@ using json = nlohmann::json;
 //   (3) an Opal Kelly XEM6010 USB2/FPGA interface board running the Intan RhythmStim interface Verilog code
 //       (e.g., an Intan Stim/Recording Controller with 128-channel capacity)
 
-RHXController::RHXController(ControllerType type_, AmplifierSampleRate sampleRate_, xdaq::DeviceManager::OwnedDevice dev, bool is7310_)
-    : AbstractRHXController(type_, sampleRate_), is7310(is7310_), previousDelay(-1), dev(new XDAQDeviceProxy{std::move(dev)})
+RHXController::RHXController(
+    ControllerType type_, AmplifierSampleRate sampleRate_, std::unique_ptr<xdaq::Device> dev,
+    bool is7310_
+)
+    : AbstractRHXController(type_, sampleRate_),
+      is7310(is7310_),
+      previousDelay(-1),
+      dev(new XDAQDeviceProxy{std::move(dev)})
 {
 }
 
@@ -264,7 +270,7 @@ std::expected<std::vector<RHXDataBlock>, std::string> RHXController::runAndReadD
         (int) (1000 * numBlocks * RHXDataBlock::samplesPerDataBlock(type) / getSampleRate())
     };
     auto wait_result = result.wait_for(expected_sample_time + 2s);
-    s->reset();
+    s = nullptr;
     auto stop = std::chrono::steady_clock::now();
     while (isRunning()) {
         std::this_thread::yield();

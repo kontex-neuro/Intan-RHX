@@ -99,12 +99,12 @@ long PlaybackRHXController::readDataBlocksRaw(int numBlocks, uint8_t *buffer)
 
 struct PlaybackDataStream final : public PlaybackRHXController::DataStream {
     PlaybackDataStream(
-        xdaq::DataStream::receive_callback &&recv_event,
-        std::size_t chunk_size,
-        PlaybackRHXController& dev
-    ) : dev(dev)
+        xdaq::DataStream::receive_callback &&recv_event, std::size_t chunk_size,
+        PlaybackRHXController &dev
+    )
+        : dev(dev)
     {
-        thread = std::thread([this, chunk_size, on_receive=std::move(recv_event)]() mutable {
+        thread = std::thread([this, chunk_size, on_receive = std::move(recv_event)]() mutable {
             while (running) {
                 auto const read_buffer = new unsigned char[chunk_size];
                 const auto read = this->dev.readDataBlocksRaw(1, read_buffer);
@@ -119,23 +119,28 @@ struct PlaybackDataStream final : public PlaybackRHXController::DataStream {
                         ),
                         .length = (std::size_t) read
                     });
-                else std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                else
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
             on_receive(xdaq::DataStream::Events::Stop{});
         });
     }
 
-    ~PlaybackDataStream() override { stop(); }
-
-    void stop() override
+    ~PlaybackDataStream() override
     {
-        running = false;
+        wait_stop();
+        stop();
+    }
+    void wait_stop() override
+    {
         if (thread.joinable()) thread.join();
     }
 
+    void stop() override { running = false; }
+
     std::thread thread;
     std::atomic_bool running = true;
-    PlaybackRHXController& dev;
+    PlaybackRHXController &dev;
 };
 
 std::optional<std::unique_ptr<PlaybackRHXController::DataStream>>

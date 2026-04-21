@@ -42,9 +42,9 @@ const int USB3BlockSize	= 1024;
 const int RAMBurstSize = 32;
 
 struct XDAQDeviceProxy {
-    xdaq::DeviceManager::OwnedDevice dev;
+    std::unique_ptr<xdaq::Device> dev;
 
-    XDAQDeviceProxy(xdaq::DeviceManager::OwnedDevice&& dev) : dev(std::move(dev)) {
+    XDAQDeviceProxy(std::unique_ptr<xdaq::Device> dev) : dev(std::move(dev)) {
     }
 
     int SetWireInValue(int ep, std::uint32_t value, std::uint32_t mask=xdaq::Device::value_mask){
@@ -87,7 +87,7 @@ struct XDAQDeviceProxy {
 class RHXController : public AbstractRHXController
 {
 public:
-    explicit RHXController(ControllerType type_, AmplifierSampleRate sampleRate_, xdaq::DeviceManager::OwnedDevice dev, bool is7310_ = false);
+    explicit RHXController(ControllerType type_, AmplifierSampleRate sampleRate_, std::unique_ptr<xdaq::Device> dev, bool is7310_ = false);
     ~RHXController() = default;
 
     bool isSynthetic() const override { return false; }
