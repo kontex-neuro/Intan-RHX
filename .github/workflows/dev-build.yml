@@ -1,0 +1,153 @@
+name: Dev Build Installer
+
+on:
+  push:
+    branches:
+      - "dev"
+      - "dev/**"
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        os_arch:
+          [
+            { os: windows-2022, arch: x64 },
+            { os: macos-15, arch: arm64 },
+          ]
+
+    runs-on: ${{ matrix.os_arch.os }}
+
+    env:
+      OS_ARCH: ${{ matrix.os_arch.os }}-${{ matrix.os_arch.arch }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install build system (windows-2022, macos-15)
+        run: pip install conan ninja
+
+      - name: conan cache
+        id: conan_cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2
+          key: ${{ env.OS_ARCH }}-conan-${{ hashFiles('conanfile.txt') }} 
+          restore-keys: |
+            ${{ env.OS_ARCH }}-conan-
+
+      - name: Setup Compiler (Windows)
+        uses: ilammy/msvc-dev-cmd@v1
+        if: matrix.os_arch.os == 'windows-2022'
+
+      - name: Setup Compiler (MacOS)
+        if: matrix.os_arch.os == 'macos-15'
+        run: |
+          echo "CC=$(brew --prefix llvm@18)/bin/clang" >> $GITHUB_ENV
+          echo "CXX=$(brew --prefix llvm@18)/bin/clang++" >> $GITHUB_ENV
+          sed -i '' '/^#define _LIBCPP_HAS_NO_VENDOR_AVAILABILITY_ANNOTATIONS/d' "$(brew --prefix llvm@18)"/include/c++/v1/__config_site
+
+      - name: Install Qt (Windows)
+        if: matrix.os_arch.os == 'windows-2022'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          modules: 'qtmultimedia'
+          target: 'desktop'
+          cache: true
+
+      - name: Install Qt (MacOS)
+        if: matrix.os_arch.os == 'macos-15'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: 'arm64'
+          modules: 'qtmultimedia'
+          target: 'desktop'
+          cache: true
+      
+      - name: Install CMake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.28.1'
+
+      - name: Conan setup
+        run: |
+          conan config install .github/conan_profiles/${{ env.OS_ARCH }} -tf profiles
+
+      - name: Install libxdaq
+        run: |
+          git clone https://github.com/kontex-neuro/kontex-conan.git kontex-conan
+          conan remote add --force kontex-neuro ./kontex-conan
+
+      - name: Build XDAQ-RHX
+        run: |
+          conan install . --build=missing --profile:all ${{ env.OS_ARCH }} -s build_type=Release
+          cmake -S . -B build/Release --preset conan-release
+          cmake --build build/Release --preset conan-release
+
+      - name: Package XDAQ-RHX (Windows)
+        if: matrix.os_arch.os == 'windows-2022'
+        run: cmake --build build/Release --target package
+
+      - name: Package and Notarize the app (MacOS)
+        if: matrix.os_arch.os == 'macos-15'
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.CERTIFICATE_BASE64 }}
+          CERTIFICATE_PWD: ${{ secrets.CERTIFICATE_PWD }}
+          KEYCHAIN_PWD: ${{ secrets.KEYCHAIN_PWD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          APP_PWD: ${{ secrets.APP_PWD }}
+        run: |
+          # Certificate setup
+          echo "$CERTIFICATE_BASE64" | base64 --decode > certificate.p12
+          trap "rm -f certificate.p12; security delete-keychain build.keychain" EXIT
+
+          security create-keychain -p "$KEYCHAIN_PWD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PWD" build.keychain
+          security import certificate.p12 -k build.keychain -P "$CERTIFICATE_PWD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PWD" build.keychain
+
+          # Package step will automatically codesign using the configured keychain
+          cmake --build build/Release --target package
+
+          # Notarize
+          xcrun notarytool store-credentials "kontex" --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$APP_PWD"
+          find build/Release/package \
+            -name 'XDAQ-RHX-*-Darwin.dmg' \
+            -exec xcrun notarytool submit {} --keychain-profile "kontex" --wait \; \
+            -exec xcrun stapler staple {} \;
+
+      - name: Tar binaries to keep file permissions
+        shell: bash
+        run: |
+          shopt -s failglob
+          tar -cvf build/package.tar -C build/Release/package XDAQ-RHX*
+
+      - name: Sanitize branch name
+        id: safe_branch
+        shell: bash
+        run: echo "name=$(echo '${{ github.ref_name }}' | tr '/' '-')" >> $GITHUB_OUTPUT
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os_arch.os }}-${{ matrix.os_arch.arch }}-${{ steps.safe_branch.outputs.name }}
+          path: build/package.tar
+          retention-days: 7
+
+      - name: Publish dev latest prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/package.tar
+          tag_name: ${{ matrix.os_arch.os }}-${{ matrix.os_arch.arch }}-dev-latest
+          name: ${{ matrix.os_arch.os }}-${{ matrix.os_arch.arch }}-dev-latest
+          overwrite: true
+          prerelease: true
+          make_latest: false
+          
