@@ -50,22 +50,11 @@ jobs:
           echo "CXX=$(brew --prefix llvm@18)/bin/clang++" >> $GITHUB_ENV
           sed -i '' '/^#define _LIBCPP_HAS_NO_VENDOR_AVAILABILITY_ANNOTATIONS/d' "$(brew --prefix llvm@18)"/include/c++/v1/__config_site
 
-      - name: Install Qt (Windows)
-        if: matrix.os_arch.os == 'windows-2022'
+      - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
           modules: 'qtmultimedia'
-          target: 'desktop'
-          cache: true
-
-      - name: Install Qt (MacOS)
-        if: matrix.os_arch.os == 'macos-15'
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: '6.8.3'
-          modules: 'qtmultimedia'
-          target: 'desktop'
           cache: true
       
       - name: Install CMake
@@ -104,7 +93,6 @@ jobs:
         run: |
           # Certificate setup
           echo "$CERTIFICATE_BASE64" | base64 --decode > certificate.p12
-          trap "rm -f certificate.p12; security delete-keychain build.keychain" EXIT
 
           security create-keychain -p "$KEYCHAIN_PWD" build.keychain
           security default-keychain -s build.keychain
@@ -124,6 +112,8 @@ jobs:
             -name 'XDAQ-RHX-*-Darwin.dmg' \
             -exec xcrun notarytool submit {} --keychain-profile "kontex" --wait \; \
             -exec xcrun stapler staple {} \;
+          
+          # trap "rm -f certificate.p12; security delete-keychain build.keychain" EXIT
 
       - name: Tar binaries to keep file permissions
         shell: bash

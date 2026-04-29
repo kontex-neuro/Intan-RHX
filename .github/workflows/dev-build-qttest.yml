@@ -1,0 +1,119 @@
+name: Build Installer
+
+on:
+  push:
+    branches:
+      - "dev"
+      - "dev/**"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os_arch:
+          [
+            { os: windows-2022, arch: x64 },
+            { os: macos-15, arch: arm64 },
+          ]
+
+    runs-on: ${{ matrix.os_arch.os }}
+
+    env:
+      OS_ARCH: ${{ matrix.os_arch.os }}-${{ matrix.os_arch.arch }}
+
+    steps:
+      - name: Install build system (ubuntu)
+        if: matrix.os_arch.os == 'ubuntu-24.04'
+        run: |
+          sudo apt-get install -y pipx
+          pipx install conan ninja
+
+      - name: Install build system (windows-2022, macos-15)
+        if: matrix.os_arch.os == 'windows-2022' || matrix.os_arch.os == 'macos-15'
+        run: pip install conan ninja
+
+      - name: conan cache
+        id: conan_cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2
+          key: ${{ env.OS_ARCH }}-conan
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Compiler (Windows)
+        uses: ilammy/msvc-dev-cmd@v1
+        if: matrix.os_arch.os == 'windows-2022'
+
+      - name: Setup Compiler (MacOS)
+        if: matrix.os_arch.os == 'macos-15'
+        run: |
+          echo "CC=$(brew --prefix llvm@18)/bin/clang" >> $GITHUB_ENV
+          echo "CXX=$(brew --prefix llvm@18)/bin/clang++" >> $GITHUB_ENV
+          sed -i '' '/^#define _LIBCPP_HAS_NO_VENDOR_AVAILABILITY_ANNOTATIONS/d' "$(brew --prefix llvm@18)"/include/c++/v1/__config_site
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.10.2'
+          modules: 'qtmultimedia'
+          cache: true
+
+      - name: Conan setup
+        run: |
+          conan config install .github/conan_profiles/${{ env.OS_ARCH }} -tf profiles
+
+      - name: Install libxdaq
+        run: |
+          git clone https://github.com/kontex-neuro/kontex-conan.git kontex-conan
+          conan remote add --force kontex-neuro ./kontex-conan
+
+      - name: Build XDAQ-RHX
+        run: |
+          conan install . --build=missing --profile:all ${{ env.OS_ARCH }} -s build_type=Release
+          cmake -S . -B build/Release --preset conan-release
+          cmake --build build/Release --preset conan-release
+
+      - name: Package XDAQ-RHX (Windows)
+        if: matrix.os_arch.os == 'windows-2022'
+        run: cmake --build build/Release --target package
+
+      #- name: Package and Notarize the app (MacOS)
+      #  if: matrix.os_arch.os == 'macos-15'
+      #  env:
+      #    CERTIFICATE_BASE64: ${{ secrets.CERTIFICATE_BASE64 }}
+      #    CERTIFICATE_PWD: ${{ secrets.CERTIFICATE_PWD }}
+      #    KEYCHAIN_PWD: ${{ secrets.KEYCHAIN_PWD }}
+      #    APPLE_ID: ${{ secrets.APPLE_ID }}
+      #    TEAM_ID: ${{ secrets.TEAM_ID }}
+      #    APP_PWD: ${{ secrets.APP_PWD }}
+      #  run: |
+      #    # Certificate setup
+      #    echo $CERTIFICATE_BASE64 | base64 --decode > certificate.p12
+      #    security create-keychain -p $KEYCHAIN_PWD build.keychain
+      #    security default-keychain -s build.keychain
+      #    security unlock-keychain -p $KEYCHAIN_PWD build.keychain
+      #    security import certificate.p12 -k build.keychain -P $CERTIFICATE_PWD -T /usr/bin/codesign
+      #    security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k $KEYCHAIN_PWD build.keychain
+
+      #    # Codesign script called before package
+      #    cmake --build build/Release --target package
+
+      #    # Notarize
+      #    xcrun notarytool store-credentials "kontex" --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$APP_PWD"
+      #    find build/Release/package \
+      #      -name 'XDAQ-RHX-*-Darwin.dmg' \
+      #      -exec xcrun notarytool submit {} --keychain-profile "kontex" --wait \; \
+      #      -exec xcrun stapler staple {} \;
+
+      - name: Tar binaries to keep file permissions
+        shell: bash
+        run: |
+          tar -cvf build/package.tar -C build/Release/package $(ls build/Release/package | grep XDAQ-RHX)
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.OS_ARCH }}
+          path: build/package.tar
