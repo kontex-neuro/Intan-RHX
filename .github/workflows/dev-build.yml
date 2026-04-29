@@ -112,6 +112,9 @@ jobs:
           security import certificate.p12 -k build.keychain -P "$CERTIFICATE_PWD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PWD" build.keychain
 
+          # Disable Spotlight to prevent hdiutil "Resource busy" errors
+          sudo mdutil -a -i off
+
           # Package step will automatically codesign using the configured keychain
           cmake --build build/Release --target package
 
