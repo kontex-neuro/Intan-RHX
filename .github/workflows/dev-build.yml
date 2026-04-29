@@ -64,7 +64,6 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
-          arch: 'arm64'
           modules: 'qtmultimedia'
           target: 'desktop'
           cache: true
