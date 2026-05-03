@@ -43,12 +43,12 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         if: matrix.os_arch.os == 'windows-2022'
 
-      - name: Setup Compiler (MacOS)
-        if: matrix.os_arch.os == 'macos-15'
-        run: |
-          echo "CC=$(brew --prefix llvm@18)/bin/clang" >> $GITHUB_ENV
-          echo "CXX=$(brew --prefix llvm@18)/bin/clang++" >> $GITHUB_ENV
-          sed -i '' '/^#define _LIBCPP_HAS_NO_VENDOR_AVAILABILITY_ANNOTATIONS/d' "$(brew --prefix llvm@18)"/include/c++/v1/__config_site
+      #- name: Setup Compiler (MacOS)
+      #  if: matrix.os_arch.os == 'macos-15'
+      #  run: |
+      #    echo "CC=$(brew --prefix llvm@18)/bin/clang" >> $GITHUB_ENV
+      #    echo "CXX=$(brew --prefix llvm@18)/bin/clang++" >> $GITHUB_ENV
+      #    sed -i '' '/^#define _LIBCPP_HAS_NO_VENDOR_AVAILABILITY_ANNOTATIONS/d' "$(brew --prefix llvm@18)"/include/c++/v1/__config_site
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -81,39 +81,39 @@ jobs:
         if: matrix.os_arch.os == 'windows-2022'
         run: cmake --build build/Release --target package
 
-      - name: Package and Notarize the app (MacOS)
-        if: matrix.os_arch.os == 'macos-15'
-        env:
-          CERTIFICATE_BASE64: ${{ secrets.CERTIFICATE_BASE64 }}
-          CERTIFICATE_PWD: ${{ secrets.CERTIFICATE_PWD }}
-          KEYCHAIN_PWD: ${{ secrets.KEYCHAIN_PWD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          TEAM_ID: ${{ secrets.TEAM_ID }}
-          APP_PWD: ${{ secrets.APP_PWD }}
-        run: |
-          # Certificate setup
-          echo "$CERTIFICATE_BASE64" | base64 --decode > certificate.p12
+      #- name: Package and Notarize the app (MacOS)
+      #  if: matrix.os_arch.os == 'macos-15'
+      #  env:
+      #    CERTIFICATE_BASE64: ${{ secrets.CERTIFICATE_BASE64 }}
+      #    CERTIFICATE_PWD: ${{ secrets.CERTIFICATE_PWD }}
+      #    KEYCHAIN_PWD: ${{ secrets.KEYCHAIN_PWD }}
+      #    APPLE_ID: ${{ secrets.APPLE_ID }}
+      #    TEAM_ID: ${{ secrets.TEAM_ID }}
+      #    APP_PWD: ${{ secrets.APP_PWD }}
+      #  run: |
+      #    # Certificate setup
+      #    echo "$CERTIFICATE_BASE64" | base64 --decode > certificate.p12
 
-          security create-keychain -p "$KEYCHAIN_PWD" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "$KEYCHAIN_PWD" build.keychain
-          security import certificate.p12 -k build.keychain -P "$CERTIFICATE_PWD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PWD" build.keychain
+      #    security create-keychain -p "$KEYCHAIN_PWD" build.keychain
+      #    security default-keychain -s build.keychain
+      #    security unlock-keychain -p "$KEYCHAIN_PWD" build.keychain
+      #    security import certificate.p12 -k build.keychain -P "$CERTIFICATE_PWD" -T /usr/bin/codesign
+      #    security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PWD" build.keychain
 
-          # Disable Spotlight to prevent hdiutil "Resource busy" errors
-          sudo mdutil -a -i off
+      #    # Disable Spotlight to prevent hdiutil "Resource busy" errors
+      #    sudo mdutil -a -i off
 
-          # Package step will automatically codesign using the configured keychain
-          cmake --build build/Release --target package
+      #    # Package step will automatically codesign using the configured keychain
+      #    cmake --build build/Release --target package
 
-          # Notarize
-          xcrun notarytool store-credentials "kontex" --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$APP_PWD"
-          find build/Release/package \
-            -name 'XDAQ-RHX-*-Darwin.dmg' \
-            -exec xcrun notarytool submit {} --keychain-profile "kontex" --wait \; \
-            -exec xcrun stapler staple {} \;
-          
-          # trap "rm -f certificate.p12; security delete-keychain build.keychain" EXIT
+      #    # Notarize
+      #    xcrun notarytool store-credentials "kontex" --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$APP_PWD"
+      #    find build/Release/package \
+      #      -name 'XDAQ-RHX-*-Darwin.dmg' \
+      #      -exec xcrun notarytool submit {} --keychain-profile "kontex" --wait \; \
+      #      -exec xcrun stapler staple {} \;
+      #    
+      #    # trap "rm -f certificate.p12; security delete-keychain build.keychain" EXIT
 
       - name: Tar binaries to keep file permissions
         shell: bash
