@@ -1,4 +1,4 @@
-name: Build Installer QTTest
+name: Build Installer QTest
 
 on:
   push:
@@ -108,11 +108,13 @@ jobs:
       #      -exec xcrun stapler staple {} \;
 
       - name: Tar binaries to keep file permissions
+        if: matrix.os_arch.os == 'windows-2022'
         shell: bash
         run: |
           tar -cvf build/package.tar -C build/Release/package $(ls build/Release/package | grep XDAQ-RHX)
 
       - name: Upload artifact
+        if: matrix.os_arch.os == 'windows-2022'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.OS_ARCH }}
