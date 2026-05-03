@@ -1,4 +1,4 @@
-name: Build Installer
+name: Build Installer QTTest
 
 on:
   push:
