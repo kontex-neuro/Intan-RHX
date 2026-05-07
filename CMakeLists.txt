@@ -104,35 +104,14 @@ target_link_libraries(XDAQ-RHX PRIVATE
     xdaq::xdaq_device
 )
 
-# Copy for development
-if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-    get_target_property(OpenCL_DLL OpenCL::OpenCL IMPORTED_LOCATION)
-    file(COPY ${OpenCL_DLL} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-    file(COPY ${PROJECT_SOURCE_DIR}/kernel.cl DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-
-    file(COPY ${XDAQ_DEVICE_MANAGER_DIR} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-    file(COPY ${XDAQ_RESOURCES_DIR} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
-    file(COPY ${PROJECT_SOURCE_DIR}/kernel.cl DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/XDAQ-RHX.app/Contents/MacOS)
-
-    file(COPY ${XDAQ_DEVICE_MANAGER_DIR} DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/XDAQ-RHX.app/Contents/PlugIns)
-    file(COPY ${XDAQ_RESOURCES_DIR} DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/XDAQ-RHX.app/Contents/PlugIns)
-elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-    file(COPY ${PROJECT_SOURCE_DIR}/kernel.cl DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-
-    file(COPY ${XDAQ_DEVICE_MANAGER_DIR} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-    file(COPY ${XDAQ_RESOURCES_DIR} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-endif()
-
-
 # Install
 include(deployQt)
 
 install(TARGETS XDAQ-RHX DESTINATION .)
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-    install(DIRECTORY ${XDAQ_DEVICE_MANAGER_DIR} DESTINATION .)
-    install(DIRECTORY ${XDAQ_RESOURCES_DIR} DESTINATION .)
+    xdaq_install_core(. .)
+    xdaq_install_device_managers(./managers)
     install(FILES
         ${PROJECT_SOURCE_DIR}/kernel.cl
         "$<TARGET_FILE:OpenCL::OpenCL>"
@@ -144,8 +123,12 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
     set_target_properties(XDAQ-RHX PROPERTIES 
         INSTALL_RPATH "@executable_path/../Frameworks"
     )
-    install(DIRECTORY ${XDAQ_DEVICE_MANAGER_DIR} DESTINATION "$<TARGET_FILE_NAME:XDAQ-RHX>.app/Contents/PlugIns")
-    install(DIRECTORY ${XDAQ_RESOURCES_DIR} DESTINATION "$<TARGET_FILE_NAME:XDAQ-RHX>.app/Contents/PlugIns")
+
+    xdaq_install_core(
+        "$<TARGET_FILE_NAME:XDAQ-RHX>.app/Contents/Frameworks"
+        "$<TARGET_FILE_NAME:XDAQ-RHX>.app/Contents/Frameworks"
+    )
+    xdaq_install_device_managers("$<TARGET_FILE_NAME:XDAQ-RHX>.app/Contents/PlugIns/managers")
     install(FILES
         ${PROJECT_SOURCE_DIR}/kernel.cl
         DESTINATION "$<TARGET_FILE_NAME:XDAQ-RHX>.app/Contents/MacOS"
