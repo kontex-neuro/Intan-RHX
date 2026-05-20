@@ -715,7 +715,8 @@ auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info, const XD
                         [=]() {
                             auto device = info.get_device(config.dump());
                             if (info.generation == 2) {
-                                device->set_register_sync(0x1004u, enabled.to_ulong());
+                                // TODO: remove hardcoded register address
+                                device->set_register_sync(0x1400u, enabled.to_ulong());
                             }
                             return new RHXController(
                                 ControllerType::ControllerRecordUSB3,
@@ -748,7 +749,8 @@ auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info, const XD
                         [=]() {
                             auto device = info.get_device(config.dump());
                             if (info.generation == 2) {
-                                device->set_register_sync(0x1004u, enabled.to_ulong());
+                                // TODO: remove hardcoded register address
+                                device->set_register_sync(0x1400u, enabled.to_ulong());
                             }
                             return new RHXController(
                                 ControllerType::ControllerStimRecord,
@@ -871,8 +873,10 @@ auto get_demo_board(QWidget *parent, auto launch)
 std::vector<std::shared_ptr<xdaq::DeviceManager>> get_device_managers()
 {
     auto app_dir = fs::path(QCoreApplication::applicationDirPath().toStdString());
-#ifdef __APPLE__
+#ifdef OS_MACOS
     auto app_manager_dir = app_dir / ".." / "PlugIns" / "managers";
+#elif defined(OS_LINUX)
+    auto app_manager_dir = app_dir / ".." / "lib" / "managers";
 #else
     auto app_manager_dir = app_dir / "managers";
 #endif

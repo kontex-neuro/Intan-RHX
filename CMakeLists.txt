@@ -84,7 +84,15 @@ target_include_directories(XDAQ-RHX PRIVATE
 
 target_compile_features(XDAQ-RHX PRIVATE cxx_std_23)
 target_compile_options(XDAQ-RHX PRIVATE $<$<CXX_COMPILER_ID:Clang,GNU>:-Wno-deprecated>)
-target_compile_definitions(XDAQ-RHX PUBLIC $<$<CONFIG:Debug>:DEBUG>)
+target_compile_definitions(XDAQ-RHX
+    PUBLIC
+        $<$<CONFIG:Debug>:DEBUG>
+    PRIVATE
+	    $<$<PLATFORM_ID:Linux>:OS_LINUX>
+	    $<$<PLATFORM_ID:Windows>:OS_WINDOWS>
+	    $<$<PLATFORM_ID:Darwin>:OS_MACOS>
+)
+
 option(Sanitize "Enable sanitizers" OFF)
 if(Sanitize)
     target_compile_options(XDAQ-RHX PRIVATE -fsanitize=address,undefined)
@@ -107,9 +115,9 @@ target_link_libraries(XDAQ-RHX PRIVATE
 # Install
 include(deployQt)
 
-install(TARGETS XDAQ-RHX DESTINATION .)
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+    install(TARGETS XDAQ-RHX DESTINATION .)
     xdaq_install_core(. .)
     xdaq_install_device_managers(./managers)
     install(FILES
@@ -120,6 +128,7 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 
     deployqt($<TARGET_FILE_NAME:XDAQ-RHX>)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+    install(TARGETS XDAQ-RHX DESTINATION .)
     set_target_properties(XDAQ-RHX PROPERTIES 
         INSTALL_RPATH "@executable_path/../Frameworks"
     )
@@ -142,6 +151,18 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
     )
     deployqt("$<TARGET_FILE_NAME:XDAQ-RHX>.app")
+elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+    install(TARGETS XDAQ-RHX DESTINATION bin)
+    set_target_properties(XDAQ-RHX PROPERTIES
+        INSTALL_RPATH "$ORIGIN/../lib"
+    )
+
+    xdaq_install_core(lib lib)
+    xdaq_install_device_managers(lib/managers)
+    install(FILES
+        ${PROJECT_SOURCE_DIR}/kernel.cl
+        DESTINATION bin
+    )
 endif()
 
 
