@@ -131,6 +131,9 @@ ControllerInterface::ControllerInterface(SystemState* state_, AbstractRHXControl
     connect(state, SIGNAL(stateChanged()), this, SLOT(updateFromState()));
 
     cpuLoadHistory.resize(20, 0.0);
+
+    _httpClientThread = new HttpClientThread("127.0.0.1", 8001, this);
+    _httpClientThread->start();
 }
 
 ControllerInterface::~ControllerInterface()
@@ -161,6 +164,12 @@ ControllerInterface::~ControllerInterface()
         tcpDataOutputThread->closeExternal();
         tcpDataOutputThread->wait();
         delete tcpDataOutputThread;
+    }
+
+    if (_httpClientThread) {
+        _httpClientThread->requestInterruption();
+        _httpClientThread->wait();
+        _httpClientThread->deleteLater();
     }
 
     delete usbStreamFifo;

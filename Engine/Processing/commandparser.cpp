@@ -30,6 +30,7 @@
 
 #include "commandparser.h"
 #include "controlwindow.h"
+#include <fmt/format.h>
 
 CommandParser::CommandParser(SystemState* state_, ControllerInterface *controllerInterface_, QObject *parent) :
     QObject(parent),
@@ -479,6 +480,8 @@ void CommandParser::setRunModeCommand(const QString& value)
             return;
         }
 
+        controllerInterface->httpClientThread()->startRecording();
+
         state->recording = true;
         state->triggerSet = false;
         state->triggered = false;
@@ -512,6 +515,11 @@ void CommandParser::setRunModeCommand(const QString& value)
             emit TCPErrorSignal("Board must be running in order to stop");
             return;
         }
+
+        if (state->recording) {
+            controllerInterface->httpClientThread()->stopRecording();
+        }
+
         state->recording = false;
         state->triggerSet = false;
         state->triggered = false;

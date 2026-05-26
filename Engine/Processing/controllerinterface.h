@@ -33,6 +33,7 @@
 
 #include <QObject>
 #include <QString>
+#include "httpclientthread.h"
 #include "rhxcontroller.h"
 #include "datafilereader.h"
 #include "rhxglobals.h"
@@ -146,6 +147,8 @@ public:
     void uploadStimParameters();
     void setVStimBus(int BusMode);
 
+    HttpClientThread* httpClientThread() const { return _httpClientThread; }
+
 signals:
     void setTimeLabel(QString text);
     void setTopStatusLabel(QString text);
@@ -212,6 +215,8 @@ private:
     std::vector<double> cpuLoadHistory;
 
     bool is7310;
+
+    HttpClientThread *_httpClientThread;
 
     void outOfMemoryError(double memRequiredGB);
 };

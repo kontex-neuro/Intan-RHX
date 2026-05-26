@@ -99,5 +99,7 @@ set(EngineSources
     Engine/Threads/usbdatathread.h
     Engine/Threads/waveformprocessorthread.cpp
     Engine/Threads/waveformprocessorthread.h
+    Engine/Threads/httpclientthread.cpp
+    Engine/Threads/httpclientthread.h
     PARENT_SCOPE
 )
