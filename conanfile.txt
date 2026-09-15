@@ -1,5 +1,5 @@
 [tool_requires]
-cmake/[>=3.25.0 <3.30.0]
+cmake/[>=3.25.0]
 ninja/[>=1.12.0]
 
 [requires]
