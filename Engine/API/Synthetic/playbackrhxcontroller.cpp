@@ -105,19 +105,18 @@ struct PlaybackDataStream final : public PlaybackRHXController::DataStream {
         : dev(dev)
     {
         thread = std::thread([this, chunk_size, on_receive = std::move(recv_event)]() mutable {
+            using Buffer = std::unique_ptr<unsigned char[], void (*)(unsigned char[])>;
+            Buffer read_buffer(nullptr, [](unsigned char d[]) { delete[] d; });
             while (running) {
-                auto const read_buffer = new unsigned char[chunk_size];
-                const auto read = this->dev.readDataBlocksRaw(1, read_buffer);
+                if (!read_buffer) read_buffer.reset(new unsigned char[chunk_size]);
+                const auto read = this->dev.readDataBlocksRaw(1, read_buffer.get());
                 if (read < 0)
                     on_receive(
                         xdaq::DataStream::Events::Error{.error = fmt::format("Read error {}", read)}
                     );
                 else if (read > 0)
                     on_receive(xdaq::DataStream::Events::OwnedData{
-                        .buffer = std::unique_ptr<unsigned char[], void (*)(unsigned char[])>(
-                            read_buffer, [](unsigned char d[]) { delete[] d; }
-                        ),
-                        .length = (std::size_t) read
+                        .buffer = std::move(read_buffer), .length = (std::size_t) read
                     });
                 else
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -128,8 +127,8 @@ struct PlaybackDataStream final : public PlaybackRHXController::DataStream {
 
     ~PlaybackDataStream() override
     {
-        wait_stop();
         stop();
+        wait_stop();
     }
     void wait_stop() override
     {
