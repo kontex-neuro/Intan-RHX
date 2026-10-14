@@ -439,7 +439,7 @@ auto get_xdaq_board(QWidget *parent, auto launch, const XDAQInfo &info, const XD
             }
             settings.endGroup();
         };
-        dump_qsettings("XDAQ");
+        // dump_qsettings("XDAQ");
         std::vector<QString> rhd_sample_rates;
         for (int i = 0; i <= SampleRate30000Hz; ++i)
             rhd_sample_rates.push_back(SampleRateString[i]);
