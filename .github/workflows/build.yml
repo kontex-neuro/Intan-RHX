@@ -14,12 +14,14 @@ jobs:
       id-token: write
 
     strategy:
+      fail-fast: false
       matrix:
         os_arch:
           [
             { os: windows-2022, arch: x64 },
             { os: macos-15, arch: arm64 },
-            { os: macos-15, arch: x64 }
+            { os: macos-15, arch: x64 },
+            { os: ubuntu-22.04, arch: x64 }
           ]
 
     runs-on: ${{ matrix.os_arch.os }}
@@ -28,14 +30,7 @@ jobs:
       OS_ARCH: ${{ matrix.os_arch.os }}-${{ matrix.os_arch.arch }}
 
     steps:
-      - name: Install build system (ubuntu)
-        if: matrix.os_arch.os == 'ubuntu-24.04'
-        run: |
-          sudo apt-get install -y pipx
-          pipx install conan ninja
-
-      - name: Install build system (windows-2022, macos-15)
-        if: matrix.os_arch.os == 'windows-2022' || matrix.os_arch.os == 'macos-15'
+      - name: Install build system
         run: pip install conan ninja
 
       - name: conan cache
@@ -59,10 +54,19 @@ jobs:
           echo "CXX=$(brew --prefix llvm@18)/bin/clang++" >> $GITHUB_ENV
           sed -i '' '/^#define _LIBCPP_HAS_NO_VENDOR_AVAILABILITY_ANNOTATIONS/d' "$(brew --prefix llvm@18)"/include/c++/v1/__config_site
 
-      - name: Install OpenCL (Ubuntu)
-        if: matrix.os_arch.os == 'ubuntu-24.04'
+      - name: Setup Compiler and dependencies (Ubuntu)
+        if: matrix.os_arch.os == 'ubuntu-22.04'
         run: |
-          sudo apt-get install -y ocl-icd-opencl-dev
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+          sudo apt-get update -y
+          sudo apt-get install -y gcc-13 g++-13 \
+            ocl-icd-opencl-dev libgl1-mesa-dev libegl1-mesa-dev \
+            libxkbcommon-dev libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 \
+            libxcb-xkb1 libxcb-xinput0 libva-drm2 libva-x11-2 libvdpau1 libpulse0 libasound2 \
+            libfuse2 imagemagick file
+          echo "CC=gcc-13" >> $GITHUB_ENV
+          echo "CXX=g++-13" >> $GITHUB_ENV
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -171,6 +175,34 @@ jobs:
             -name 'XDAQ-RHX-*-Darwin.dmg' \
             -exec xcrun notarytool submit {} --keychain-profile "kontex" --wait \; \
             -exec xcrun stapler staple {} \;
+
+      - name: Package AppImage (Ubuntu)
+        if: matrix.os_arch.os == 'ubuntu-22.04'
+        run: |
+          VERSION=$(grep -m1 '^CMAKE_PROJECT_VERSION:' build/Release/CMakeCache.txt | cut -d= -f2)
+          cmake --install build/Release --prefix AppDir/usr
+
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy*.AppImage
+
+          convert images/xdaq-icon.png -resize 256x256 build/xdaq-rhx.png
+
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          export QMAKE="$QT_ROOT_DIR/bin/qmake"
+          export LD_LIBRARY_PATH="$PWD/AppDir/usr/lib:$PWD/AppDir/usr/lib/managers:$QT_ROOT_DIR/lib:$LD_LIBRARY_PATH"
+          export LINUXDEPLOY_OUTPUT_VERSION="$VERSION"
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir \
+            --executable AppDir/usr/bin/XDAQ-RHX \
+            --deploy-deps-only AppDir/usr/lib/managers \
+            --desktop-file contrib/appimage/xdaq-rhx.desktop \
+            --icon-file build/xdaq-rhx.png \
+            --plugin qt \
+            --output appimage
+
+          mkdir -p build/Release/package
+          mv XDAQ-RHX-*.AppImage build/Release/package/
+          ls -la build/Release/package
 
       - name: Tar binaries to keep file permissions
         shell: bash

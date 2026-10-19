@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=XDAQ-RHX
+Comment=IntanRHX Data Acquisition Software for XDAQ
+Exec=XDAQ-RHX
+Icon=xdaq-rhx
+Categories=Education;Science;
+Terminal=false
