@@ -71,6 +71,9 @@ public slots:
     void setPosStimAmplitude(int stream, int channel, int amplitude);
     void setNegStimAmplitude(int stream, int channel, int amplitude);
 
+private slots:
+    void updateTriggerWaveformPointers();
+
 private:
     WaveformFifo* waveformFifo;
     SystemState* state;

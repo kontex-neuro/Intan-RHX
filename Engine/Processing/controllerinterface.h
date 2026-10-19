@@ -153,6 +153,7 @@ signals:
     void setHardwareFifoStatus(double percentFull);
     void cpuLoadPercent(double percent);
     void TCPErrorMessage(QString errorMessage);
+    void rescanFinished();
 
 public slots:
     void updateFromState();

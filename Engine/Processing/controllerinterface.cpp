@@ -278,6 +278,7 @@ void ControllerInterface::rescanPorts(bool updateDisplay)
 
     if (waveformFifo) {
         waveformFifo->updateForRescan();
+        emit rescanFinished();
     }
 
     if (display) {
