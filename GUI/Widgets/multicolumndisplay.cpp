@@ -354,7 +354,7 @@ int MultiColumnDisplay::getMaxSamplesPerRefresh() const
     int maxSamplesPerRefresh = 0;
     int samplesPerRefresh;
     for (int i = 0; i < state->tScale->numberOfItems(); ++i) {
-        samplesPerRefresh = waveformManager->getSamplesPerRefresh((int) state->tScale->getNumericValue(), numRefreshZones[i]);
+        samplesPerRefresh = waveformManager->getSamplesPerRefresh((int) state->tScale->getNumericValue(i), numRefreshZones[i]);
         if (samplesPerRefresh > maxSamplesPerRefresh) {
             maxSamplesPerRefresh = samplesPerRefresh;
         }
